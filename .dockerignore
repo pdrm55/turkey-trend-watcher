@@ -1,0 +1,23 @@
+# پایگاه‌داده‌ها و فایل‌های حساس
+chroma_db_data/
+*.db
+*.sqlite3
+ai_monitor_data.csv
+.env
+
+# محیط‌های پایتون و فایل‌های بیهوده
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# گیت و تنظیمات IDE
+.git/
+.vscode/
+.idea/
+.DS_Store
+
+# اسکریپت‌های تست و موقت
+test_*.py

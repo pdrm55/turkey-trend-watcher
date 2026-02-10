@@ -1,0 +1,22 @@
+Format: source_name,url
+
+anadolu_tr,https://www.aa.com.tr/tr/rss/default?cat=guncel
+trthaber,https://www.trthaber.com/sondakika.rss
+hurriyet,https://www.hurriyet.com.tr/rss/anasayfa
+milliyet,https://www.milliyet.com.tr/rss/rssNew/gundemRss.xml
+sabah,https://www.sabah.com.tr/rss/anasayfa.xml
+haberturk,https://www.haberturk.com/rss
+ntv,https://www.ntv.com.tr/gundem.rss
+cnnturk,https://www.cnnturk.com/feed/rss/all/news
+cumhuriyet,https://www.cumhuriyet.com.tr/rss/son_dakika.xml
+sozcu,https://www.sozcu.com.tr/rss/son-dakika.xml
+mynet,https://www.mynet.com/haber/rss
+ensonhaber,https://www.ensonhaber.com/rss/ensonhaber.xml
+haber7,https://i12.haber7.net/sondakika/news.xml
+t24,https://t24.com.tr/rss
+gazeteduvar,https://www.gazeteduvar.com.tr/export/rss
+yenisafak,https://www.yenisafak.com/rss
+euronews_tr,https://tr.euronews.com/rss?format=rss&level=theme&name=news
+bbc_turkce,http://feeds.bbci.co.uk/turkce/rss.xml
+dunya,https://www.dunya.com/rss
+ahaber,https://www.ahaber.com.tr/rss/gundem.xml

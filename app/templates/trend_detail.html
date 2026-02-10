@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- سئو: متا تگ‌های پویا -->
+    <title>{{ trend.title }} | TrendiaTR</title>
+    <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapای زکا خبر آنالیزی.' }}">
+    <link rel="canonical" href="{{ canonical_url }}">
+    
+    <!-- Open Graph -->
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="{{ trend.title }}">
+    <meta property="og:description" content="{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:site_name" content="TrendiaTR">
+    <meta property="og:image" content="{{ base_url }}/static/og-image.png">
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ trend.title }}">
+    <meta name="twitter:description" content="{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}">
+    <meta name="twitter:image" content="{{ base_url }}/static/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23ef4444'/%3E%3Ctext x='50%25' y='53%25' dominant-baseline='middle' text-anchor='middle' font-family='Inter, sans-serif' font-weight='800' font-size='60' fill='white'%3ETT%3C/text%3E%3C/svg%3E">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- JSON-LD NewsArticle -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "mainEntityOfPage": { "@type": "WebPage", "@id": "{{ canonical_url }}" },
+      "headline": "{{ trend.title | replace('"', '\\"') }}",
+      "description": "{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}",
+      "articleBody": "{{ trend.summary | replace('"', '\\"') if trend.summary else '' }}",
+      "image": ["{{ base_url }}/static/og-image.png"],
+      "datePublished": "{{ date_published }}",
+      "dateModified": "{{ date_modified }}",
+      "author": { "@type": "Organization", "name": "TrendiaTR AI", "url": "{{ base_url }}" },
+      "publisher": { "@type": "Organization", "name": "TrendiaTR", "logo": { "@type": "ImageObject", "url": "{{ base_url }}/static/logo.png", "width": 600, "height": 60 } }
+    }
+    </script>
+
+    <!-- JSON-LD Breadcrumb -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [{
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Ana Sayfa",
+        "item": "{{ base_url }}"
+      },{
+        "@type": "ListItem",
+        "position": 2,
+        "name": "{{ trend.category }}",
+        "item": "{{ base_url }}/?category={{ trend.category }}"
+      },{
+        "@type": "ListItem",
+        "position": 3,
+        "name": "{{ trend.title[:30] }}...",
+        "item": "{{ canonical_url }}"
+      }]
+    }
+    </script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .custom-scroll::-webkit-scrollbar { width: 8px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <nav class="max-w-4xl mx-auto mb-8">
+        <a href="/" class="text-blue-600 font-bold flex items-center gap-2 hover:underline">
+            ← Ana Sayfaya Dön
+        </a>
+    </nav>
+
+    <article class="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
+        <header class="p-8 md:p-12 border-b border-slate-50 bg-slate-50/50">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+                    {{ trend.category }}
+                </span>
+                <span class="text-slate-400 text-xs font-medium">
+                    {{ trend.last_updated.strftime('%d %B %Y, %H:%M') if trend.last_updated else '' }}
+                </span>
+            </div>
+            <h1 class="text-3xl md:text-5xl font-black text-slate-900 leading-tight mb-6">
+                {{ trend.title }}
+            </h1>
+            <div class="flex items-center gap-4 text-sm font-bold text-slate-500">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600">AI</div>
+                    TrendiaTR AI Analizi
+                </div>
+            </div>
+        </header>
+
+        <div class="p-8 md:p-12">
+            <!-- خلاصه هوش مصنوعی -->
+            <div class="mb-12">
+                <h2 class="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-4">Yapay Zeka Özeti</h2>
+                <p class="text-lg text-slate-700 leading-relaxed font-medium">
+                    {{ trend.summary }}
+                </p>
+            </div>
+
+            <!-- منابع خبری -->
+            <div class="mb-16">
+                <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-4">
+                    Haber Kaynakları
+                    <div class="h-px bg-slate-100 flex-1"></div>
+                </h2>
+                <div class="space-y-4">
+                    {% for news in news_list %}
+                    <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-xs font-black text-blue-600 uppercase tracking-wider">{{ news.source }}</span>
+                            {% if news.link %}
+                            <a href="{{ news.link }}" target="_blank" rel="nofollow" class="text-[10px] font-bold text-slate-400 hover:text-red-600">
+                                KAYNAĞا GİT ↗
+                            </a>
+                            {% endif %}
+                        </div>
+                        <p class="text-sm text-slate-600 leading-relaxed">{{ news.content }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- بخش جدید: اخبار مرتبط (Related News) -->
+            {% if related_trends %}
+            <div class="pt-12 border-t border-slate-100">
+                <h3 class="text-xl font-black text-slate-900 mb-8 flex items-center gap-3">
+                    <span class="text-2xl">🔗</span> Benzer Haberler
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {% for r_trend in related_trends %}
+                    <a href="/trend/{{ r_trend.slug if r_trend.slug else r_trend.cluster_id }}" 
+                       class="bg-white p-5 rounded-2xl border border-slate-100 hover:border-blue-300 hover:shadow-lg transition-all group flex flex-col justify-between">
+                        <div>
+                            <span class="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2 block">{{ r_trend.category }}</span>
+                            <h4 class="text-sm font-bold text-slate-800 group-hover:text-blue-600 line-clamp-2 leading-snug">
+                                {{ r_trend.title }}
+                            </h4>
+                        </div>
+                        <div class="mt-4 flex items-center justify-between">
+                            <span class="text-[10px] text-slate-400 font-medium">{{ r_trend.last_updated.strftime('%d.%m.%Y') }}</span>
+                            <span class="text-[10px] font-bold text-blue-500 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                OKU →
+                            </span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </article>
+
+    <footer class="max-w-4xl mx-auto mt-12 mb-12 text-center text-slate-400 text-sm">
+        &copy; 2026 TrendiaTR - Gerçek Zamanlı Haber Analiz Platformu
+    </footer>
+
+</body>
+</html>

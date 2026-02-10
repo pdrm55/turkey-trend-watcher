@@ -1,0 +1,35 @@
+# --- Environments ---
+venv/
+.env
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+
+# --- Data & Databases ---
+# نادیده گرفتن پوشه‌های حجیم دیتابیس که در دستور tree فیلتر کرده بودید
+postgres_data/
+chroma_db_data/
+# نادیده گرفتن دیتابیس‌های احتمالی SQLite
+*.sqlite3
+*.db
+
+# --- Logs ---
+# نادیده گرفتن تمام فایل‌های لاگ در پوشه اصلی و پوشه logs
+logs/*.log
+*.log
+
+# --- Credentials & Sessions (Very Important) ---
+# کلیدهای گوگل و فایل‌های سشن تلگرام نباید پابلیک شوند
+google_credentials.json
+*.session
+*.session-journal
+
+# --- Application Specific Data ---
+# فایل‌های CSV خروجی مانیتورینگ
+ai_monitor_data.csv
+
+# --- Docker & Temporary Files ---
+# فایل‌های بک‌آپ داکر و فایل‌های موقت سیستم‌عامل
+docker-compose.yml.bak
+.DS_Store

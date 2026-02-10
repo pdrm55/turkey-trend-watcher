@@ -1,0 +1,82 @@
+services:
+  # ---------------------------
+  # بخش ۱: سرویس‌های زیرساختی
+  # ---------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: ttw_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secretpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-trend_watcher_db}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ttw_network
+
+  redis:
+    image: redis:alpine
+    container_name: ttw_redis
+    restart: always
+    networks:
+      - ttw_network
+
+  # اضافه کردن سرویس اختصاصی ChromaDB برای حل مشکل Segfault
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: ttw_chroma
+    volumes:
+      - chroma_data:/chroma/data
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    ports:
+      - "8000:8000"
+    networks:
+      - ttw_network
+    restart: always
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ttw_ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: always
+    networks:
+      - ttw_network
+
+  app:
+    build: .
+    container_name: ttw_app
+    shm_size: '2gb'
+    depends_on:
+      - postgres
+      - redis
+      - chromadb
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+      - "8501:8501"
+    environment:
+      - CHROMA_HOST=ttw_chroma
+      - CHROMA_PORT=8000
+      - OMP_NUM_THREADS=1
+    networks:
+      - ttw_network
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+
+volumes:
+  postgres_data:
+  ollama_data:
+  chroma_data:
+
+networks:
+  ttw_network:
+    driver: bridge
