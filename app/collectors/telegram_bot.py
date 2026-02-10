@@ -40,13 +40,25 @@ async def file_watcher_loop(client):
         await asyncio.sleep(60)
 
 async def main():
-    if not Config.TELEGRAM_API_ID: return
-    print("🧠 Initializing AI Brain...")
-    ai_engine = AIEngine()
-    print("📡 Connecting...")
+    if not Config.TELEGRAM_API_ID: 
+        print("❌ Error: TELEGRAM_API_ID not set!")
+        return
+
+    # ۱. اول اتصال تلگرام و دریافت کد (قبل از سنگین شدن برنامه با هوش مصنوعی)
+    print("📡 Connecting to Telegram...")
     client = TelegramClient('ttw_session', Config.TELEGRAM_API_ID, Config.TELEGRAM_API_HASH)
-    await client.start(phone=Config.TELEGRAM_PHONE)
-    print("✅ System Active!")
+    
+    try:
+        await client.start(phone=Config.TELEGRAM_PHONE)
+        print("✅ Telegram Authenticated Successfully!")
+    except Exception as e:
+        print(f"❌ Telegram Auth Error: {e}")
+        return
+
+    # ۲. حالا که لاگین شدیم، مغز هوش مصنوعی را لود می‌کنیم
+    print("🧠 Initializing AI Brain (Loading Models)...")
+    ai_engine = AIEngine()
+    print("✅ System Fully Active!")
 
     asyncio.create_task(file_watcher_loop(client))
 
@@ -65,7 +77,6 @@ async def main():
             raw_text = event.message.message
             if len(raw_text.strip()) < 15: return
 
-            # --- اصلاح لینک: افزودن پروتکل برای جلوگیری از ارور Relative Path ---
             unique_id = f"https://t.me/{ch_id}/{event.message.id}"
             
             cluster_id, is_duplicate = ai_engine.process_news(raw_text, ch_id, unique_id)

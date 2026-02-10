@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Index, Float, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Index, Float, ForeignKey, inspect, text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime, timezone
 from app.config import Config
@@ -27,18 +27,14 @@ class Trend(Base):
     id = Column(Integer, primary_key=True, index=True)
     cluster_id = Column(String(100), unique=True, index=True)
     
-    # --- ستون جدید برای سئو (Friendly URL) ---
+    # ستون سئو
     slug = Column(String(255), unique=True, index=True, nullable=True)
     
     title = Column(String(255), nullable=True)
     summary = Column(Text, nullable=True)
-
-    # --- ستون‌های جدید برای مانیتورینگ فارسی ---
     title_fa = Column(String(255), nullable=True)
     summary_fa = Column(Text, nullable=True)
-    
     category = Column(String(50), default="Gündem")
-    
     message_count = Column(Integer, default=1)
     score = Column(Float, default=0.0)
     first_seen = Column(DateTime, default=utc_now)
@@ -46,7 +42,34 @@ class Trend(Base):
     is_active = Column(Boolean, default=True)
     news_items = relationship("RawNews", backref="trend")
 
+def init_db():
+    """
+    آماده‌سازی خودکار دیتابیس: ساخت جداول و چک کردن ستون‌های جدید
+    """
+    print("⏳ Initializing database synchronization...")
+    try:
+        # ۱. ساخت جداول اگر وجود نداشته باشند
+        Base.metadata.create_all(bind=engine)
+        
+        # ۲. چک کردن دستی برای ستون slug (اگر جدول از قبل وجود داشت اما قدیمی بود)
+        inspector = inspect(engine)
+        columns = [c['name'] for c in inspector.get_columns('trends')]
+        
+        if 'slug' not in columns:
+            print("⚠️ Column 'slug' missing in 'trends' table. Adding it now...")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE trends ADD COLUMN slug VARCHAR(255)"))
+                conn.execute(text("CREATE INDEX idx_trends_slug ON trends (slug)"))
+                conn.commit()
+            print("✅ Column 'slug' added successfully.")
+            
+        print("✅ Database is synchronized and ready.")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+
 def get_db():
     db = SessionLocal()
-    try: yield db
-    finally: db.close()
+    try:
+        yield db
+    finally:
+        db.close()

@@ -1,7 +1,6 @@
 services:
-  # ---------------------------
-  # بخش ۱: سرویس‌های زیرساختی
-  # ---------------------------
+  # ... بخش دیتابیس و ردیس بدون تغییر باقی می‌ماند ...
+
   postgres:
     image: postgres:15-alpine
     container_name: ttw_postgres
@@ -24,7 +23,6 @@ services:
     networks:
       - ttw_network
 
-  # اضافه کردن سرویس اختصاصی ChromaDB برای حل مشکل Segfault
   chromadb:
     image: chromadb/chroma:latest
     container_name: ttw_chroma
@@ -56,6 +54,7 @@ services:
       - postgres
       - redis
       - chromadb
+      - ollama  # <--- اضافه شد تا Ollama هم همزمان استارت بخورد
     volumes:
       - .:/app
     env_file:
