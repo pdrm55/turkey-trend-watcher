@@ -1,0 +1,242 @@
+import math
+import logging
+import json
+import requests
+import os
+from datetime import datetime, timezone
+from sqlalchemy import func
+from app.database.models import Trend, RawNews, TrendArrivals
+from app.core.ai_engine import ai_engine
+from app.core.text_utils import normalize_turkish, JUNK_KEYWORDS
+
+# تنظیمات لاگر برای ردیابی دقیق فرآیند امتیازدهی
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# تنظیمات اتصال به مدل محلی Ollama (Qwen 2.5)
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
+LOCAL_MODEL_NAME = "qwen2.5:1.5b"
+
+# --- نگاشت منابع معتبر بازار ترکیه (Source Tier Mapping) ---
+# منابع لایه ۱: خبرگزاری‌های رسمی و مرجع
+TIER_1_SOURCES = ["AA", "Anadolu Ajansı", "TRT", "DHA", "IHA", "ANKA"]
+# منابع لایه ۲: روزنامه‌ها و پورتال‌های خبری معتبر
+TIER_2_SOURCES = ["Sözcü", "Hürriyet", "Habertürk", "Cumhuriyet", "Milliyet", "T24"]
+
+def get_source_tier(source_name: str) -> int:
+    """تعیین سطح اعتبار منبع بر اساس نام آن"""
+    if not source_name: return 3
+    name = source_name.strip()
+    if any(s.lower() in name.lower() for s in TIER_1_SOURCES): return 1
+    if any(s.lower() in name.lower() for s in TIER_2_SOURCES): return 2
+    return 3
+
+# --- لیست کلمات کلیدی بحرانی برای تقویت آنی امتیاز (Strategic Boost) ---
+CRITICAL_KEYWORDS = {
+    "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör"],
+    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber", "son dakika", "kararname"]
+}
+
+class TPSCalculator:
+    def __init__(self, db_session):
+        self.db = db_session
+
+    def get_criticality_boost(self, text: str) -> float:
+        """
+        تحلیل متن برای شناسایی کلمات کلیدی بحرانی.
+        اگر خبر حاوی کلمات کلیدی 'بسیار حساس' باشد، امتیاز نهایی تقویت می‌شود.
+        """
+        if not text: return 1.0
+        text_norm = normalize_turkish(text.lower())
+        
+        if any(word in text_norm for word in CRITICAL_KEYWORDS["high"]):
+            return 1.6  # ۶۰ درصد تقویت برای اخبار حیاتی (زلزله، انفجار و غیره)
+        elif any(word in text_norm for word in CRITICAL_KEYWORDS["medium"]):
+            return 1.25 # ۲۵ درصد تقویت برای اخبار مهم سیاسی/اقتصادی
+        return 1.0
+
+    def calculate_velocity(self, trend_id: int) -> float:
+        """
+        محاسبه سرعت انتشار (Propagation Velocity - V)
+        وزن در فرمول: ۳۵٪
+        فرمول: 35 * log2(1 + سیگنال بر دقیقه)
+        """
+        arrivals = self.db.query(TrendArrivals).filter(TrendArrivals.trend_id == trend_id).order_by(TrendArrivals.timestamp).all()
+        if not arrivals: return 0.0
+        
+        source_count = len(arrivals)
+        if source_count <= 1: return 15.0 # امتیاز پایه برای اولین حضور
+        
+        first_time = arrivals[0].timestamp
+        last_time = arrivals[-1].timestamp
+        
+        # محاسبه فاصله زمانی به دقیقه (حداقل ۱ دقیقه لحاظ می‌شود)
+        duration_mins = max(1.0, (last_time - first_time).total_seconds() / 60.0)
+        
+        velocity = 35 * math.log2(1 + (source_count / duration_mins))
+        return min(100.0, velocity)
+
+    def analyze_semantic_and_entity(self, text: str):
+        """
+        استخراج امتیاز نهاد (E) و حساسیت (S) با استفاده از مدل محلی Qwen.
+        E: تاثیر اشخاص یا سازمان‌های درگیر (رهبران کشور vs افراد ناشناس)
+        S: میزان بحرانی بودن واقعه از نظر معنایی
+        """
+        prompt = f"""
+        Analyze this Turkish news for Trend Potential Score (TPS).
+        Text: "{text[:800]}"
+        
+        Task:
+        1. Entity Impact (E): Is this about National leaders, Regional figures, or Unknowns? (Range: 20-100)
+        2. Semantic Criticality (S): Is this High (Major/Dangerous), Medium, or Low? (Range: 20-100)
+        3. Opinion Check: Is this a personal commentary/blog post or objective news?
+        
+        Return JSON ONLY:
+        {{"entity_score": 20-100, "criticality_score": 20-100, "is_opinion": true/false}}
+        """
+        payload = {
+            "model": LOCAL_MODEL_NAME, "prompt": prompt, "stream": False, "format": "json",
+            "options": {"temperature": 0.0, "num_ctx": 2048}
+        }
+        try:
+            response = requests.post(OLLAMA_API_URL, json=payload, timeout=12)
+            result_data = json.loads(response.json()['response'])
+            return (
+                result_data.get("entity_score", 30),
+                result_data.get("criticality_score", 30),
+                result_data.get("is_opinion", False)
+            )
+        except Exception as e:
+            logger.error(f"⚠️ Local LLM Scoring Error: {e}")
+            return 30, 30, False
+
+    def calculate_novelty(self, text: str) -> float:
+        """
+        محاسبه امتیاز تازگی (Novelty - N)
+        وزن در فرمول: ۱۵٪
+        مقایسه بردار خبر با پایگاه داده برداری برای تشخیص تکراری بودن.
+        """
+        try:
+            vector = ai_engine.get_embedding(text)
+            # جستجو در ChromaDB برای یافتن نزدیک‌ترین شباهت
+            results = ai_engine.collection.query(
+                query_embeddings=[vector],
+                n_results=1,
+                include=["distances"]
+            )
+            
+            if not results['distances'] or not results['distances'][0]:
+                return 100.0 # کاملاً جدید
+            
+            # تبدیل فاصله کسینوسی به شباهت
+            max_similarity = 1.0 - results['distances'][0][0]
+            
+            if max_similarity > 0.88: return 0.0 # احتمالاً خبر تکراری است
+            return 100 * (1.0 - max_similarity)
+        except Exception as e:
+            logger.error(f"Novelty Calculation Error: {e}")
+            return 50.0
+
+    def get_confidence_score(self, trend_id: int) -> float:
+        """
+        محاسبه ضریب اطمینان (Confidence Score)
+        ترکیبی از اعتبار منبع (Tier) و تنوع خبرگزاری‌ها.
+        """
+        news_items = self.db.query(RawNews).filter(RawNews.trend_id == trend_id).all()
+        if not news_items: return 0.5
+        
+        # ۱. تعیین بهترین سطح منبع در کلاستر
+        best_tier = min([n.source_tier for n in news_items])
+        # نقشه وزنی Tierها (رسمی‌ها وزن بیشتری می‌دهند)
+        base_confidence_map = {1: 1.15, 2: 0.95, 3: 0.75}
+        base_confidence = base_confidence_map.get(best_tier, 0.6)
+        
+        # ۲. ضریب تنوع منابع (Diversity Multiplier)
+        unique_source_names = set([n.source_name for n in news_items])
+        source_count = len(unique_source_names)
+        
+        diversity_multiplier = 1.0
+        if source_count >= 5: diversity_multiplier = 1.35
+        elif source_count >= 3: diversity_multiplier = 1.25
+        elif source_count >= 2: diversity_multiplier = 1.15
+            
+        final_conf = base_confidence * diversity_multiplier
+        
+        # محدودسازی سقف ضریب اطمینان
+        return min(1.5, final_conf)
+
+    def determine_trajectory(self, current_tps, previous_tps):
+        """
+        تعیین روند حرکت ترند (Trajectory).
+        مقایسه امتیاز فعلی با دوره قبل برای نمایش در UI.
+        """
+        if previous_tps <= 0: return "up"
+        
+        # محاسبه درصد تغییرات
+        change_ratio = (current_tps - previous_tps) / previous_tps
+        
+        if change_ratio > 0.06: return "up"      # رشد بیش از ۶ درصد
+        if change_ratio < -0.06: return "down"   # افت بیش از ۶ درصد
+        return "steady"                          # نوسان جزئی
+
+    def run_tps_cycle(self, trend_id: int):
+        """
+        اجرای چرخه کامل و جامع امتیازدهی پیشرفته (Advanced TPS 2.1)
+        این متد تمام پارامترها را ترکیب کرده و نتایج را در دیتابیس ذخیره می‌کند.
+        """
+        trend = self.db.query(Trend).get(trend_id)
+        if not trend: return None
+        
+        # دریافت سند مرجع (Reference Document) برای تحلیل معنایی
+        ref_doc = ai_engine.get_cluster_reference_doc(trend.cluster_id)
+        if not ref_doc:
+            # اگر سند مرجع یافت نشد، از اولین خبر موجود استفاده کن
+            first_news = self.db.query(RawNews).filter(RawNews.trend_id == trend.id).first()
+            if first_news: ref_doc = first_news.content
+            else: return None
+        
+        # ۱. استخراج سیگنال‌های خام (V, E, S, N)
+        v = self.calculate_velocity(trend_id)
+        e, s, is_opinion = self.analyze_semantic_and_entity(ref_doc)
+        n = self.calculate_novelty(ref_doc)
+        
+        # ۲. اعمال ضریب تقویت استراتژیک (Criticality Boost)
+        c_boost = self.get_criticality_boost(ref_doc)
+        
+        # محاسبه امتیاز سیگنال نهایی با وزن‌دهی استاندارد
+        # Formula: Signal = (0.35V + 0.25E + 0.25S + 0.15N) * Boost
+        signal_score = ((0.35 * v) + (0.25 * e) + (0.25 * s) + (0.15 * n)) * c_boost
+        
+        # ۳. محاسبه ضریب اعتماد منابع
+        confidence = self.get_confidence_score(trend_id)
+        
+        # ۴. محاسبه نهایی TPS و اعمال فیلترهای ایمنی
+        final_tps = min(100.0, signal_score * confidence)
+        
+        # اعمال جریمه (Penalty) برای محتوای زرد یا نظرات شخصی
+        normalized_title = normalize_turkish(trend.title or ref_doc[:100])
+        if any(junk in normalized_title for junk in JUNK_KEYWORDS):
+            final_tps = min(12.0, final_tps) # اخبار زرد هرگز ترند نمی‌شوند
+        
+        if is_opinion:
+            final_tps *= 0.55 # اخبار تحلیلی/شخصی وزن کمتری در بخش "داغ" دارند
+            
+        # ۵. بروزرسانی روند حرکت و شتاب (Trajectory)
+        trend.trajectory = self.determine_trajectory(final_tps, trend.final_tps)
+        trend.previous_tps = trend.final_tps
+        
+        # ۶. ذخیره‌سازی داده‌ها در آبجکت دیتابیس
+        trend.tps_signal = signal_score
+        trend.tps_confidence = confidence
+        trend.final_tps = final_tps
+        trend.score = final_tps # همگام‌سازی برای کدهای قدیمی
+        trend.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
+        
+        try:
+            self.db.commit()
+            logger.info(f"✅ TPS 2.1 Cycle Complete: Trend {trend_id} | TPS: {final_tps:.2f} | Trajectory: {trend.trajectory}")
+            return final_tps
+        except Exception as ex:
+            self.db.rollback()
+            logger.error(f"❌ Error during DB commit in Scoring: {ex}")
+            return None

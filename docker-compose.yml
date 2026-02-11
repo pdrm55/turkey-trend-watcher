@@ -1,6 +1,7 @@
-services:
-  # ... بخش دیتابیس و ردیس بدون تغییر باقی می‌ماند ...
+version: '3.8'
 
+services:
+  # --- [Infrastructure] ---
   postgres:
     image: postgres:15-alpine
     container_name: ttw_postgres
@@ -9,67 +10,118 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secretpassword}
       POSTGRES_DB: ${POSTGRES_DB:-trend_watcher_db}
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - ttw_network
+    ports: ["5433:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    networks: ["ttw_network"]
 
   redis:
     image: redis:alpine
     container_name: ttw_redis
     restart: always
-    networks:
-      - ttw_network
+    networks: ["ttw_network"]
 
   chromadb:
     image: chromadb/chroma:latest
     container_name: ttw_chroma
-    volumes:
-      - chroma_data:/chroma/data
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-    ports:
-      - "8000:8000"
-    networks:
-      - ttw_network
+    volumes: ["chroma_data:/chroma/data"]
+    networks: ["ttw_network"]
     restart: always
 
   ollama:
     image: ollama/ollama:latest
     container_name: ttw_ollama
-    volumes:
-      - ollama_data:/root/.ollama
+    volumes: ["ollama_data:/root/.ollama"]
+    networks: ["ttw_network"]
     restart: always
-    networks:
-      - ttw_network
 
-  app:
+  # --- [Initialization Task] ---
+  # این کانتینر دیتابیس را آماده کرده، مدل را دانلود کرده و سپس خاموش می‌شود
+  db_init:
     build: .
-    container_name: ttw_app
-    shm_size: '2gb'
+    container_name: ttw_init
+    depends_on: ["postgres", "ollama"]
+    volumes: [".:/app"]
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "-c"]
+    command: 
+      - |
+        echo "📂 Starting Database & AI Model Initialization..."
+        python3 -c "from app.database.models import init_db; init_db()"
+        echo "⬇️ Pulling AI Model (Qwen)..."
+        curl -X POST http://ttw_ollama:11434/api/pull -d '{"name": "qwen2.5:1.5b"}'
+        echo "✅ Initialization Complete."
+
+  # --- [Web Services] ---
+  api_server:
+    build: .
+    container_name: ttw_api
     depends_on:
-      - postgres
-      - redis
-      - chromadb
-      - ollama  # <--- اضافه شد تا Ollama هم همزمان استارت بخورد
-    volumes:
-      - .:/app
-    env_file:
-      - .env
-    ports:
-      - "5000:5000"
-      - "8501:8501"
-    environment:
-      - CHROMA_HOST=ttw_chroma
-      - CHROMA_PORT=8000
-      - OMP_NUM_THREADS=1
-    networks:
-      - ttw_network
-    restart: unless-stopped
+      db_init: { condition: service_completed_successfully }
+    volumes: [".:/app"]
+    env_file: [".env"]
+    ports: ["5000:5000"]
+    networks: ["ttw_network"]
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 web_server.py
+
+  dashboard:
+    build: .
+    container_name: ttw_dashboard
+    depends_on: ["api_server"]
+    volumes: [".:/app"]
+    env_file: [".env"]
+    ports: ["8501:8501"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: streamlit run app/workers/dashboard.py --server.port 8501 --server.address 0.0.0.0
+
+  # --- [Isolated Workers] ---
+  telegram_worker:
+    build: .
+    container_name: ttw_telegram
+    profiles: ["workers"]
+    depends_on:
+      db_init: { condition: service_completed_successfully }
+    volumes: [".:/app"]
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 app/collectors/telegram_bot.py
+
+  rss_worker:
+    build: .
+    container_name: ttw_rss
+    profiles: ["workers"]
+    depends_on:
+      db_init: { condition: service_completed_successfully }
+    volumes: [".:/app"]
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 app/collectors/rss_fetcher.py
+
+  summarizer:
+    build: .
+    container_name: ttw_summarizer
+    profiles: ["workers"]
+    depends_on: ["api_server"]
+    volumes: [".:/app"]
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 app/workers/summarizer.py
+
+  gravity_worker:
+    build: .
+    container_name: ttw_gravity
+    profiles: ["workers"]
+    depends_on: ["api_server"]
+    volumes: [".:/app"]
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 app/workers/gravity_worker.py
 
 volumes:
   postgres_data:

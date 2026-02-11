@@ -4,130 +4,143 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- سئو: متا تگ‌های پویا -->
-    <title>{{ trend.title }} | TrendiaTR</title>
-    <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapای زکا خبر آنالیزی.' }}">
-    <link rel="canonical" href="{{ canonical_url }}">
+    <!-- Dynamic SEO Meta Tags -->
+    <title>{{ trend.title }} | TrendiaTR Haber Analizi</title>
+    <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapay zeka haber analizi.' }}">
+    <link rel="canonical" href="https://trendiatr.com/trend/{{ trend.slug }}">
     
     <!-- Open Graph -->
     <meta property="og:type" content="article">
     <meta property="og:title" content="{{ trend.title }}">
     <meta property="og:description" content="{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}">
-    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:url" content="https://trendiatr.com/trend/{{ trend.slug }}">
     <meta property="og:site_name" content="TrendiaTR">
-    <meta property="og:image" content="{{ base_url }}/static/og-image.png">
+    <meta property="og:image" content="https://trendiatr.com/static/og-image.png">
 
-    <!-- Twitter Cards -->
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ trend.title }}">
     <meta name="twitter:description" content="{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}">
-    <meta name="twitter:image" content="{{ base_url }}/static/og-image.png">
+    <meta name="twitter:image" content="https://trendiatr.com/static/og-image.png">
 
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23ef4444'/%3E%3Ctext x='50%25' y='53%25' dominant-baseline='middle' text-anchor='middle' font-family='Inter, sans-serif' font-weight='800' font-size='60' fill='white'%3ETT%3C/text%3E%3C/svg%3E">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     
-    <!-- JSON-LD NewsArticle -->
+    <!-- JSON-LD Structured Data for News Article -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "NewsArticle",
-      "mainEntityOfPage": { "@type": "WebPage", "@id": "{{ canonical_url }}" },
+      "mainEntityOfPage": { "@type": "WebPage", "@id": "https://trendiatr.com/trend/{{ trend.slug }}" },
       "headline": "{{ trend.title | replace('"', '\\"') }}",
       "description": "{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}",
       "articleBody": "{{ trend.summary | replace('"', '\\"') if trend.summary else '' }}",
-      "image": ["{{ base_url }}/static/og-image.png"],
-      "datePublished": "{{ date_published }}",
-      "dateModified": "{{ date_modified }}",
-      "author": { "@type": "Organization", "name": "TrendiaTR AI", "url": "{{ base_url }}" },
-      "publisher": { "@type": "Organization", "name": "TrendiaTR", "logo": { "@type": "ImageObject", "url": "{{ base_url }}/static/logo.png", "width": 600, "height": 60 } }
-    }
-    </script>
-
-    <!-- JSON-LD Breadcrumb -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      "itemListElement": [{
-        "@type": "ListItem",
-        "position": 1,
-        "name": "Ana Sayfa",
-        "item": "{{ base_url }}"
-      },{
-        "@type": "ListItem",
-        "position": 2,
-        "name": "{{ trend.category }}",
-        "item": "{{ base_url }}/?category={{ trend.category }}"
-      },{
-        "@type": "ListItem",
-        "position": 3,
-        "name": "{{ trend.title[:30] }}...",
-        "item": "{{ canonical_url }}"
-      }]
+      "image": ["https://trendiatr.com/static/og-image.png"],
+      "datePublished": "{{ trend.first_seen.isoformat() if trend.first_seen else '' }}",
+      "dateModified": "{{ trend.last_updated.isoformat() if trend.last_updated else '' }}",
+      "author": { "@type": "Organization", "name": "TrendiaTR AI" },
+      "publisher": { 
+        "@type": "Organization", 
+        "name": "TrendiaTR", 
+        "logo": { "@type": "ImageObject", "url": "https://trendiatr.com/static/logo.png" } 
+      }
     }
     </script>
 
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
         .custom-scroll::-webkit-scrollbar { width: 8px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .trajectory-up { color: #10b981; }
+        .trajectory-down { color: #f43f5e; }
     </style>
 </head>
-<body class="p-4 md:p-8">
+<body class="p-4 md:p-8 pb-20">
 
-    <nav class="max-w-4xl mx-auto mb-8">
+    <nav class="max-w-4xl mx-auto mb-8 flex items-center justify-between">
         <a href="/" class="text-blue-600 font-bold flex items-center gap-2 hover:underline">
-            ← Ana Sayfaya Dön
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            Ana Sayfa
         </a>
+        <div class="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
+            <span>Trendia</span><span class="text-red-600">TR</span> AI ANALİZİ
+        </div>
     </nav>
 
     <article class="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
         <header class="p-8 md:p-12 border-b border-slate-50 bg-slate-50/50">
-            <div class="flex items-center gap-3 mb-4">
-                <span class="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
-                    {{ trend.category }}
-                </span>
-                <span class="text-slate-400 text-xs font-medium">
-                    {{ trend.last_updated.strftime('%d %B %Y, %H:%M') if trend.last_updated else '' }}
-                </span>
+            <div class="flex justify-between items-start mb-6">
+                <div class="flex items-center gap-3">
+                    <span class="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+                        {{ trend.category }}
+                    </span>
+                    <span class="text-slate-400 text-xs font-medium">
+                        {{ trend.last_updated.strftime('%d %B %Y, %H:%M') if trend.last_updated else '' }}
+                    </span>
+                </div>
+                
+                <!-- TPS Metric & Trajectory Display -->
+                <div class="text-right">
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-end gap-1">
+                        Trend Durumu 
+                        {% if trend.trajectory == 'up' %}
+                            <span class="trajectory-up">▲</span>
+                        {% elif trend.trajectory == 'down' %}
+                            <span class="trajectory-down">▼</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-3xl font-black text-red-600 leading-none mt-1">
+                        {{ trend.final_tps | round(1) }} <span class="text-xs">TPS</span>
+                    </div>
+                </div>
             </div>
-            <h1 class="text-3xl md:text-5xl font-black text-slate-900 leading-tight mb-6">
+
+            <h1 class="text-3xl md:text-5xl font-black text-slate-900 leading-tight mb-8">
                 {{ trend.title }}
             </h1>
-            <div class="flex items-center gap-4 text-sm font-bold text-slate-500">
-                <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600">AI</div>
-                    TrendiaTR AI Analizi
+
+            <div class="flex flex-wrap gap-4">
+                <div class="bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+                    <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Sinyal Gücü</span>
+                    <span class="text-sm font-bold text-slate-700">{{ trend.tps_signal | round(1) }}</span>
+                </div>
+                <div class="bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+                    <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Güven Endeksi</span>
+                    <span class="text-sm font-bold text-slate-700">%{{ (trend.tps_confidence * 100) | int }}</span>
+                </div>
+                <div class="bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+                    <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Kaynak Sayısı</span>
+                    <span class="text-sm font-bold text-slate-700">{{ trend.message_count }}</span>
                 </div>
             </div>
         </header>
 
         <div class="p-8 md:p-12">
-            <!-- خلاصه هوش مصنوعی -->
+            <!-- AI Summary Content Section -->
             <div class="mb-12">
                 <h2 class="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-4">Yapay Zeka Özeti</h2>
-                <p class="text-lg text-slate-700 leading-relaxed font-medium">
-                    {{ trend.summary }}
-                </p>
+                <div class="prose prose-slate max-w-none">
+                    <p class="text-lg text-slate-700 leading-relaxed font-medium">
+                        {{ trend.summary }}
+                    </p>
+                </div>
             </div>
 
-            <!-- منابع خبری -->
+            <!-- News Signal History -->
             <div class="mb-16">
                 <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-4">
-                    Haber Kaynakları
+                    Gelen Sinyaller
                     <div class="h-px bg-slate-100 flex-1"></div>
                 </h2>
                 <div class="space-y-4">
                     {% for news in news_list %}
-                    <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                    <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100 transition-all hover:border-blue-200">
                         <div class="flex justify-between items-center mb-3">
-                            <span class="text-xs font-black text-blue-600 uppercase tracking-wider">{{ news.source }}</span>
-                            {% if news.link %}
-                            <a href="{{ news.link }}" target="_blank" rel="nofollow" class="text-[10px] font-bold text-slate-400 hover:text-red-600">
-                                KAYNAĞا GİT ↗
-                            </a>
+                            <span class="text-xs font-black text-blue-600 uppercase tracking-wider">{{ news.source_name }}</span>
+                            {% if news.external_id %}
+                            <span class="text-[10px] font-bold text-slate-300">ID: {{ news.external_id[:8] }}</span>
                             {% endif %}
                         </div>
                         <p class="text-sm text-slate-600 leading-relaxed">{{ news.content }}</p>
@@ -136,11 +149,11 @@
                 </div>
             </div>
 
-            <!-- بخش جدید: اخبار مرتبط (Related News) -->
+            <!-- Related Trends Recommendation Section -->
             {% if related_trends %}
             <div class="pt-12 border-t border-slate-100">
                 <h3 class="text-xl font-black text-slate-900 mb-8 flex items-center gap-3">
-                    <span class="text-2xl">🔗</span> Benzer Haberler
+                    <span class="text-2xl">🔗</span> Benzer Gelişmeler
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {% for r_trend in related_trends %}
@@ -166,8 +179,8 @@
         </div>
     </article>
 
-    <footer class="max-w-4xl mx-auto mt-12 mb-12 text-center text-slate-400 text-sm">
-        &copy; 2026 TrendiaTR - Gerçek Zamanlı Haber Analiz Platformu
+    <footer class="max-w-4xl mx-auto mt-12 text-center">
+        <p class="text-slate-400 text-sm italic">&copy; 2026 TrendiaTR - Tüm analizler yapay zeka tarafından gerçek zamanlı oluşturulmaktadır.</p>
     </footer>
 
 </body>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- سئو: متاتگ‌های پویا از سمت سرور برای لندینگ‌پیج‌ها -->
+    <!-- SEO: Server-side dynamic meta tags for categories and landing pages -->
     <title>{{ page_title if page_title else 'TrendiaTR | Yapay Zeka Haber Analizi' }}</title>
     <meta name="description" content="{{ page_description if page_description else 'TrendiaTR ile gerçek zamanlı yapay zeka خبر آنالیزی و آخرین تحولات ترکیه.' }}">
     
@@ -33,6 +33,15 @@
             transform: translateY(-2px); 
         }
 
+        .trajectory-hot { color: #ef4444; animation: bounce-slight 1s infinite; }
+        .trajectory-steady { color: #3b82f6; }
+        .trajectory-cooling { color: #94a3b8; filter: grayscale(1); }
+
+        @keyframes bounce-slight {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3px); }
+        }
+
         @keyframes slideDown {
             from { transform: translate(-50%, -100%); opacity: 0; }
             to { transform: translate(-50%, 0); opacity: 1; }
@@ -48,7 +57,7 @@
 </head>
 <body class="min-h-screen p-4 md:p-8 pb-20">
 
-    <!-- Header -->
+    <!-- Header Section -->
     <header class="max-w-7xl mx-auto mb-6 flex flex-col md:flex-row justify-between items-center border-b border-slate-200 pb-6">
         <div class="mb-4 md:mb-0 flex items-center gap-4">
             <a href="/" class="w-14 h-14 bg-red-600 rounded-2xl shadow-lg flex items-center justify-center overflow-hidden transition-transform hover:scale-105">
@@ -69,9 +78,14 @@
                 </p>
             </div>
         </div>
+        
+        <!-- Right side space reserved for future use (Stats removed) -->
+        <div class="hidden md:flex gap-6">
+            <!-- Reserved Space -->
+        </div>
     </header>
 
-    <!-- Filters: بهینه شده برای خزنده گوگل با استفاده از لینک‌های واقعی -->
+    <!-- Navigation / Category Filters -->
     <nav class="max-w-7xl mx-auto mb-8 sticky top-0 z-30 bg-white/80 backdrop-blur-md py-3 shadow-sm border-b border-slate-100 -mx-4 px-4">
         <div class="flex space-x-2 overflow-x-auto pb-1 custom-scroll" id="category-filters">
             {% set cats = ["Hepsi", "Siyaset", "Ekonomi", "Gündem", "Spor", "Teknoloji", "Sanat"] %}
@@ -86,25 +100,26 @@
         </div>
     </nav>
 
-    <!-- HOT SECTION -->
+    <!-- HOT SECTION (Ranked by TPS) -->
     <section class="max-w-7xl mx-auto mb-12">
         <div class="flex items-center gap-2 mb-6">
             <span class="text-2xl">🔥</span>
             <h2 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">
-                {{ active_category if active_category and active_category != 'Hepsi' else '' }} Sıcak Gelişmeler
+                {{ active_category if active_category and active_category != 'Hepsi' else '' }} SIÇRAMA YAPANLAR
             </h2>
-            <span class="text-[10px] font-bold text-red-500 ml-2 animate-pulse bg-red-50 px-2 py-0.5 rounded-full border border-red-100">CANLI GÜNCELLEME</span>
+            <span class="text-[10px] font-bold text-red-500 ml-2 animate-pulse bg-red-50 px-2 py-0.5 rounded-full border border-red-100">CANLI TPS</span>
         </div>
         <div id="hot-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div class="col-span-full text-center text-slate-400 py-10 font-medium italic">Trendler yükleniyor...</div>
+            <!-- Content loaded via JS -->
+            <div class="col-span-full text-center text-slate-400 py-10 font-medium italic">Potansiyel analiz ediliyor...</div>
         </div>
     </section>
 
-    <!-- TIMELINE SECTION -->
+    <!-- TIMELINE SECTION (Chronological) -->
     <section class="max-w-7xl mx-auto relative">
         <div id="new-posts-btn" onclick="refreshTimeline()" 
              class="hidden fixed top-24 left-1/2 -translate-x-1/2 z-40 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2.5 px-8 rounded-full shadow-2xl cursor-pointer transition-all border border-blue-500 new-posts-badge flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7-7m-7-7v18"></path></svg>
             Yeni Haberler Mevcut
         </div>
 
@@ -114,12 +129,12 @@
                     <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     <span id="current-date-display" class="text-sm font-bold">...</span>
                 </div>
-                <h2 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">Zaman Tüneli</h2>
+                <h2 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">ZAMAN TÜNELİ</h2>
             </div>
         </div>
 
         <div id="timeline-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
-            <div class="col-span-full text-center text-slate-400 py-10">Haberler hazırlanıyor...</div>
+            <!-- Content loaded via JS -->
         </div>
         
         <div class="text-center">
@@ -129,7 +144,7 @@
         </div>
     </section>
 
-    <!-- Modal -->
+    <!-- Detail Modal -->
     <div id="detail-modal" class="fixed inset-0 z-50 hidden">
         <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="closeModal()"></div>
         <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-white">
@@ -144,15 +159,21 @@
             </div>
             <div class="p-8 overflow-y-auto custom-scroll flex-1">
                 <div class="mb-8 bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
-                    <div class="text-[10px] text-blue-600 font-black uppercase mb-3 tracking-widest">Yapay Zeka Özeti</div>
+                    <div class="text-[10px] text-blue-600 font-black uppercase mb-3 tracking-widest">Yapay Zeka Analizi</div>
                     <p id="modal-summary" class="text-sm text-slate-700 leading-relaxed font-medium"></p>
                 </div>
+                
+                <div class="mb-4 flex items-center justify-between">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">Haber Kaynakları</h3>
+                    <div id="modal-tps-badge" class="text-[10px] font-black bg-red-600 text-white px-2 py-1 rounded"></div>
+                </div>
+                
                 <div id="modal-news-list" class="space-y-4 mb-10"></div>
 
-                <!-- بخش اخبار مرتبط در مودال -->
+                <!-- Related News Section in Modal -->
                 <div id="modal-related-section" class="mt-12 pt-8 border-t border-slate-100 hidden">
                     <h3 class="text-lg font-black text-slate-900 mb-6 flex items-center gap-3">
-                        <span class="text-2xl">🔗</span> Benzer Haberler
+                        <span class="text-2xl">🔗</span> Benzer Gelişmeler
                     </h3>
                     <div id="modal-related-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
@@ -161,11 +182,10 @@
     </div>
 
     <script>
-        // مقدار اولیه از سمت سرور
+        // State Management
         let activeCategory = "{{ active_category if active_category else 'Hepsi' }}";
         let timelineOffset = 0;
-        let activeHotIds = new Set();
-        let lastRenderedDate = null;
+        let lastUpdateCheck = new Date().toISOString();
 
         const CAT_COLORS = {
             "Siyaset": "bg-red-50 text-red-600 border-red-100",
@@ -173,42 +193,24 @@
             "Spor": "bg-orange-50 text-orange-600 border-orange-100",
             "Teknoloji": "bg-purple-50 text-purple-600 border-purple-100",
             "Sanat": "bg-pink-50 text-pink-600 border-pink-100",
-            "Gündem": "bg-slate-100 text-slate-600 border-slate-200",
-            "Genel": "bg-slate-100 text-slate-600 border-slate-200"
+            "Gündem": "bg-slate-100 text-slate-600 border-slate-200"
         };
 
-        function init() {
-            fetchHot();
-            fetchTimeline();
-            document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
-        }
+        const TRAJECTORY_ICONS = {
+            hot: `<svg class="w-4 h-4 trajectory-hot" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg>`,
+            steady: `<svg class="w-4 h-4 trajectory-steady" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 15.707a1 1 0 010-1.414L14.586 10l-4.293-4.293a1 1 0 111.414-1.414l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0z" clip-rule="evenodd" /><path fill-rule="evenodd" d="M4.293 15.707a1 1 0 010-1.414L8.586 10 4.293 5.707a1 1 0 011.414-1.414l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>`,
+            cooling: `<svg class="w-4 h-4 trajectory-cooling" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`
+        };
 
-        function setCategory(event, cat) {
-            if (event && (event.ctrlKey || event.metaKey)) return; 
-            if (event) event.preventDefault();
+        // Logic to determine arrow icon based on TPS and Recency
+        function getTrajectory(score, lastUpdate) {
+            const now = new Date();
+            const last = new Date(lastUpdate);
+            const diffMins = (now - last) / 60000;
             
-            activeCategory = cat;
-            timelineOffset = 0;
-            
-            // به‌روزرسانی URL برای سئو
-            const url = cat === "Hepsi" ? "/" : `/category/${cat.toLowerCase()}`;
-            window.history.pushState(null, '', url);
-            
-            // استایل دکمه‌ها
-            document.querySelectorAll('.category-btn').forEach(btn => {
-                const isMatch = btn.innerText.trim() === cat;
-                btn.className = `category-btn px-5 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap border ${isMatch ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`;
-            });
-
-            refreshTimeline();
-            fetchHot();
-        }
-
-        function refreshTimeline() {
-            timelineOffset = 0;
-            lastRenderedDate = null;
-            document.getElementById('new-posts-btn').classList.add('hidden');
-            fetchTimeline(false);
+            if (score > 40 && diffMins < 20) return 'hot';
+            if (diffMins > 180) return 'cooling';
+            return 'steady';
         }
 
         function formatTime(isoString) {
@@ -217,39 +219,37 @@
             return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
         }
 
-        function handleTrendClick(event, identifier) {
-            if (event.ctrlKey || event.metaKey) return; 
-            event.preventDefault();
-            openModal(identifier);
-            window.history.pushState(null, '', `/trend/${identifier}`);
-        }
-
         function renderCard(trend, isHot) {
-            const isProcessing = trend.summary ? trend.summary.includes("Generating") : false;
-            const catClass = CAT_COLORS[trend.category] || CAT_COLORS["Genel"];
+            const trajectory = getTrajectory(trend.score, trend.last_update);
+            const icon = TRAJECTORY_ICONS[trajectory];
+            const catClass = CAT_COLORS[trend.category] || "bg-slate-100 text-slate-600 border-slate-200";
             const wrapperClass = isHot ? "card-hot-section" : "bg-white border-slate-200 hover:border-blue-300 hover:shadow-xl";
             const identifier = trend.slug || trend.id; 
 
             return `
-            <a href="/trend/${identifier}" onclick="handleTrendClick(event, '${identifier}')" data-id="${trend.id}"
-                class="trend-card ${wrapperClass} rounded-2xl p-6 border relative overflow-hidden group cursor-pointer transition-all flex flex-col h-full ${isProcessing ? 'processing-pulse' : ''}">
+            <a href="/trend/${identifier}" onclick="handleTrendClick(event, '${identifier}')"
+                class="trend-card ${wrapperClass} rounded-2xl p-6 border relative overflow-hidden group cursor-pointer transition-all flex flex-col h-full">
                 <div class="flex justify-between items-start mb-4">
                     <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border uppercase tracking-wider ${catClass}">
-                        ${isProcessing ? 'ANALİZ EDİLİYOR...' : (trend.category || 'Gündem')}
+                        ${trend.category || 'Gündem'}
                     </span>
-                    <div class="text-[10px] font-black ${isHot ? 'text-red-600' : 'text-blue-500'} bg-slate-50 px-2 py-1 rounded-md">
-                        ${Math.round(trend.score)} PKT
+                    <div class="flex items-center gap-1.5">
+                        ${icon}
+                        <span class="text-[10px] font-bold ${trajectory === 'hot' ? 'text-red-600' : 'text-slate-500'}">
+                            ${Math.round(trend.score)} TPS
+                        </span>
                     </div>
                 </div>
-                <h3 class="text-base font-bold mb-4 leading-snug text-slate-800 group-hover:text-blue-600 transition-colors line-clamp-3">
+                <h3 class="text-base font-bold mb-4 leading-snug text-slate-800 group-hover:text-red-600 transition-colors line-clamp-3">
                     ${trend.title}
                 </h3>
                 <div class="mt-auto flex items-center justify-between pt-4 border-t border-slate-50">
                     <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
                         <span class="text-blue-600 truncate max-w-[100px]">${trend.source_sample}</span>
                         <span class="opacity-30">•</span>
-                        <span>${formatTime(isHot ? trend.last_update : trend.first_seen)}</span>
+                        <span>${formatTime(trend.last_update)}</span>
                     </div>
+                    <div class="text-[9px] font-black text-slate-300">${trend.count} KAYNAK</div>
                 </div>
             </a>`;
         }
@@ -260,9 +260,10 @@
                 const res = await fetch(`/api/trends?type=hot&category=${apiCat}`);
                 const trends = await res.json();
                 const container = document.getElementById('hot-container');
-                activeHotIds = new Set(trends.map(t => t.id));
-                container.innerHTML = trends.length === 0 ? '<div class="col-span-full py-10 text-center italic text-slate-400">...</div>' : trends.map(t => renderCard(t, true)).join('');
-            } catch (e) { console.error("Hot Fetch Error", e); }
+                container.innerHTML = trends.length === 0 ? 
+                    '<div class="col-span-full py-10 text-center italic text-slate-400">Bu kategori için şu an sıcak gelişme yok.</div>' : 
+                    trends.map(t => renderCard(t, true)).join('');
+            } catch (e) {}
         }
 
         async function fetchTimeline(append = false) {
@@ -275,7 +276,34 @@
                 if (!append) container.innerHTML = '';
                 container.insertAdjacentHTML('beforeend', trends.map(t => renderCard(t, false)).join(''));
                 document.getElementById('load-more-btn').classList.toggle('hidden', trends.length < limit);
-            } catch (e) { console.error("Timeline Fetch Error", e); }
+            } catch (e) {}
+        }
+
+        function setCategory(event, cat) {
+            if (event && (event.ctrlKey || event.metaKey)) return; 
+            if (event) event.preventDefault();
+            
+            activeCategory = cat;
+            timelineOffset = 0;
+            
+            // SEO History update
+            const url = cat === "Hepsi" ? "/" : `/category/${cat.toLowerCase()}`;
+            window.history.pushState(null, '', url);
+            
+            // Visual feedback
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                const isMatch = btn.innerText.trim() === cat;
+                btn.className = `category-btn px-5 py-2 rounded-xl text-sm font-bold transition-all border ${isMatch ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`;
+            });
+
+            refreshTimeline();
+            fetchHot();
+        }
+
+        function refreshTimeline() {
+            timelineOffset = 0;
+            document.getElementById('new-posts-btn').classList.add('hidden');
+            fetchTimeline(false);
         }
 
         function loadMoreTimeline() {
@@ -283,11 +311,22 @@
             fetchTimeline(true);
         }
 
+        function handleTrendClick(event, identifier) {
+            if (event.ctrlKey || event.metaKey) return; 
+            event.preventDefault();
+            openModal(identifier);
+            window.history.pushState(null, '', `/trend/${identifier}`);
+        }
+
         async function openModal(identifier) {
             const modal = document.getElementById('detail-modal');
             modal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
+            
             document.getElementById('modal-title').innerText = "Yükleniyor...";
+            document.getElementById('modal-summary').innerText = "";
+            document.getElementById('modal-news-list').innerHTML = "";
+            document.getElementById('modal-tps-badge').innerText = "";
             
             try {
                 const res = await fetch(`/api/trends/${identifier}`);
@@ -296,6 +335,8 @@
                 document.getElementById('modal-title').innerText = data.title;
                 document.getElementById('modal-summary').innerText = data.summary;
                 document.getElementById('modal-category').innerText = data.category || 'Gündem';
+                document.getElementById('modal-tps-badge').innerText = `${data.tps_score} TPS`;
+                
                 document.getElementById('modal-news-list').innerHTML = data.news_list.map(news => `
                     <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                         <div class="flex justify-between items-center mb-2">
@@ -327,7 +368,7 @@
                     relatedSection.classList.add('hidden');
                 }
 
-            } catch (e) { console.error("Modal Data Fetch Error:", e); }
+            } catch (e) {}
         }
 
         function closeModal() { 
@@ -337,8 +378,17 @@
             window.history.pushState(null, '', url);
         }
 
+        // Init routine
+        fetchHot();
+        fetchTimeline();
+        document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+        
+        // Auto-refresh hot trends every 2 mins
+        setInterval(() => {
+            fetchHot();
+        }, 120000);
+
         window.onpopstate = () => closeModal();
-        init();
     </script>
 </body>
 </html>

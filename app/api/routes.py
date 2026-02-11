@@ -7,19 +7,19 @@ import re
 
 api_bp = Blueprint('api', __name__)
 
-# SEO uyumlu landing page'ler için geçerli kategori listesi
+# SEO optimized landing page categories
 VALID_CATEGORIES = ["Siyaset", "Ekonomi", "Gündem", "Spor", "Teknoloji", "Sanat"]
 JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop']
 
 def get_public_url():
-    """SEO için Nginx proxy header'larını dikkate alarak genel URL'yi hesaplar"""
+    """Calculates public URL considering Nginx proxy headers for SEO"""
     protocol = request.headers.get('X-Forwarded-Proto', 'https')
     host = request.headers.get('X-Forwarded-Host', request.host)
     return f"{protocol}://{host}".rstrip('/')
 
 @api_bp.route('/')
 def dashboard():
-    """Ana sayfayı oluşturur (varsayılan mod)"""
+    """Renders the main dashboard (Home)"""
     return render_template(
         'index.html', 
         active_category="Hepsi",
@@ -27,23 +27,20 @@ def dashboard():
         page_description="TrendiaTR ile gerçek zamanlı yapay zeka haber analizi ve Türkiye'deki son gelişmeler."
     )
 
-# --- SEO AŞAMA 5: Kategori Sayfaları İçin Özel Rota (Landing Pages) ---
 @api_bp.route('/category/<name>')
 def category_page(name):
-    """Google için belirli bir kategoriye odaklanarak ana sayfayı oluşturur"""
-    # Kategori adını normalleştirme (İlk harf büyük)
+    """Renders category-specific landing pages for SEO indexing"""
     cat_name = name.capitalize()
     if cat_name not in VALID_CATEGORIES:
         abort(404)
     
-    # SEO için her kategoriye özel meta etiketleri
     seo_meta = {
-        "Siyaset": {"title": "Siyaset Haberleri | TrendiaTR", "desc": "Türkiye ve dünya siyasetine dair en son gelişmeler ve yapay zeka analizleri."},
-        "Ekonomi": {"title": "Ekonomi ve Borsa Haberleri | TrendiaTR", "desc": "Döviz kurları, borsa istanbul ve ekonomi dünyasından anlık yapay zeka analizli haberler."},
-        "Gündem": {"title": "Gündemdeki Son Dakika Haberleri | TrendiaTR", "desc": "Türkiye gündemini meşgul eden en önemli olaylar ve gerçek zamanlı özetler."},
-        "Spor": {"title": "Spor Dünyasından Gelişmeler | TrendiaTR", "desc": "Süper Lig, transfer haberleri ve spor dünyasındaki önemli olayların analizi."},
-        "Teknoloji": {"title": "Teknoloji ve Bilim Haberleri | TrendiaTR", "desc": "Yapay zeka, teknoloji dünyası ve bilimsel gelişmelerin özeti."},
-        "Sanat": {"title": "Sanat ve Magazin Haberleri | TrendiaTR", "desc": "Sanat dünyası, etkinlikler ve popüler kültürün en son haberleri."}
+        "Siyaset": {"title": "Siyaset Haberleri | TrendiaTR", "desc": "Türkiye ve dünya siyasetine dair en son gelişmeler."},
+        "Ekonomi": {"title": "Ekonomi ve Borsa Haberleri | TrendiaTR", "desc": "Döviz kurları ve ekonomi dünyasından anlık analizler."},
+        "Gündem": {"title": "Gündemdeki Son Dakika Haberleri | TrendiaTR", "desc": "Türkiye gündemindeki en önemli olaylar."},
+        "Spor": {"title": "Spor Dünyasından Gelişmeler | TrendiaTR", "desc": "Süper Lig ve transfer haberleri analizi."},
+        "Teknoloji": {"title": "Teknoloji ve Bilim Haberleri | TrendiaTR", "desc": "Yapay zeka و teknoloji dünyası özeti."},
+        "Sanat": {"title": "Sanat ve Magazin Haberleri | TrendiaTR", "desc": "Popüler kültür ve sanat dünyası haberleri."}
     }
     
     current_meta = seo_meta.get(cat_name, {"title": f"{cat_name} Haberleri", "desc": "TrendiaTR Haber Analizi"})
@@ -57,11 +54,11 @@ def category_page(name):
 
 @api_bp.route('/trend/<identifier>')
 def render_trend_page(identifier):
-    """İlgili haberlerle birlikte sunucu tarafı oluşturma (SSR) (SEO Aşama 4)"""
+    """SSR for news detail pages with related trends and TPS context"""
     db = SessionLocal()
     from app.core.ai_engine import ai_engine 
     try:
-        # Slug veya cluster_id üzerinden arama
+        # Search by slug or cluster_id
         trend = db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
         
         if not trend:
@@ -81,7 +78,7 @@ def render_trend_page(identifier):
                 "link": link
             })
             
-        # SSR için ilgili haberleri bulma
+        # Get related trends via Vector Search
         related_ids = ai_engine.get_related_trends(trend.cluster_id, limit=4)
         related_trends = db.query(Trend).filter(
             Trend.cluster_id.in_(related_ids), 
@@ -110,7 +107,7 @@ def render_trend_page(identifier):
 
 @api_bp.route('/api/trends')
 def get_trends():
-    """Ana sayfa için trend listesini alan API"""
+    """API endpoint for fetching trend lists with TPS metrics"""
     db = SessionLocal()
     try:
         category = request.args.get('category', 'All')
@@ -124,11 +121,14 @@ def get_trends():
             query = query.filter(Trend.category == category)
 
         if list_type == 'hot':
+            # Hot trends based on TPS and recency (24h)
             time_threshold = datetime.now() - timedelta(hours=24)
             query = query.filter(Trend.last_updated >= time_threshold)
+            # Filter out junk content from hot section
             for word in JUNK_KEYWORDS:
                 query = query.filter(~Trend.title.ilike(f'%{word}%'))
-            trends = query.order_by(desc(Trend.score), desc(Trend.last_updated)).limit(8).all()
+            # Priority: final_tps > legacy score > update time
+            trends = query.order_by(desc(Trend.final_tps), desc(Trend.last_updated)).limit(8).all()
         else:
             trends = query.order_by(desc(Trend.first_seen)).offset(offset).limit(limit).all()
             
@@ -138,14 +138,14 @@ def get_trends():
             results.append({
                 "id": t.cluster_id,
                 "slug": t.slug,
-                "title": t.title or "Haber Başlığı Yok",
-                "summary": t.summary or "Generating...",
-                "score": t.score or 0,
+                "title": t.title or "Analiz Bekleniyor...",
+                "summary": t.summary or "Haber detayları işleniyor...",
+                "score": round(t.final_tps or t.score, 1),
                 "count": t.message_count or 1,
                 "category": t.category,
                 "first_seen": t.first_seen.isoformat() + 'Z' if t.first_seen else None,
                 "last_update": t.last_updated.isoformat() + 'Z' if t.last_updated else None, 
-                "source_sample": last_news.source_name if last_news else "Unknown"
+                "source_sample": last_news.source_name if last_news else "Bilinmiyor"
             })
         return jsonify(results)
     finally:
@@ -153,7 +153,7 @@ def get_trends():
 
 @api_bp.route('/sitemap.xml')
 def sitemap():
-    """Dinamik site haritası oluşturma"""
+    """Dynamic XML sitemap generator"""
     db = SessionLocal()
     try:
         base_url = get_public_url()
@@ -165,7 +165,6 @@ def sitemap():
         ]
         xml_lines.append(f'  <url><loc>{base_url}/</loc><changefreq>always</changefreq><priority>1.0</priority></url>')
         
-        # Kategori sayfalarını site haritasına ekleme
         for cat in VALID_CATEGORIES:
             xml_lines.append(f'  <url><loc>{base_url}/category/{cat.lower()}</loc><changefreq>daily</changefreq><priority>0.9</priority></url>')
 
@@ -187,7 +186,7 @@ def sitemap():
 
 @api_bp.route('/api/trends/<identifier>')
 def get_trend_details(identifier):
-    """Ana sayfa modalı için bir trendin ayrıntılarını alan API (ilgili haberlerle birlikte)"""
+    """API for modal display with TPS metrics and related news"""
     db = SessionLocal()
     from app.core.ai_engine import ai_engine
     try:
@@ -196,7 +195,6 @@ def get_trend_details(identifier):
         
         news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(20).all()
         
-        # Modal için ilgili haberleri alma
         related_ids = ai_engine.get_related_trends(trend.cluster_id, limit=4)
         related_data = db.query(Trend).filter(
             Trend.cluster_id.in_(related_ids), 
@@ -219,6 +217,7 @@ def get_trend_details(identifier):
         return jsonify({
             "title": trend.title,
             "category": trend.category,
+            "tps_score": round(trend.final_tps, 1),
             "summary": trend.summary or "Generating summary...",
             "news_list": formatted_news,
             "related_trends": [{
@@ -233,7 +232,7 @@ def get_trend_details(identifier):
 
 @api_bp.route('/api/stats')
 def get_stats():
-    """Başlıkta görüntülemek için genel sistem istatistikleri"""
+    """Global system stats for header display"""
     db = SessionLocal()
     try:
         return jsonify({
