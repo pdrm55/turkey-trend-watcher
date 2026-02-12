@@ -3,9 +3,18 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime, timezone
 from app.config import Config
 
-# تنظیمات پایه اتصال به دیتابیس
+# تعریف پایه مدل‌ها
 Base = declarative_base()
-engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
+
+# --- تنظیمات استراتژیک: اضافه شدن قابلیت pool_pre_ping ---
+# این تنظیم باعث می‌شود که اگر دیتابیس ریستارت شود (مثلاً در حین hard_reset)،
+# موتور SQLAlchemy قطعی را تشخیص داده و به طور خودکار اتصال را مجدداً برقرار کند.
+engine = create_engine(
+    Config.SQLALCHEMY_DATABASE_URI,
+    pool_pre_ping=True,
+    pool_recycle=3600
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def utc_now():
@@ -18,7 +27,7 @@ class RawNews(Base):
     id = Column(Integer, primary_key=True, index=True)
     source_type = Column(String(50)) # rss یا telegram
     source_name = Column(String(100))
-    source_tier = Column(Integer, default=3) # سطح اعتبار منبع (1: رسمی، 2: معتبر، 3: ناشناس)
+    source_tier = Column(Integer, default=3) # لایه اعتبار منبع (1: رسمی، 2: معتبر، 3: ناشناس)
     external_id = Column(String(255), unique=True)
     content = Column(Text)
     published_at = Column(DateTime)
@@ -79,7 +88,7 @@ def init_db():
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
     این تابع جداول را ساخته و ستون‌های جدید را بدون حذف داده‌ها به جداول موجود اضافه می‌کند.
     """
-    print("⏳ Initializing Full Database synchronization (TPS 2.1 - Strategic Update)...")
+    print("⏳ Synchronizing Database (Strategic Mode - TPS 2.1)...")
     try:
         # ۱. ساخت جداول پایه در صورت عدم وجود
         Base.metadata.create_all(bind=engine)
@@ -103,14 +112,14 @@ def init_db():
                 conn.execute(text("ALTER TABLE trends ADD COLUMN slug VARCHAR(255)"))
                 conn.execute(text("CREATE INDEX idx_trends_slug ON trends (slug)"))
             
-            # ج) اضافه کردن فیلدهای پایه TPS (اگر در نسخه Phase 6 اضافه نشده باشند)
+            # ج) اضافه کردن فیلدهای پایه TPS
             if 'tps_signal' not in trend_columns:
-                print("🚀 Adding basic TPS scoring columns...")
+                print("🚀 Adding TPS scoring columns to 'trends'...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN tps_signal FLOAT DEFAULT 0.0"))
                 conn.execute(text("ALTER TABLE trends ADD COLUMN tps_confidence FLOAT DEFAULT 0.0"))
                 conn.execute(text("ALTER TABLE trends ADD COLUMN final_tps FLOAT DEFAULT 0.0"))
 
-            # د) اضافه کردن فیلدهای ردیابی شتاب (Phase 1 Strategic)
+            # د) اضافه کردن فیلدهای ردیابی شتاب و روند حرکت
             if 'previous_tps' not in trend_columns:
                 print("📈 Adding 'previous_tps' for velocity tracking...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN previous_tps FLOAT DEFAULT 0.0"))

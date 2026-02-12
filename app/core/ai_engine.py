@@ -8,10 +8,10 @@ import requests
 import json
 from datetime import datetime, timedelta
 
-# ۱. فعال‌سازی ردیاب خطای سیستمی (برای عیب‌یابی SegFaultها در محیط داکر)
+# 1. Enable system error tracking (for debugging SegFaults in Docker)
 faulthandler.enable()
 
-# ۲. تنظیمات حیاتی برای تک‌نخ کردن پردازش‌های سنگین ریاضی (جلوگیری از تداخل حافظه)
+# 2. Vital settings for single-threading (prevents memory conflicts in ML models)
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -19,15 +19,15 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# ۳. شبیه‌سازی ماژول Posthog برای جلوگیری از لود شدن تله‌متری ناخواسته
+# 3. Kill Posthog module before it loads (Telemetry blocking)
 from unittest.mock import MagicMock
 sys.modules["posthog"] = MagicMock()
 
-# تنظیمات لاگر
+# Logger configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ۴. ایمپورت‌های سنگین یادگیری ماشین (پس از تنظیمات محیطی)
+# 4. Heavy ML Imports (After environment settings)
 import torch
 torch.set_num_threads(1) 
 
@@ -35,7 +35,7 @@ import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 
-# --- تنظیمات اتصال و مدل‌ها ---
+# --- Connection Settings ---
 CHROMA_HOST = os.getenv("CHROMA_HOST", "ttw_chroma")
 CHROMA_PORT = os.getenv("CHROMA_PORT", "8000")
 OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
@@ -43,9 +43,9 @@ LOCAL_MODEL_NAME = "qwen2.5:1.5b"
 
 class AIEngine:
     def __init__(self):
-        """راه‌اندازی موتور هوش مصنوعی و اتصال به دیتابیس برداری"""
-        print("🧠 Loading Multilingual Embedding Model...", flush=True)
-        # استفاده از مدل چندزبانه برای پشتیبانی عالی از زبان ترکی
+        """Initialize AI Engine and connect to Vector Database"""
+        print("🧠 Loading Multilingual Embedding Model (Phase 3 Fixed)...", flush=True)
+        # Using a powerful multilingual model for Turkish market
         self.model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
         
         try:
@@ -54,20 +54,19 @@ class AIEngine:
                 port=int(CHROMA_PORT),
                 settings=Settings(anonymized_telemetry=False, allow_reset=True)
             )
-            # ایجاد یا فراخوانی کالکشن با فضای محاسباتی کسینوسی (مناسب برای متن)
+            # Create or get collection with cosine space
             self.collection = self.chroma_client.get_or_create_collection(
                 name="news_clusters",
                 metadata={"hnsw:space": "cosine"}
             )
-            print(f"✅ AI Engine Phase 3 Ready (Rolling Cache Enabled)", flush=True)
+            print(f"✅ AI Engine Phase 3 Ready. Rolling Cache: Numeric Timestamps.", flush=True)
         except Exception as e:
             print(f"❌ ChromaDB Connection Error: {e}")
 
     def get_embedding(self, text: str):
-        """تبدیل متن به بردار عددی (Embedding)"""
+        """Convert text to numerical vector (Embedding)"""
         try:
             if not isinstance(text, str): text = str(text)
-            # نرمال‌سازی بردارها برای دقت بیشتر در مقایسه کسینوسی
             vector = self.model.encode(text, convert_to_numpy=True).tolist()
             return vector
         except Exception as e:
@@ -75,13 +74,13 @@ class AIEngine:
             raise e
 
     def ask_local_llm(self, reference_news, candidate_news):
-        """تایید نهایی شباهت دو خبر توسط مدل محلی Qwen برای جلوگیری از خوشه‌بندی اشتباه"""
+        """Final semantic verification using local Qwen model"""
         prompt = f"""
         Act as a strict news editor. Compare these two Turkish news texts.
         Do they report the EXACT SAME specific incident/event occurring at the same time?
         
-        If it's a new update about an old event, answer: false.
-        If it's the exact same report, answer: true.
+        If it is a new update about an old event, answer: false.
+        If it is the exact same report, answer: true.
         
         Ref News: "{reference_news[:700]}"
         New News: "{candidate_news[:700]}"
@@ -101,9 +100,9 @@ class AIEngine:
             return False 
 
     def get_cluster_reference_doc(self, cluster_id):
-        """دریافت متن مرجع (اصلی‌ترین خبر) یک کلاستر برای مقایسه‌های بعدی"""
+        """Fetch the primary reference document for a cluster"""
         try:
-            # جستجو برای سندی که به عنوان مرجع تگ شده است
+            # Try to find the document explicitly tagged as reference
             result = self.collection.get(
                 where={"$and": [{"cluster_id": cluster_id}, {"is_reference": True}]},
                 limit=1
@@ -111,7 +110,7 @@ class AIEngine:
             if result['documents'] and len(result['documents']) > 0:
                 return result['documents'][0]
             
-            # در صورتی که مرجع صریح وجود نداشت، اولین سند کلاستر را برگردان
+            # Fallback: get the first available document in the cluster
             fallback = self.collection.get(where={"cluster_id": cluster_id}, limit=1)
             if fallback['documents'] and len(fallback['documents']) > 0:
                 return fallback['documents'][0]
@@ -121,27 +120,29 @@ class AIEngine:
 
     def process_news(self, raw_text: str, source: str, external_id: str):
         """
-        پردازش خبر ورودی: وکتوریزه کردن، جستجوی کلاستر مشابه و تصمیم‌گیری برای ایجاد یا الحاق به ترند.
+        Main processing pipeline: Vectorization -> Rolling Search -> LLM Verification -> Clustering.
         """
         from app.core.text_utils import clean_text
         cleaned_text = clean_text(raw_text)
         
-        # نادیده گرفتن متون بسیار کوتاه یا نامفهوم
+        # Discard very short or irrelevant noise
         if not cleaned_text or len(cleaned_text) < 25: 
             return None, False
 
         vector = self.get_embedding(cleaned_text)
         
-        # --- فاز ۳: حافظه برداری میان‌مدت (Rolling Cache Filter) ---
-        # فقط اخباری که در ۴۸ ساعت گذشته منتشر شده‌اند برای کلاسترسازی بررسی می‌شوند
-        time_threshold = (datetime.now() - timedelta(hours=48)).isoformat()
+        # --- FIXED Phase 3: Rolling Cache (Numeric Unix Timestamp) ---
+        # Current time as Unix timestamp (Float)
+        now_ts = datetime.now().timestamp()
+        # Filter: only check clusters from the last 48 hours
+        time_threshold_ts = (datetime.now() - timedelta(hours=48)).timestamp()
         
         try:
-            # جستجو در ChromaDB با فیلتر زمانی برای افزایش دقت و سرعت
+            # Vector query with numeric metadata filtering
             results = self.collection.query(
                 query_embeddings=[vector],
                 n_results=5,
-                where={"timestamp": {"$gte": time_threshold}}, # فیلتر حافظه غلتان
+                where={"timestamp": {"$gte": time_threshold_ts}}, # Numeric comparison fixed
                 include=["metadatas", "distances", "documents"]
             )
         except Exception as e:
@@ -154,7 +155,7 @@ class AIEngine:
 
         if results['distances'] and results['distances'][0]:
             for i, distance in enumerate(results['distances'][0]):
-                # اگر فاصله کسینوسی بیش از 0.42 باشد، تشابه معنایی ضعیف است
+                # Cosine distance threshold (0.0 is exact match, 1.0 is opposite)
                 if distance > 0.42: continue
                 
                 metadata = results['metadatas'][0][i]
@@ -163,22 +164,20 @@ class AIEngine:
                 if candidate_cluster_id in checked_clusters: continue
                 checked_clusters.add(candidate_cluster_id)
 
-                # دریافت متن مرجع کلاستر کاندیدا برای مقایسه دقیق‌تر
                 target_text = self.get_cluster_reference_doc(candidate_cluster_id) or results['documents'][0][i]
                 
-                # حالت اول: شباهت برداری بسیار بالا (کپی مستقیم)
+                # Case 1: Extremely high similarity (Direct copy/repost)
                 if distance < 0.07:
                     cluster_id = candidate_cluster_id
                     is_duplicate = True
                     break
 
-                # حالت دوم: شباهت در محدوده خاکستری -> تایید با هوش مصنوعی محلی
+                # Case 2: Semantic similarity -> Ask Local LLM
                 if self.ask_local_llm(target_text, cleaned_text):
                     cluster_id = candidate_cluster_id
                     is_duplicate = True
                     break
 
-        # ۵. تصمیم‌گیری برای ایجاد ترند جدید یا اضافه شدن به قبلی
         is_new_reference = False
         if not cluster_id:
             cluster_id = str(uuid.uuid4())
@@ -187,7 +186,7 @@ class AIEngine:
         else:
             logger.info(f"🔗 Appended to Trend: {cluster_id[:8]}")
 
-        # ۶. ذخیره خبر در دیتابیس برداری
+        # Store in ChromaDB with numeric timestamp for future filtering
         self.collection.add(
             documents=[cleaned_text],
             embeddings=[vector],
@@ -195,7 +194,7 @@ class AIEngine:
                 "source": source,
                 "cluster_id": cluster_id,
                 "external_id": external_id,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": now_ts, # Stored as float for $gte support
                 "is_reference": is_new_reference
             }],
             ids=[str(uuid.uuid4())]
@@ -204,14 +203,14 @@ class AIEngine:
         return cluster_id, is_duplicate
 
     def get_related_trends(self, cluster_id, limit=4):
-        """یافتن ترندهای مرتبط (Related News) بر اساس نزدیکی برداری در کل تاریخچه"""
+        """Find related trends using vector proximity across the entire archive"""
         try:
             ref_doc = self.get_cluster_reference_doc(cluster_id)
             if not ref_doc: return []
 
             query_vector = self.get_embedding(ref_doc)
 
-            # در اینجا فیلتر زمانی اعمال نمی‌کنیم تا آرشیو هم بررسی شود
+            # No time filter here as related news can be from the past
             results = self.collection.query(
                 query_embeddings=[query_vector],
                 n_results=limit + 10,
@@ -235,5 +234,5 @@ class AIEngine:
             logger.error(f"Related Trends Error: {e}")
             return []
 
-# ایجاد نمونه یکتا (Singleton) از موتور
+# Singleton instance
 ai_engine = AIEngine()
