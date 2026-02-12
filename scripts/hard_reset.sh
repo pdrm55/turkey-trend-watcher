@@ -1,33 +1,24 @@
 #!/bin/bash
 
-# نام شبکه پروژه
 NETWORK_NAME="turkey-trend-watcher_ttw_network"
+CHROMA_VOLUME="turkey-trend-watcher_chroma_data"
 
-echo "🚨 WARNING: This is a NUCLEAR RESET. It will WIPE all vector data (ChromaDB)."
-echo "Press Ctrl+C to cancel or wait 5 seconds..."
-sleep 5
+echo "Nuclear Reset Starting..."
 
-# ۱. توقف سرویس‌ها
-echo "🛑 Stopping everything..."
-sudo docker-compose down --remove-orphans
+sudo docker-compose down -v --remove-orphans
 
-# ۲. آزادسازی شبکه
-echo "🔍 Force cleaning network: $NETWORK_NAME"
-STUCK_CONTAINERS=$(docker ps -a -q --filter network=$NETWORK_NAME)
-
+STUCK_CONTAINERS=$(sudo docker ps -a -q --filter network=$NETWORK_NAME)
 if [ ! -z "$STUCK_CONTAINERS" ]; then
-    docker rm -f $STUCK_CONTAINERS
+sudo docker rm -f $STUCK_CONTAINERS
 fi
 
-docker network rm $NETWORK_NAME 2>/dev/null || true
+sudo docker volume rm $CHROMA_VOLUME 2>/dev/null || true
+sudo docker network rm $NETWORK_NAME 2>/dev/null || true
 
-# ۳. پاکسازی فیزیکی دیتابیس برداری (بخش اصلی تفاوت با Safe Restart)
-echo "🧹 WIPING DATABASE: Deleting chroma_db_data..."
-sudo rm -rf chroma_db_data
-find . -type d -name "__pycache__" -exec rm -rf {} +
+find . -type d -name "pycache" -exec rm -rf {} +
 
-# ۴. اجرای مجدد
-echo "🚀 Building fresh environment..."
-sudo docker-compose up -d --build
+echo "Building fresh containers..."
+sudo docker-compose build --no-cache
+sudo docker-compose --profile workers up -d
 
-echo "✅ Hard reset complete. Everything is fresh. Logs: sudo docker logs -f ttw_api"
+echo "Reset Complete."
