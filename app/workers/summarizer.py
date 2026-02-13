@@ -15,6 +15,7 @@ from sqlalchemy import desc
 from app.config import Config
 from app.core.indexing_utils import notify_google 
 from app.core.text_utils import slugify_turkish 
+from app.core.alert_service import alert_service
 
 # --- Google AI & System Configuration ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -24,10 +25,12 @@ if not GOOGLE_API_KEY:
 client = None
 MODEL_NAME = None 
 LOG_FILE = "ai_monitor_data.csv"
-BASE_SITE_URL = "https://trendiatr.com" 
+
+# دریافت آدرس سایت از محیط؛ در صورت عدم وجود از دامنه واقعی استفاده می‌شود تا تلگرام خطا ندهد
+BASE_SITE_URL = os.getenv("BASE_SITE_URL", "https://trendiatr.com") 
 
 # Scoring threshold for instant Google Indexing (SEO Step)
-GOOGLE_INDEXING_THRESHOLD = 30
+GOOGLE_INDEXING_THRESHOLD = 20
 
 # Junk keywords for final filtering (Safety Layer)
 JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop', 'astrolog']
@@ -102,36 +105,36 @@ if GOOGLE_API_KEY:
 SPORTS_KEYWORDS = {
     "high": ["futbol", "süper lig", "şampiyonlar ligi", "avrupa ligi", "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "milli takım", "voleybol", "basketbol", "derbi", "puan durumu", "teknik direktör", "gol kralı", "fikstür"],
     "medium": ["penaltı", "transfer", "kadro", "madalya", "şampiyon", "kupa", "bonservis", "sarı kart", "kırmızı kart", "ofsayt", "var incelemesi"],
-    "low": ["maç", "skor", "takım", "kulüp", "hakem", "oyuncu", "antrenman", "karşılaşma"]
+    "low": ["maç", "skor", "takım", "kulüp", "hakem", "oyuncu", "antrenman", "karşılaşما"]
 }
 
 ECONOMY_KEYWORDS = {
-    "high": ["enflasyon", "faiz", "zam", "maaş", "borsa istanbul", "bist 100", "tcmb", "merkez bankası", "dolar/tl", "euro/tl", "akaryakıt", "halka arz", "asgari ücret", "emekli zammı", "vergi artışı"],
+    "high": ["enflasyon", "faiz", "zam", "maaش", "borsa istanbul", "bist 100", "tcmb", "merkez bankası", "dolar/tl", "euro/tl", "akaryakıt", "halka arz", "asgari ücret", "emekli zammı", "vergi artışı"],
     "medium": ["tüfe", "üfe", "ihracat", "ithalat", "gsyh", "kredi", "vergi", "bütçe", "cari açık", "döviz kuru", "altın fiyatları", "temettü", "spk", "kap"],
     "low": ["fiyat", "artış", "yatırım", "borç", "şirket", "piyasa", "kar", "zarar", "maliyet", "tüketici", "alım gücü"]
 }
 
 TECHNOLOGY_KEYWORDS = {
     "high": ["apple", "google", "microsoft", "openai", "chatgpt", "yapay zeka", "ai", "siber güvenlik", "baykar", "tusaş", "aselsan", "uzay", "roket", "savunma sanayii", "togg", "insansız hava aracı"],
-    "medium": ["yazılım", "donانım", "ios", "android", "akıllı telefon", "işlemci", "güncelleme", "robot", "drone", "uygulama", "blockchain", "kripto para", "bulut bilişim"],
-    "low": ["cihaz", "teknoloji", "dijital", "platform", "şifre", "bağlantı", "hız", "ekran", "fiber", "internet"]
+    "medium": ["yazılım", "donanım", "ios", "android", "akıllı telefon", "işlemci", "güncelleme", "robot", "drone", "uygulama", "blockchain", "kripto para", "bulut bilişim"],
+    "low": ["cihaz", "teknoloji", "dijital", "platform", "شفرة", "bağlantı", "hız", "ekran", "fiber", "internet"]
 }
 
 POLITICS_KEYWORDS = {
     "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "ak parti", "chp", "mhp", "tbmm", "meclis", "başkan", "kabine", "seçim", "ysk", "anayasa", "bakanlığı"],
     "medium": ["miting", "aday", "ittifak", "yasa", "kanun", "zirve", "diplomasi", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge"],
-    "low": ["açıklama", "toplantı", "karar", "kriz", "gündem", "lider", "tepki", "eleştiri", "ziyaret", "diplomatik"]
+    "low": ["açıklama", "toplantı", "karar", "kriz", "gündem", "lider", "tepki", "eleştiri", "زییارت", "diplomatik"]
 }
 
 ART_KEYWORDS = {
     "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "albüm", "tarkan", "sezen aksu", "magazin", "ünlü", "cem yılmaz"],
-    "medium": ["vizyon", "gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "sosyal medya", "instagram"],
+    "medium": ["vizyon", "gala", "sahne", "yönetمن", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "sosyal medya", "instagram"],
     "low": ["izle", "dinle", "eğlence", "moda", "tarz", "trend", "stil", "kırmızı halı", "tiktok", "paylaşım"]
 }
 
 GUNDEM_KEYWORDS = {
-    "high": ["deprem", "yangın", "kaza", "sel", "cinayet", "operasyon", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına"],
-    "medium": ["vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "don", "sağanak"],
+    "high": ["deprem", "yangın", "kaza", "sel", "cinayet", "operasyon", "patlama", "afad", "polis", "jandarma", "meteoroloji", "شديدلی فورتونا"],
+    "medium": ["vefat", "kayıp", "arama kurtarma", "ترافیك كازاسی", "gözaltı", "adliye", "asayiş", "uyarı", "don", "sağanak"],
     "low": ["haber", "olay", "hava durumu", "sıcaklık", "belediye", "valilik", "hizmet", "duyuru"]
 }
 
@@ -144,12 +147,12 @@ NEGATIVE_KEYWORDS = {
     },
     "political_vs_accident": {
         "dominant_category": "Gündem",
-        "keywords": ["deprem", "yangın", "sel", "kaza", "can kaybı", "patlama"],
+        "keywords": ["deprem", "yangın", "sel", "kaza", "can kaybی", "patlama"],
         "penalty": -40, "affects": ["Siyaset", "Ekonomi"]
     },
     "politics_exclusive": {
         "dominant_category": "Siyaset", 
-        "keywords": ["resmi gazete", "kararname", "kanun teklifi", "tbmm", "anayasa mahkemesi", "genel kurul", "grup toplantısı"],
+        "keywords": ["resmi gazete", "کارارنامه", "kanun teklifi", "tbmm", "anayasa mahkemesi", "genel kurul", "grup toplantısı"],
         "penalty": -50, "affects": ["Spor", "Sanat", "Teknoloji", "Gündem"],
         "soft_penalty": -20, "soft_affects": ["Ekonomi"] 
     },
@@ -292,7 +295,7 @@ def process_pending_trends():
         # Fetching high-priority trends for summarization
         pending_trends = db.query(Trend).filter(
             (Trend.summary == None) | (Trend.summary == ""),
-            Trend.final_tps >= 25,
+            Trend.final_tps >= 20,
             Trend.is_active == True
         ).order_by(desc(Trend.final_tps)).limit(5).all()
 
@@ -331,6 +334,17 @@ def process_pending_trends():
                 # Save and Log Stats
                 log_to_csv(trend.id, MODEL_NAME, in_tok, out_tok, duration, trend.category, "Success")
                 db.commit()
+
+                # --- فاز ۵.۳: انتشار خودکار در کانال تلگرام (آستانه ۲۰) ---
+                if trend.final_tps >= 20:
+                    target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
+                    alert_service.publish_to_channel(
+                        title=trend.title,
+                        summary=trend.summary,
+                        category=trend.category,
+                        url=target_url
+                    )
+                    print(f"   📢 Automatically published to Public Channel.")
 
                 # Notify Google for instant indexing
                 if trend.final_tps >= GOOGLE_INDEXING_THRESHOLD:

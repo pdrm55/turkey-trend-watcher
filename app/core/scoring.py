@@ -8,6 +8,7 @@ from sqlalchemy import func
 from app.database.models import Trend, RawNews, TrendArrivals
 from app.core.ai_engine import ai_engine
 from app.core.text_utils import normalize_turkish, JUNK_KEYWORDS
+from app.core.alert_service import alert_service
 
 # تنظیمات لاگر برای ردیابی دقیق فرآیند امتیازدهی
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +35,7 @@ def get_source_tier(source_name: str) -> int:
 # --- لیست کلمات کلیدی بحرانی برای تقویت آنی امتیاز (Strategic Boost) ---
 CRITICAL_KEYWORDS = {
     "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör"],
-    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber", "son dakika", "kararname"]
+    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaش خبر", "son dakika", "kararname"]
 }
 
 class TPSCalculator:
@@ -223,6 +224,26 @@ class TPSCalculator:
             
         # ۵. بروزرسانی روند حرکت و شتاب (Trajectory)
         trend.trajectory = self.determine_trajectory(final_tps, trend.final_tps)
+        
+        # --- فاز ۵.۱: هشدار ادمین و انتشار خودکار در کانال (آستانه ۲۰) ---
+        if final_tps >= 20 and trend.trajectory == "up" and trend.final_tps < 20:
+            # ۱. ارسال هشدار خصوصی به ادمین
+            alert_service.send_admin_alert(
+                title=trend.title or ref_doc[:60],
+                tps=final_tps,
+                trajectory=trend.trajectory
+            )
+            
+            # ۲. اگر خبر قبلاً خلاصه‌سازی شده است، بلافاصله در کانال منتشر شود
+            if trend.summary and trend.slug:
+                base_site_url = os.getenv("BASE_SITE_URL", "https://trendiatr.com")
+                alert_service.publish_to_channel(
+                    title=trend.title,
+                    summary=trend.summary,
+                    category=trend.category,
+                    url=f"{base_site_url}/trend/{trend.slug}"
+                )
+
         trend.previous_tps = trend.final_tps
         
         # ۶. ذخیره‌سازی داده‌ها در آبجکت دیتابیس

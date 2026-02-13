@@ -35,7 +35,6 @@ services:
     restart: always
 
   # --- [Initialization Task] ---
-  # این کانتینر دیتابیس را آماده کرده، مدل را دانلود کرده و سپس خاموش می‌شود
   db_init:
     build: .
     container_name: ttw_init
@@ -122,6 +121,22 @@ services:
     networks: ["ttw_network"]
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/gravity_worker.py
+
+  # بخش اصلاح شده (اضافه شده به زیرمجموعه services با رعایت فاصله)
+  telegram_bot_worker:
+    build: .
+    container_name: ttw_interactive_bot
+    profiles: ["workers"]
+    depends_on:
+      - postgres
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    networks:
+      - ttw_network
+    restart: always
+    command: python3 app/workers/telegram_bot_worker.py
 
 volumes:
   postgres_data:
