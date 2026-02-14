@@ -226,7 +226,7 @@ class TPSCalculator:
         trend.trajectory = self.determine_trajectory(final_tps, trend.final_tps)
         
         # --- فاز ۵.۱: هشدار ادمین و انتشار خودکار در کانال (آستانه ۲۰) ---
-        if final_tps >= 20 and trend.trajectory == "up" and trend.final_tps < 20:
+        if final_tps >= 20 and trend.trajectory == "up" and trend.final_tps < 30:
             # ۱. ارسال هشدار خصوصی به ادمین
             alert_service.send_admin_alert(
                 title=trend.title or ref_doc[:60],

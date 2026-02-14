@@ -6,7 +6,7 @@
     
     <!-- Dynamic SEO Meta Tags -->
     <title>{{ trend.title }} | TrendiaTR Haber Analizi</title>
-    <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapay zeka haber analizi.' }}">
+    <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapای زکا haber analizi.' }}">
     <link rel="canonical" href="https://trendiatr.com/trend/{{ trend.slug }}">
     
     <!-- Open Graph -->
@@ -138,12 +138,15 @@
                     {% for news in news_list %}
                     <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100 transition-all hover:border-blue-200">
                         <div class="flex justify-between items-center mb-3">
-                            <span class="text-xs font-black text-blue-600 uppercase tracking-wider">{{ news.source_name }}</span>
-                            {% if news.external_id %}
-                            <span class="text-[10px] font-bold text-slate-300">ID: {{ news.external_id[:8] }}</span>
+                            <span class="text-xs font-black text-blue-600 uppercase tracking-wider">{{ news.source }}</span>
+                            {% if news.link %}
+                            <a href="{{ news.link }}" target="_blank" class="text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors">KAYNAĞA GİT ↗</a>
                             {% endif %}
                         </div>
                         <p class="text-sm text-slate-600 leading-relaxed">{{ news.content }}</p>
+                        <div class="mt-2 text-[10px] text-slate-400 font-medium">
+                            {{ news.time.strftime('%H:%M') if news.time else '' }}
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -166,7 +169,7 @@
                             </h4>
                         </div>
                         <div class="mt-4 flex items-center justify-between">
-                            <span class="text-[10px] text-slate-400 font-medium">{{ r_trend.last_updated.strftime('%d.%m.%Y') }}</span>
+                            <span class="text-[10px] text-slate-400 font-medium">{{ r_trend.last_updated.strftime('%d.%m.%Y') if r_trend.last_updated else '' }}</span>
                             <span class="text-[10px] font-bold text-blue-500 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                                 OKU →
                             </span>
@@ -180,7 +183,7 @@
     </article>
 
     <footer class="max-w-4xl mx-auto mt-12 text-center">
-        <p class="text-slate-400 text-sm italic">&copy; 2026 TrendiaTR - Tüm analizler yapay zeka tarafından gerçek zamanlı oluşturulmaktadır.</p>
+        <p class="text-slate-400 text-sm italic">&copy; 2026 TrendiaTR - Tüm analizler yapای زکا tarafından gerçek zamanlı oluşturulmaktadır.</p>
     </footer>
 
 </body>

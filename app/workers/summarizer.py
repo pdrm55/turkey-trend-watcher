@@ -30,7 +30,7 @@ LOG_FILE = "ai_monitor_data.csv"
 BASE_SITE_URL = os.getenv("BASE_SITE_URL", "https://trendiatr.com") 
 
 # Scoring threshold for instant Google Indexing (SEO Step)
-GOOGLE_INDEXING_THRESHOLD = 20
+GOOGLE_INDEXING_THRESHOLD = 25
 
 # Junk keywords for final filtering (Safety Layer)
 JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop', 'astrolog']
@@ -335,8 +335,8 @@ def process_pending_trends():
                 log_to_csv(trend.id, MODEL_NAME, in_tok, out_tok, duration, trend.category, "Success")
                 db.commit()
 
-                # --- فاز ۵.۳: انتشار خودکار در کانال تلگرام (آستانه ۲۰) ---
-                if trend.final_tps >= 20:
+                # --- فاز ۵.۳: انتشار خودکار در کانال تلگرام (آستانه 30) ---
+                if trend.final_tps >= 30:
                     target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
                     alert_service.publish_to_channel(
                         title=trend.title,
