@@ -38,14 +38,14 @@ def get_source_tier(source_name: str) -> int:
 
 # --- لیست کلمات کلیدی بحرانی برای تقویت آنی امتیاز (Strategic Boost) ---
 CRITICAL_KEYWORDS = {
-    "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör", "faci"],
-    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaش خبر", "son dakika", "kararname"]
+    "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör", "faci", "şehit"],
+    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber", "son dakika", "kararname"]
 }
 
 class TPSCalculator:
     """
-    موتور محاسباتی TPS 2.1 (نسخه جامع فاز ۶)
-    این کلاس مسئولیت ترکیب سیگنال‌های سرعت، شتاب، معنایی و اعتبار منبع را بر عهده دارد.
+    موتور محاسباتی TPS 2.1 (نسخه جامع فاز ۶.۲ - آسنکرون)
+    این کلاس مسئولیت ترکیب سیگنال‌های سرعت، شتاب، معنایی، تازگی و اعتبار منبع را بر عهده دارد.
     """
     def __init__(self, db_session):
         self.db = db_session
@@ -104,7 +104,7 @@ class TPSCalculator:
         
         # اگر بازه اخیر کمتر از ۴۰٪ میانگین باشد، یعنی خبر با شتاب بالایی در حال پخش است
         if recent_gap < (avg_gap * 0.4):
-            return "up" # وضعیت صعودی شدید
+            return "up" # وضعیت صعودی شدید (Explosive)
         return "steady"
 
     def analyze_semantic_and_entity(self, text: str):
@@ -213,8 +213,8 @@ class TPSCalculator:
 
     def run_tps_cycle(self, trend_id: int):
         """
-        اجرای چرخه کامل و جامع امتیازدهی پیشرفته (Advanced TPS 2.1 - فاز ۶)
-        این متد تمام پارامترها را ترکیب کرده و نتایج را در دیتابیس ذخیره می‌کند.
+        اجرای چرخه کامل و جامع امتیازدهی پیشرفته (Advanced TPS 2.1 - Async Ready)
+        این متد توسط ورکر محاسباتی (Gravity Worker) فراخوانی می‌شود، نه اسکرپرها.
         """
         trend = self.db.query(Trend).get(trend_id)
         if not trend: return None
@@ -231,7 +231,7 @@ class TPSCalculator:
         v = self.calculate_velocity(trend_id)
         accel = self.calculate_acceleration(trend_id) # متد جدید فاز ۶
         e, s, is_opinion = self.analyze_semantic_and_entity(ref_doc)
-        n = self.calculate_novelty(ref_doc)
+        n = self.calculate_novelty(ref_doc) # بازگردانده شده طبق درخواست
         
         # ۲. اعمال ضریب تقویت استراتژیک (Criticality Boost)
         c_boost = self.get_criticality_boost(ref_doc)
@@ -241,7 +241,7 @@ class TPSCalculator:
         signal_score = ((0.35 * v) + (0.25 * e) + (0.25 * s) + (0.15 * n)) * c_boost
         
         # ۳. محاسبه ضریب اعتماد منابع بر اساس Tiers فاز ۶
-        confidence = self.get_confidence_score(trend_id)
+        confidence = self.get_confidence_score(trend_id) # بازگردانده شده
         
         # ۴. محاسبه نهایی TPS و اعمال فیلترهای ایمنی
         final_tps = min(100.0, signal_score * confidence)
@@ -255,27 +255,17 @@ class TPSCalculator:
             final_tps *= 0.55 # اخبار تحلیلی/شخصی وزن کمتری در بخش "داغ" دارند
             
         # ۵. بروزرسانی روند حرکت و شتاب (Trajectory)
-        # در فاز ۶ شتاب (accel) اولویت بالاتری برای نمایش وضعیت "انفجاری" دارد
+        # اگر شتاب انفجاری (accel='up') باشد، اولویت با آن است، وگرنه روند معمولی محاسبه می‌شود
         trend.trajectory = accel if accel == "up" else self.determine_trajectory(final_tps, trend.final_tps)
         
-        # --- فاز ۶: هشدار تعاملی ادمین و انتشار هوشمند ---
-        # استفاده از آستانه‌های تعریف شده در Config
+        # --- فاز ۶.۲: مدیریت هشدار آسنکرون ---
+        # فقط به ادمین اطلاع می‌دهد. انتشار خودکار (Auto-Pilot) توسط Summarizer انجام می‌شود.
         if final_tps >= Config.THRESHOLD_ADMIN_ALERT and trend.previous_tps < Config.THRESHOLD_ADMIN_ALERT:
-            # ارسال هشدار تعاملی (حاوی دکمه‌های تایید و حذف) به ادمین
             alert_service.send_admin_alert(
                 title=trend.title or ref_doc[:60],
                 tps=final_tps,
                 trajectory=trend.trajectory,
-                cluster_id=trend.cluster_id # ارسال ID برای دکمه‌های بات
-            )
-            
-        # انتشار خودکار در کانال اگر امتیاز بسیار بالا باشد (فاز ۵.۳ ارتقا یافته)
-        if final_tps >= Config.THRESHOLD_AUTO_PUBLISH and trend.summary and trend.slug:
-             alert_service.publish_to_channel(
-                title=trend.title,
-                summary=trend.summary,
-                category=trend.category,
-                url=f"{Config.BASE_SITE_URL}/trend/{trend.slug}"
+                cluster_id=trend.cluster_id
             )
 
         # ۶. ذخیره‌سازی داده‌ها در آبجکت دیتابیس
@@ -288,7 +278,7 @@ class TPSCalculator:
         
         try:
             self.db.commit()
-            logger.info(f"✅ TPS 2.1 Cycle Complete: Trend {trend_id} | TPS: {final_tps:.2f} | Trajectory: {trend.trajectory}")
+            logger.info(f"✅ [Async TPS] Trend {trend_id} Scored: {final_tps:.2f} | Accel: {trend.trajectory}")
             return final_tps
         except Exception as ex:
             self.db.rollback()

@@ -2,40 +2,82 @@ import sys
 import os
 import time
 import math
+import logging
 from datetime import datetime, timezone
 
 # اضافه کردن مسیر ریشه پروژه به sys.path برای دسترسی به ماژول‌های داخلی
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from app.database.models import SessionLocal, Trend
+from app.core.scoring import TPSCalculator
+
+# تنظیمات لاگینگ
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("ProcessorWorker")
 
 # --- تنظیمات میرایی داینامیک بر اساس دسته‌بندی (Dynamic Decay Configuration) ---
-# هرچه عدد به 1 نزدیک‌تر باشد، خبر دیرتر سرد می‌شود (ماندگاری بیشتر).
-# هرچه عدد کوچک‌تر باشد، خبر با سرعت بیشتری از لیست داغ حذف می‌شود.
-
 CATEGORY_DECAY_FACTORS = {
     "Siyaset": 0.98,    # سیاست: بسیار ماندگار (فقط ۲٪ کاهش در هر ساعت)
     "Ekonomi": 0.97,    # اقتصاد: ماندگار (۳٪ کاهش در هر ساعت)
-    "Teknoloji": 0.94, # تکنولوژی: میان‌رده
-    "Gündem": 0.92,    # عمومی/حوادث: میرایی نسبتاً سریع
-    "Spor": 0.85,      # ورزش: میرایی بسیار سریع (۱۵٪ کاهش در هر ساعت)
-    "Sanat": 0.88,     # هنر و مجله: میرایی سریع
-    "Default": 0.93    # نرخ پیش‌فرض برای دسته‌های ناشناخته
+    "Teknoloji": 0.94,  # تکنولوژی: میان‌رده
+    "Gündem": 0.92,     # عمومی/حوادث: میرایی نسبتاً سریع
+    "Spor": 0.85,       # ورزش: میرایی بسیار سریع (۱۵٪ کاهش در هر ساعت)
+    "Sanat": 0.88,      # هنر و مجله: میرایی سریع
+    "Default": 0.93     # نرخ پیش‌فرض برای دسته‌های ناشناخته
 }
 
-# حداقل آستانه امتیاز: اگر امتیاز از این مقدار کمتر شود، روند میرایی متوقف یا ترند غیرفعال می‌شود.
 MIN_TPS_THRESHOLD = 3.0
-# بازه زمانی اجرای ورکر (ثانیه): هر ۳۰ دقیقه یکبار اجرا می‌شود.
-CHECK_INTERVAL = 1800 
+DECAY_CHECK_INTERVAL = 1800  # هر ۳۰ دقیقه برای Gravity
+SCORING_CHECK_INTERVAL = 5   # هر ۵ ثانیه برای امتیازدهی اخبار جدید (Async)
+
+def process_pending_scores():
+    """
+    وظیفه ۱ (جدید در فاز ۶.۲): پردازش صف اخبار جدید و محاسبه امتیاز TPS.
+    این تابع جایگزین محاسبات همزمان در اسکرپرها شده است.
+    """
+    db = SessionLocal()
+    tps_engine = TPSCalculator(db)
+    
+    try:
+        # دریافت ترندهایی که نیاز به امتیازدهی دارند (تا ۵۰ مورد در هر چرخه)
+        pending_trends = db.query(Trend).filter(
+            Trend.needs_scoring == True,
+            Trend.is_active == True
+        ).limit(50).all()
+
+        if not pending_trends:
+            return False # کار خاصی انجام نشد
+
+        count = len(pending_trends)
+        logger.info(f"🚀 [Async Scoring] Found {count} trends needing update...")
+
+        for trend in pending_trends:
+            try:
+                # اجرای چرخه کامل امتیازدهی (Velocity, Acceleration, LLM)
+                new_score = tps_engine.run_tps_cycle(trend.id)
+                
+                # پس از محاسبه موفق، پرچم را پایین بیاور
+                if new_score is not None:
+                    trend.needs_scoring = False
+                    
+            except Exception as inner_e:
+                logger.error(f"❌ Error scoring trend {trend.id}: {inner_e}")
+        
+        db.commit()
+        return True # کار انجام شد (برای مدیریت زمان خواب)
+
+    except Exception as e:
+        logger.error(f"❌ Async Scoring Loop Error: {e}")
+        return False
+    finally:
+        db.close()
 
 def apply_gravity_decay():
     """
-    اعمال نرخ میرایی برداری/نمایی بر روی امتیاز TPS ترندهای فعال.
-    این تابع تفاوت بین دسته‌بندی‌ها را در سرعت "سرد شدن" اخبار لحاظ می‌کند.
+    وظیفه ۲: اعمال نرخ میرایی هوشمند (Gravity 2.0).
     """
     db = SessionLocal()
     try:
-        # واکشی ترندهای فعال که دارای امتیاز مثبت هستند
         active_trends = db.query(Trend).filter(
             Trend.is_active == True,
             Trend.final_tps > MIN_TPS_THRESHOLD
@@ -44,69 +86,71 @@ def apply_gravity_decay():
         if not active_trends:
             return
 
-        print(f"📉 [Gravity] شروع چرخه میرایی برای {len(active_trends)} ترند فعال...", flush=True)
+        logger.info(f"📉 [Gravity] Starting decay cycle for {len(active_trends)} trends...")
         
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         decay_count = 0
         deactivated_count = 0
 
         for trend in active_trends:
-            # محاسبه زمان سپری شده از آخرین آپدیت (به ساعت)
             time_diff = now - trend.last_updated
             hours_passed = time_diff.total_seconds() / 3600.0
 
-            # میرایی فقط زمانی اعمال می‌شود که حداقل ۱ ساعت از آخرین سیگنال گذشته باشد
             if hours_passed >= 1.0:
-                # تعیین نرخ میرایی بر اساس دسته بندی ترند
                 category = trend.category if trend.category else "Default"
                 decay_factor = CATEGORY_DECAY_FACTORS.get(category, CATEGORY_DECAY_FACTORS["Default"])
                 
                 old_score = trend.final_tps
-                
-                # فرمول میرایی نمایی: TPS_new = TPS_old * (Decay_Factor ^ Hours_Passed)
-                # این فرمول باعث می‌شود اخبار قدیمی با گذشت زمان، قدرت خود را به صورت تصاعدی از دست بدهند.
                 new_score = old_score * math.pow(decay_factor, hours_passed)
                 
-                # اعمال امتیاز جدید
                 trend.final_tps = new_score
-                trend.score = new_score # همگام‌سازی با فیلد قدیمی جهت سازگاری
+                trend.score = new_score
                 
-                # اگر امتیاز به زیر حد بحرانی رسید، ترند را از حالت فعال خارج کن (Archive)
                 if new_score < 2.0:
                     trend.is_active = False
                     deactivated_count += 1
                 
                 decay_count += 1
-                logger_msg = f"   🔹 Trend {trend.id} ({category}): {old_score:.1f} -> {new_score:.1f}"
-                print(logger_msg, flush=True)
 
         db.commit()
-        print(f"✅ [Gravity] پایان چرخه. تغییرات: {decay_count} مورد | غیرفعال شده: {deactivated_count}", flush=True)
+        logger.info(f"✅ [Gravity] Cycle done. Decayed: {decay_count} | Archived: {deactivated_count}")
 
     except Exception as e:
         db.rollback()
-        print(f"❌ [Gravity] خطای ورکر: {e}", flush=True)
+        logger.error(f"❌ [Gravity] Error: {e}")
     finally:
         db.close()
 
 def main():
     """
-    حلقه اصلی سرویس Gravity Decay
+    حلقه اصلی "Worker محاسباتی".
+    هم امتیازدهی سریع (Async Scoring) و هم تضعیف کند (Gravity) را مدیریت می‌کند.
     """
-    print("🪐 TrendiaTR Dynamic Gravity Worker Started.")
-    print(f"⚙️ Configuration: Multi-Category Decay Active | Interval={CHECK_INTERVAL}s")
+    logger.info("🪐 TrendiaTR Calculation Worker (Async Scoring + Gravity 2.0) Started.")
+    
+    last_decay_time = time.time()
     
     while True:
         try:
-            apply_gravity_decay()
+            # ۱. اولویت بالا: امتیازدهی به اخبار جدید
+            did_work = process_pending_scores()
+            
+            # ۲. اولویت پایین: بررسی زمان اجرای Gravity
+            current_time = time.time()
+            if current_time - last_decay_time > DECAY_CHECK_INTERVAL:
+                apply_gravity_decay()
+                last_decay_time = current_time
+            
+            # مدیریت هوشمند خواب: اگر کار بود فقط ۱ ثانیه، اگر نبود ۵ ثانیه صبر کن
+            sleep_time = 1 if did_work else SCORING_CHECK_INTERVAL
+            time.sleep(sleep_time)
+            
         except KeyboardInterrupt:
-            print("\n🛑 سرویس متوقف شد.")
+            logger.info("🛑 Service stopped manually.")
             break
         except Exception as e:
-            print(f"❌ خطای بحرانی در حلقه اصلی: {e}")
-        
-        # وقفه تا چرخه بعدی
-        time.sleep(CHECK_INTERVAL)
+            logger.error(f"❌ Critical Worker Loop Error: {e}")
+            time.sleep(10)
 
 if __name__ == "__main__":
     main()

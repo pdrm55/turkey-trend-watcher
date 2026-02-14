@@ -9,7 +9,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 from app.database.models import SessionLocal, RawNews, Trend, TrendArrivals
 from app.core.ai_engine import ai_engine
-from app.core.scoring import TPSCalculator, get_source_tier
+# نکته مهم: ماژول scoring کامل حذف نشد، فقط get_source_tier نگه داشته شد، محاسبه‌گر TPS حذف شد
+from app.core.scoring import get_source_tier
 from app.core.text_utils import slugify_turkish
 
 # Path for RSS sources configuration
@@ -62,11 +63,10 @@ def load_rss_sources():
     return sources
 
 def fetch_and_process_rss():
-    """Executes a single cycle of RSS fetching, clustering, and scoring"""
+    """Executes a single cycle of RSS fetching, clustering, and queuing for scoring"""
     db = SessionLocal()
     rss_feeds = load_rss_sources()
     current_time_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    tps_engine = TPSCalculator(db)
     
     print(f"🔄 RSS Cycle Started: Checking {len(rss_feeds)} feeds...")
     
@@ -101,6 +101,7 @@ def fetch_and_process_rss():
                 if trend:
                     trend.message_count += 1
                     trend.last_updated = current_time_utc
+                    trend.needs_scoring = True # ASYNC TRIGGER: در صف امتیازدهی قرار گرفت
                     signal_updates_count += 1
                 else:
                     # New Trend from RSS: Create instant SEO slug
@@ -110,7 +111,8 @@ def fetch_and_process_rss():
                         title=title[:120].strip(),
                         slug=generate_initial_slug(db, title), # SEO-First
                         first_seen=current_time_utc,
-                        last_updated=current_time_utc
+                        last_updated=current_time_utc,
+                        needs_scoring=True # ASYNC TRIGGER: در صف امتیازدهی قرار گرفت
                     )
                     db.add(trend)
                     db.flush()
@@ -139,8 +141,7 @@ def fetch_and_process_rss():
                 db.add(arrival)
                 db.commit()
 
-                # --- Step 5: Real-time Scoring ---
-                tps_engine.run_tps_cycle(trend.id)
+                # فاز ۶.۲: حذف محاسبه همزمان TPS. ورکر پس‌زمینه این کار را انجام می‌دهد.
                 
         except Exception as e:
             db.rollback()
@@ -151,7 +152,7 @@ def fetch_and_process_rss():
 
 def main():
     """Main worker loop for the RSS Engine"""
-    print("🧠 TrendiaTR RSS Fetcher Active (SEO-First Mode).")
+    print("🧠 TrendiaTR RSS Fetcher Active (Async Mode).")
     while True:
         try:
             fetch_and_process_rss()

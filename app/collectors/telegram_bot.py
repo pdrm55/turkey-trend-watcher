@@ -11,7 +11,8 @@ from telethon.tl.functions.channels import JoinChannelRequest
 from app.config import Config
 from app.database.models import SessionLocal, RawNews, Trend, TrendArrivals
 from app.core.ai_engine import ai_engine
-from app.core.scoring import TPSCalculator, get_source_tier
+# نکته مهم فاز ۶.۲: ماژول scoring را از اینجا حذف کردیم چون پردازش آسنکرون شده است
+from app.core.scoring import get_source_tier
 from app.core.text_utils import slugify_turkish
 
 # Path for the monitored channels list
@@ -147,6 +148,7 @@ async def main():
                 if trend:
                     trend.message_count += 1
                     trend.last_updated = msg_time
+                    trend.needs_scoring = True # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه در ورکر پس‌زمینه
                     action = "📈 Signal Added"
                 else:
                     # New trend detected: Create initial headline and SEO slug immediately
@@ -157,7 +159,8 @@ async def main():
                         title=initial_title,
                         slug=generate_initial_slug(db, raw_text), # SEO-First logic
                         first_seen=msg_time,
-                        last_updated=msg_time
+                        last_updated=msg_time,
+                        needs_scoring=True # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه اولیه
                     )
                     db.add(trend)
                     db.flush() # Secure the trend.id
@@ -186,11 +189,8 @@ async def main():
                 db.add(arrival)
                 db.commit()
 
-                # --- Step 5: Immediate TPS Scoring ---
-                tps_engine = TPSCalculator(db)
-                final_score = tps_engine.run_tps_cycle(trend.id)
-                
-                print(f"{action}: [{ch_id}] (Tier {source_tier}) | TPS: {final_score:.2f} | /trend/{trend.slug}")
+                # فاز ۶.۲: حذف کامل فراخوانی مستقیم scoring برای افزایش سرعت دریافت
+                print(f"{action}: [{ch_id}] (Tier {source_tier}) | Queued for Scoring.")
 
             except Exception as e:
                 db.rollback()

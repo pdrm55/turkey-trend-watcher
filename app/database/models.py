@@ -64,6 +64,10 @@ class Trend(Base):
     previous_tps = Column(Float, default=0.0) # امتیاز در چرخه قبلی برای محاسبه شتاب
     trajectory = Column(String(20), default="steady") # وضعیت: up (صعودی)، down (نزولی)، steady (ثابت)
     
+    # --- فاز ۶.۲: فلگ پردازش آسنکرون ---
+    # اگر True باشد، یعنی خبر جدیدی آمده و باید امتیاز دوباره محاسبه شود
+    needs_scoring = Column(Boolean, default=True, index=True)
+
     first_seen = Column(DateTime, default=utc_now)
     last_updated = Column(DateTime, default=utc_now)
     is_active = Column(Boolean, default=True)
@@ -127,6 +131,12 @@ def init_db():
             if 'trajectory' not in trend_columns:
                 print("🏹 Adding 'trajectory' status column...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN trajectory VARCHAR(20) DEFAULT 'steady'"))
+            
+            # ه) اضافه کردن فیلد پردازش آسنکرون (فاز ۶.۲)
+            if 'needs_scoring' not in trend_columns:
+                print("⚡ Adding 'needs_scoring' for Async Processing...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN needs_scoring BOOLEAN DEFAULT TRUE"))
+                conn.execute(text("CREATE INDEX idx_needs_scoring ON trends (needs_scoring)"))
             
             conn.commit()
 
