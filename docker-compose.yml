@@ -51,7 +51,7 @@ services:
         curl -X POST http://ttw_ollama:11434/api/pull -d '{"name": "qwen2.5:1.5b"}'
         echo "✅ Initialization Complete."
 
-  # --- [Web Services] ---
+  # --- [Web Services - ارتقا یافته به Gunicorn] ---
   api_server:
     build: .
     container_name: ttw_api
@@ -62,7 +62,8 @@ services:
     ports: ["5000:5000"]
     networks: ["ttw_network"]
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
-    command: python3 web_server.py
+    # تنظیم شده برای سخت‌افزار ۶ هسته‌ای: ۶ ورکر مستقل با تایم‌اوت مناسب برای پردازش‌های سنگین
+    command: gunicorn --workers 6 --bind 0.0.0.0:5000 --timeout 120 --access-logfile - web_server:app
 
   dashboard:
     build: .
@@ -122,7 +123,6 @@ services:
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/gravity_worker.py
 
-  # بخش اصلاح شده (اضافه شده به زیرمجموعه services با رعایت فاصله)
   telegram_bot_worker:
     build: .
     container_name: ttw_interactive_bot
