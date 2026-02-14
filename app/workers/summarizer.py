@@ -105,11 +105,11 @@ if GOOGLE_API_KEY:
 SPORTS_KEYWORDS = {
     "high": ["futbol", "süper lig", "şampiyonlar ligi", "avrupa ligi", "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "milli takım", "voleybol", "basketbol", "derbi", "puan durumu", "teknik direktör", "gol kralı", "fikstür"],
     "medium": ["penaltı", "transfer", "kadro", "madalya", "şampiyon", "kupa", "bonservis", "sarı kart", "kırmızı kart", "ofsayt", "var incelemesi"],
-    "low": ["maç", "skor", "takım", "kulüp", "hakem", "oyuncu", "antrenman", "karşılaşما"]
+    "low": ["maç", "skor", "takım", "kulüp", "hakem", "oyuncu", "antrenman", "karşılaşma"]
 }
 
 ECONOMY_KEYWORDS = {
-    "high": ["enflasyon", "faiz", "zam", "maaش", "borsa istanbul", "bist 100", "tcmb", "merkez bankası", "dolar/tl", "euro/tl", "akaryakıt", "halka arz", "asgari ücret", "emekli zammı", "vergi artışı"],
+    "high": ["enflasyon", "faiz", "zam", "maaş", "borsa istanbul", "bist 100", "tcmb", "merkez bankası", "dolar/tl", "euro/tl", "akaryakıt", "halka arz", "asgari ücret", "emekli zammı", "vergi artışı"],
     "medium": ["tüfe", "üfe", "ihracat", "ithalat", "gsyh", "kredi", "vergi", "bütçe", "cari açık", "döviz kuru", "altın fiyatları", "temettü", "spk", "kap"],
     "low": ["fiyat", "artış", "yatırım", "borç", "şirket", "piyasa", "kar", "zarar", "maliyet", "tüketici", "alım gücü"]
 }
@@ -117,24 +117,24 @@ ECONOMY_KEYWORDS = {
 TECHNOLOGY_KEYWORDS = {
     "high": ["apple", "google", "microsoft", "openai", "chatgpt", "yapay zeka", "ai", "siber güvenlik", "baykar", "tusaş", "aselsan", "uzay", "roket", "savunma sanayii", "togg", "insansız hava aracı"],
     "medium": ["yazılım", "donanım", "ios", "android", "akıllı telefon", "işlemci", "güncelleme", "robot", "drone", "uygulama", "blockchain", "kripto para", "bulut bilişim"],
-    "low": ["cihaz", "teknoloji", "dijital", "platform", "شفرة", "bağlantı", "hız", "ekran", "fiber", "internet"]
+    "low": ["cihaz", "teknoloji", "dijital", "platform", "şifre", "bağlantı", "hız", "ekran", "fiber", "internet"]
 }
 
 POLITICS_KEYWORDS = {
     "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "ak parti", "chp", "mhp", "tbmm", "meclis", "başkan", "kabine", "seçim", "ysk", "anayasa", "bakanlığı"],
     "medium": ["miting", "aday", "ittifak", "yasa", "kanun", "zirve", "diplomasi", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge"],
-    "low": ["açıklama", "toplantı", "karar", "kriz", "gündem", "lider", "tepki", "eleştiri", "زییارت", "diplomatik"]
+    "low": ["açıklama", "toplantı", "karar", "kriz", "gündem", "lider", "tepki", "eleştiri", "ziyaret", "diplomatik"]
 }
 
 ART_KEYWORDS = {
     "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "albüm", "tarkan", "sezen aksu", "magazin", "ünlü", "cem yılmaz"],
-    "medium": ["vizyon", "gala", "sahne", "yönetمن", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "sosyal medya", "instagram"],
+    "medium": ["vizyon", "gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "sosyal medya", "instagram"],
     "low": ["izle", "dinle", "eğlence", "moda", "tarz", "trend", "stil", "kırmızı halı", "tiktok", "paylaşım"]
 }
 
 GUNDEM_KEYWORDS = {
-    "high": ["deprem", "yangın", "kaza", "sel", "cinayet", "operasyon", "patlama", "afad", "polis", "jandarma", "meteoroloji", "شديدلی فورتونا"],
-    "medium": ["vefat", "kayıp", "arama kurtarma", "ترافیك كازاسی", "gözaltı", "adliye", "asayiş", "uyarı", "don", "sağanak"],
+    "high": ["deprem", "yangın", "kaza", "sel", "cinayet", "operasyon", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına"],
+    "medium": ["vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "don", "sağanak"],
     "low": ["haber", "olay", "hava durumu", "sıcaklık", "belediye", "valilik", "hizmet", "duyuru"]
 }
 
@@ -147,12 +147,12 @@ NEGATIVE_KEYWORDS = {
     },
     "political_vs_accident": {
         "dominant_category": "Gündem",
-        "keywords": ["deprem", "yangın", "sel", "kaza", "can kaybی", "patlama"],
+        "keywords": ["deprem", "yangın", "sel", "kaza", "can kaybı", "patlama"],
         "penalty": -40, "affects": ["Siyaset", "Ekonomi"]
     },
     "politics_exclusive": {
         "dominant_category": "Siyaset", 
-        "keywords": ["resmi gazete", "کارارنامه", "kanun teklifi", "tbmm", "anayasa mahkemesi", "genel kurul", "grup toplantısı"],
+        "keywords": ["resmi gazete", "kararname", "kanun teklifi", "tbmm", "anayasa mahkemesi", "genel kurul", "grup toplantısı"],
         "penalty": -50, "affects": ["Spor", "Sanat", "Teknoloji", "Gündem"],
         "soft_penalty": -20, "soft_affects": ["Ekonomi"] 
     },

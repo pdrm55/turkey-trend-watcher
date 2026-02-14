@@ -1,4 +1,5 @@
 import re
+from bs4 import BeautifulSoup
 
 # Spam keywords for filtering out advertisements and fraud
 SPAM_KEYWORDS = [
@@ -8,7 +9,6 @@ SPAM_KEYWORDS = [
 ]
 
 # Junk keywords for mandatory low-scoring (Astrology/Horoscopes/Spam)
-# Defined here to be shared across scoring and summarization engines
 JUNK_KEYWORDS = [
     'burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop', 'astrolog'
 ]
@@ -47,23 +47,35 @@ def is_spam(text: str) -> bool:
 
 def clean_text(text: str) -> str:
     """
-    Removes noise from news text to prepare it for vector embedding.
-    Removes URLs, Mentions, Hashtags and non-alphanumeric characters.
+    پاکسازی پیشرفته متن (بروزرسانی شده برای حذف کدهای HTML)
+    این تابع تمام تگ‌های HTML، آدرس‌ها، منشن‌ها و فضاهای خالی اضافی را حذف می‌کند.
     """
     if not text:
         return ""
         
-    # 1. Remove URLs
+    # ۱. حذف تگ‌های HTML با استفاده از BeautifulSoup
+    # این بخش مشکل نمایش کدهای سایت‌هایی مثل Milliyet را حل می‌کند
+    try:
+        soup = BeautifulSoup(text, "html.parser")
+        # حذف بخش‌هایی که معمولاً حاوی کدهای مزاحم هستند مثل 'İlginizi Çekebilir'
+        for section in soup.find_all("section", class_="mceNonEditable"):
+            section.decompose()
+        text = soup.get_text(separator=" ")
+    except Exception:
+        # اگر BeautifulSoup خطا داد، از رگکس ساده استفاده کن
+        text = re.sub(r'<[^>]+>', '', text)
+
+    # ۲. حذف URLها
     text = re.sub(r'http\S+|www\.\S+', '', text)
     
-    # 2. Remove mentions (@username) and hashtags (#tag)
+    # ۳. حذف منشن‌ها و هشتگ‌ها
     text = re.sub(r'@\w+', '', text)
     text = re.sub(r'#\w+', '', text)
     
-    # 3. Remove non-alphanumeric characters except Turkish letters and basic punctuation
+    # ۴. حذف کاراکترهای غیرمجاز (فقط حروف ترکی، اعداد و علائم نگارشی پایه)
     text = re.sub(r'[^\w\sçğıöşüÇĞİÖŞÜ,.?!-]', ' ', text)
     
-    # 4. Remove extra whitespaces
+    # ۵. پاکسازی فضاهای خالی اضافی
     text = re.sub(r'\s+', ' ', text).strip()
     
     return text
