@@ -3,23 +3,38 @@ from app.database.models import SessionLocal, Trend, RawNews
 from sqlalchemy import desc
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
+from app.config import Config
 import re
+import redis
+import json
+import logging
+
+# تنظیمات لاگر برای مانیتورینگ وضعیت کش
+logger = logging.getLogger(__name__)
 
 api_bp = Blueprint('api', __name__)
 
-# SEO optimized landing page categories
+# اتصال به کلاینت Redis برای مدیریت لایه کش
+try:
+    redis_client = redis.from_url(Config.REDIS_URL, decode_responses=True)
+    logger.info("✅ Redis Cache Layer Connected successfully.")
+except Exception as e:
+    redis_client = None
+    logger.error(f"❌ Redis Connection Failed: {e}")
+
+# دسته‌بندی‌های مجاز برای سئو
 VALID_CATEGORIES = ["Siyaset", "Ekonomi", "Gündem", "Spor", "Teknoloji", "Sanat"]
 JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop']
 
 def get_public_url():
-    """Calculates public URL considering Nginx proxy headers for SEO"""
+    """محاسبه URL عمومی با در نظر گرفتن پروکسی Nginx برای سئو"""
     protocol = request.headers.get('X-Forwarded-Proto', 'https')
     host = request.headers.get('X-Forwarded-Host', request.host)
     return f"{protocol}://{host}".rstrip('/')
 
 @api_bp.route('/')
 def dashboard():
-    """Renders the main dashboard (Home)"""
+    """رندر کردن داشبورد اصلی (Home)"""
     return render_template(
         'index.html', 
         active_category="Hepsi",
@@ -29,18 +44,18 @@ def dashboard():
 
 @api_bp.route('/category/<name>')
 def category_page(name):
-    """Renders category-specific landing pages for SEO indexing"""
+    """رندر صفحات لندینگ دسته‌بندی‌ها برای ایندکس سئو"""
     cat_name = name.capitalize()
     if cat_name not in VALID_CATEGORIES:
         abort(404)
     
     seo_meta = {
         "Siyaset": {"title": "Siyaset Haberleri | TrendiaTR", "desc": "Türkiye ve dünya siyasetine dair en son gelişmeler."},
-        "Ekonomi": {"title": "Ekonomi ve Borsa Haberleri | TrendiaTR", "desc": "Döviz kurları ve ekonomi dünyasından anlık analizler."},
+        "Ekonomi": {"title": "Ekonomi ve Borsa Haberleri | TrendiaTR", "desc": "Döviz kurları og اقتصاد دنیا."},
         "Gündem": {"title": "Gündemdeki Son Dakika Haberleri | TrendiaTR", "desc": "Türkiye gündemindeki en önemli olaylar."},
         "Spor": {"title": "Spor Dünyasından Gelişmeler | TrendiaTR", "desc": "Süper Lig ve transfer haberleri analizi."},
-        "Teknoloji": {"title": "Teknoloji ve Bilim Haberleri | TrendiaTR", "desc": "Yapay zeka و teknoloji dünyası özeti."},
-        "Sanat": {"title": "Sanat ve Magazin Haberleri | TrendiaTR", "desc": "Popüler kültür ve sanat dünyası haberleri."}
+        "Teknoloji": {"title": "Teknoloji ve Bilim Haberleri | TrendiaTR", "desc": "Yapay zeka و تکنولوژی."},
+        "Sanat": {"title": "Sanat ve Magazin Haberleri | TrendiaTR", "desc": "Popüler kültür ve sanat dünyası خبرلری."}
     }
     
     current_meta = seo_meta.get(cat_name, {"title": f"{cat_name} Haberleri", "desc": "TrendiaTR Haber Analizi"})
@@ -54,11 +69,11 @@ def category_page(name):
 
 @api_bp.route('/trend/<identifier>')
 def render_trend_page(identifier):
-    """SSR for news detail pages with related trends and TPS context"""
+    """رندر سمت سرور (SSR) برای صفحات جزئیات ترند"""
     db = SessionLocal()
     from app.core.ai_engine import ai_engine 
     try:
-        # Search by slug or cluster_id
+        # جستجو بر اساس اسلاگ سئو یا شناسه کلاستر
         trend = db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
         
         if not trend:
@@ -78,7 +93,7 @@ def render_trend_page(identifier):
                 "link": link
             })
             
-        # Get related trends via Vector Search
+        # دریافت اخبار مرتبط (ممکن است زمان‌بر باشد، در پایتون هندل می‌شود)
         related_ids = ai_engine.get_related_trends(trend.cluster_id, limit=4)
         related_trends = db.query(Trend).filter(
             Trend.cluster_id.in_(related_ids), 
@@ -107,27 +122,32 @@ def render_trend_page(identifier):
 
 @api_bp.route('/api/trends')
 def get_trends():
-    """API endpoint for fetching trend lists with TPS metrics"""
+    """API لیست ترندها با قابلیت کشینگ هوشمند (فاز ۶)"""
+    category = request.args.get('category', 'All')
+    list_type = request.args.get('type', 'timeline')
+    offset = int(request.args.get('offset', 0))
+    limit = int(request.args.get('limit', 32))
+
+    # --- منطق کشینگ Redis ---
+    cache_key = f"trends_v1_{category}_{list_type}_{offset}_{limit}"
+    if redis_client:
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            return make_response(cached_data, 200, {"Content-Type": "application/json"})
+
     db = SessionLocal()
     try:
-        category = request.args.get('category', 'All')
-        list_type = request.args.get('type', 'timeline')
-        offset = int(request.args.get('offset', 0))
-        limit = int(request.args.get('limit', 32))
-
         query = db.query(Trend).filter(Trend.is_active == True)
         
         if category != 'All':
             query = query.filter(Trend.category == category)
 
         if list_type == 'hot':
-            # Hot trends based on TPS and recency (24h)
+            # ترندهای داغ بر اساس امتیاز TPS در ۲۴ ساعت اخیر
             time_threshold = datetime.now() - timedelta(hours=24)
             query = query.filter(Trend.last_updated >= time_threshold)
-            # Filter out junk content from hot section
             for word in JUNK_KEYWORDS:
                 query = query.filter(~Trend.title.ilike(f'%{word}%'))
-            # Priority: final_tps > legacy score > update time
             trends = query.order_by(desc(Trend.final_tps), desc(Trend.last_updated)).limit(8).all()
         else:
             trends = query.order_by(desc(Trend.first_seen)).offset(offset).limit(limit).all()
@@ -147,13 +167,82 @@ def get_trends():
                 "last_update": t.last_updated.isoformat() + 'Z' if t.last_updated else None, 
                 "source_sample": last_news.source_name if last_news else "Bilinmiyor"
             })
+        
+        response_json = json.dumps(results)
+        # ذخیره در کش برای ۱۲۰ ثانیه (برای حفظ تازگی اخبار صفحه اصلی)
+        if redis_client:
+            redis_client.setex(cache_key, 120, response_json)
+            
         return jsonify(results)
+    finally:
+        db.close()
+
+@api_bp.route('/api/trends/<identifier>')
+def get_trend_details(identifier):
+    """API جزئیات ترند برای مودال با کشینگ طولانی‌تر (فاز ۶)"""
+    
+    # کلید اختصاصی برای هر کلاستر
+    cache_key = f"detail_v1_{identifier}"
+    if redis_client:
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            return make_response(cached_data, 200, {"Content-Type": "application/json"})
+
+    db = SessionLocal()
+    from app.core.ai_engine import ai_engine
+    try:
+        trend = db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
+        if not trend: return jsonify({"error": "Trend not found"}), 404
+        
+        # واکشی اخبار مربوطه
+        news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(20).all()
+        
+        # جستجوی برداری (بخش سنگین)
+        related_ids = ai_engine.get_related_trends(trend.cluster_id, limit=4)
+        related_data = db.query(Trend).filter(
+            Trend.cluster_id.in_(related_ids), 
+            Trend.is_active == True, 
+            Trend.id != trend.id
+        ).all()
+
+        formatted_news = []
+        for n in news_items:
+            link = n.external_id or ""
+            if link and not link.startswith('http'):
+                link = f"https://{link}"
+            formatted_news.append({
+                "source": n.source_name, 
+                "time": n.published_at.isoformat() + 'Z', 
+                "content": n.content, 
+                "link": link
+            })
+
+        result = {
+            "title": trend.title,
+            "category": trend.category,
+            "tps_score": round(trend.final_tps, 1),
+            "summary": trend.summary or "Generating summary...",
+            "news_list": formatted_news,
+            "related_trends": [{
+                "title": r.title,
+                "category": r.category,
+                "slug": r.slug or r.cluster_id,
+                "date": r.last_updated.strftime('%d.%m.%Y') if r.last_updated else ""
+            } for r in related_data]
+        }
+
+        response_json = json.dumps(result)
+        # ذخیره در کش برای ۶۰۰ ثانیه (۱۰ دقیقه) چون جزئیات خبر کمتر تغییر می‌کند
+        if redis_client:
+            redis_client.setex(cache_key, 600, response_json)
+
+        return jsonify(result)
     finally:
         db.close()
 
 @api_bp.route('/sitemap.xml')
 def sitemap():
-    """Dynamic XML sitemap generator"""
+    """تولید داینامیک نقشه سایت (XML Sitemap)"""
     db = SessionLocal()
     try:
         base_url = get_public_url()
@@ -184,55 +273,9 @@ def sitemap():
     finally:
         db.close()
 
-@api_bp.route('/api/trends/<identifier>')
-def get_trend_details(identifier):
-    """API for modal display with TPS metrics and related news"""
-    db = SessionLocal()
-    from app.core.ai_engine import ai_engine
-    try:
-        trend = db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
-        if not trend: return jsonify({"error": "Trend not found"}), 404
-        
-        news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(20).all()
-        
-        related_ids = ai_engine.get_related_trends(trend.cluster_id, limit=4)
-        related_data = db.query(Trend).filter(
-            Trend.cluster_id.in_(related_ids), 
-            Trend.is_active == True, 
-            Trend.id != trend.id
-        ).all()
-
-        formatted_news = []
-        for n in news_items:
-            link = n.external_id or ""
-            if link and not link.startswith('http'):
-                link = f"https://{link}"
-            formatted_news.append({
-                "source": n.source_name, 
-                "time": n.published_at.isoformat() + 'Z', 
-                "content": n.content, 
-                "link": link
-            })
-
-        return jsonify({
-            "title": trend.title,
-            "category": trend.category,
-            "tps_score": round(trend.final_tps, 1),
-            "summary": trend.summary or "Generating summary...",
-            "news_list": formatted_news,
-            "related_trends": [{
-                "title": r.title,
-                "category": r.category,
-                "slug": r.slug or r.cluster_id,
-                "date": r.last_updated.strftime('%d.%m.%Y') if r.last_updated else ""
-            } for r in related_data]
-        })
-    finally:
-        db.close()
-
 @api_bp.route('/api/stats')
 def get_stats():
-    """Global system stats for header display"""
+    """آمار کلی سیستم برای نمایش در هدر"""
     db = SessionLocal()
     try:
         return jsonify({

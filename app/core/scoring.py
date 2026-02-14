@@ -3,42 +3,50 @@ import logging
 import json
 import requests
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import func
 from app.database.models import Trend, RawNews, TrendArrivals
 from app.core.ai_engine import ai_engine
 from app.core.text_utils import normalize_turkish, JUNK_KEYWORDS
 from app.core.alert_service import alert_service
+from app.config import Config
 
 # تنظیمات لاگر برای ردیابی دقیق فرآیند امتیازدهی
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# تنظیمات اتصال به مدل محلی Ollama (Qwen 2.5)
-OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
-LOCAL_MODEL_NAME = "qwen2.5:1.5b"
-
-# --- نگاشت منابع معتبر بازار ترکیه (Source Tier Mapping) ---
-# منابع لایه ۱: خبرگزاری‌های رسمی و مرجع
-TIER_1_SOURCES = ["AA", "Anadolu Ajansı", "TRT", "DHA", "IHA", "ANKA"]
-# منابع لایه ۲: روزنامه‌ها و پورتال‌های خبری معتبر
-TIER_2_SOURCES = ["Sözcü", "Hürriyet", "Habertürk", "Cumhuriyet", "Milliyet", "T24"]
+# تنظیمات اتصال به مدل محلی Ollama (Qwen 2.5) از کانفیگ خوانده می‌شود
+OLLAMA_API_URL = Config.OLLAMA_API_URL
+LOCAL_MODEL_NAME = Config.LOCAL_MODEL_NAME
 
 def get_source_tier(source_name: str) -> int:
-    """تعیین سطح اعتبار منبع بر اساس نام آن"""
+    """
+    تعیین سطح اعتبار منبع بر اساس نام آن (بروزرسانی شده برای فاز ۶).
+    اکنون لیست منابع از فایل Config خوانده می‌شود تا مدیریت آن داینامیک باشد.
+    """
     if not source_name: return 3
     name = source_name.strip()
-    if any(s.lower() in name.lower() for s in TIER_1_SOURCES): return 1
-    if any(s.lower() in name.lower() for s in TIER_2_SOURCES): return 2
+    
+    # چک کردن منابع لایه ۱
+    if any(s.lower() in name.lower() for s in Config.SOURCE_CONFIG["TIER_1_OFFICIAL"]): 
+        return 1
+    # چک کردن منابع لایه ۲
+    if any(s.lower() in name.lower() for s in Config.SOURCE_CONFIG["TIER_2_REPUTABLE"]): 
+        return 2
+        
     return 3
 
 # --- لیست کلمات کلیدی بحرانی برای تقویت آنی امتیاز (Strategic Boost) ---
 CRITICAL_KEYWORDS = {
-    "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör"],
+    "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör", "faci"],
     "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaش خبر", "son dakika", "kararname"]
 }
 
 class TPSCalculator:
+    """
+    موتور محاسباتی TPS 2.1 (نسخه جامع فاز ۶)
+    این کلاس مسئولیت ترکیب سیگنال‌های سرعت، شتاب، معنایی و اعتبار منبع را بر عهده دارد.
+    """
     def __init__(self, db_session):
         self.db = db_session
 
@@ -76,6 +84,28 @@ class TPSCalculator:
         
         velocity = 35 * math.log2(1 + (source_count / duration_mins))
         return min(100.0, velocity)
+
+    def calculate_acceleration(self, trend_id: int) -> str:
+        """
+        تشخیص شتاب انفجاری (Acceleration - فاز ۶)
+        مقایسه بازه زمانی ورود ۳ خبر اخیر نسبت به میانگین کل کلاستر.
+        """
+        # دریافت ۱۵ ورود اخیر برای تحلیل شتاب
+        arrivals = self.db.query(TrendArrivals).filter(TrendArrivals.trend_id == trend_id).order_by(TrendArrivals.timestamp.desc()).limit(15).all()
+        
+        if len(arrivals) < 5: return "steady"
+        
+        # بازه زمانی بین ۳ خبر آخر (ثانیه)
+        recent_gap = (arrivals[0].timestamp - arrivals[2].timestamp).total_seconds()
+        
+        # میانگین بازه زمانی کل کلاستر موجود در لیست
+        total_count = len(arrivals)
+        avg_gap = (arrivals[0].timestamp - arrivals[-1].timestamp).total_seconds() / total_count
+        
+        # اگر بازه اخیر کمتر از ۴۰٪ میانگین باشد، یعنی خبر با شتاب بالایی در حال پخش است
+        if recent_gap < (avg_gap * 0.4):
+            return "up" # وضعیت صعودی شدید
+        return "steady"
 
     def analyze_semantic_and_entity(self, text: str):
         """
@@ -146,11 +176,12 @@ class TPSCalculator:
         news_items = self.db.query(RawNews).filter(RawNews.trend_id == trend_id).all()
         if not news_items: return 0.5
         
-        # ۱. تعیین بهترین سطح منبع در کلاستر
+        # ۱. تعیین بهترین سطح منبع در کلاستر بر اساس تنظیمات فاز ۶
         best_tier = min([n.source_tier for n in news_items])
-        # نقشه وزنی Tierها (رسمی‌ها وزن بیشتری می‌دهند)
-        base_confidence_map = {1: 1.15, 2: 0.95, 3: 0.75}
-        base_confidence = base_confidence_map.get(best_tier, 0.6)
+        
+        # نقشه وزنی Tierها از Config خوانده می‌شود
+        tier_weights = Config.SOURCE_CONFIG["WEIGHTS"]
+        base_confidence = tier_weights.get(best_tier, 0.75)
         
         # ۲. ضریب تنوع منابع (Diversity Multiplier)
         unique_source_names = set([n.source_name for n in news_items])
@@ -182,7 +213,7 @@ class TPSCalculator:
 
     def run_tps_cycle(self, trend_id: int):
         """
-        اجرای چرخه کامل و جامع امتیازدهی پیشرفته (Advanced TPS 2.1)
+        اجرای چرخه کامل و جامع امتیازدهی پیشرفته (Advanced TPS 2.1 - فاز ۶)
         این متد تمام پارامترها را ترکیب کرده و نتایج را در دیتابیس ذخیره می‌کند.
         """
         trend = self.db.query(Trend).get(trend_id)
@@ -196,8 +227,9 @@ class TPSCalculator:
             if first_news: ref_doc = first_news.content
             else: return None
         
-        # ۱. استخراج سیگنال‌های خام (V, E, S, N)
+        # ۱. استخراج سیگنال‌های خام (V, E, S, N) و شتاب (فاز ۶)
         v = self.calculate_velocity(trend_id)
+        accel = self.calculate_acceleration(trend_id) # متد جدید فاز ۶
         e, s, is_opinion = self.analyze_semantic_and_entity(ref_doc)
         n = self.calculate_novelty(ref_doc)
         
@@ -208,7 +240,7 @@ class TPSCalculator:
         # Formula: Signal = (0.35V + 0.25E + 0.25S + 0.15N) * Boost
         signal_score = ((0.35 * v) + (0.25 * e) + (0.25 * s) + (0.15 * n)) * c_boost
         
-        # ۳. محاسبه ضریب اعتماد منابع
+        # ۳. محاسبه ضریب اعتماد منابع بر اساس Tiers فاز ۶
         confidence = self.get_confidence_score(trend_id)
         
         # ۴. محاسبه نهایی TPS و اعمال فیلترهای ایمنی
@@ -223,30 +255,31 @@ class TPSCalculator:
             final_tps *= 0.55 # اخبار تحلیلی/شخصی وزن کمتری در بخش "داغ" دارند
             
         # ۵. بروزرسانی روند حرکت و شتاب (Trajectory)
-        trend.trajectory = self.determine_trajectory(final_tps, trend.final_tps)
+        # در فاز ۶ شتاب (accel) اولویت بالاتری برای نمایش وضعیت "انفجاری" دارد
+        trend.trajectory = accel if accel == "up" else self.determine_trajectory(final_tps, trend.final_tps)
         
-        # --- فاز ۵.۱: هشدار ادمین و انتشار خودکار در کانال (آستانه ۲۰) ---
-        if final_tps >= 20 and trend.trajectory == "up" and trend.final_tps < 30:
-            # ۱. ارسال هشدار خصوصی به ادمین
+        # --- فاز ۶: هشدار تعاملی ادمین و انتشار هوشمند ---
+        # استفاده از آستانه‌های تعریف شده در Config
+        if final_tps >= Config.THRESHOLD_ADMIN_ALERT and trend.previous_tps < Config.THRESHOLD_ADMIN_ALERT:
+            # ارسال هشدار تعاملی (حاوی دکمه‌های تایید و حذف) به ادمین
             alert_service.send_admin_alert(
                 title=trend.title or ref_doc[:60],
                 tps=final_tps,
-                trajectory=trend.trajectory
+                trajectory=trend.trajectory,
+                cluster_id=trend.cluster_id # ارسال ID برای دکمه‌های بات
             )
             
-            # ۲. اگر خبر قبلاً خلاصه‌سازی شده است، بلافاصله در کانال منتشر شود
-            if trend.summary and trend.slug:
-                base_site_url = os.getenv("BASE_SITE_URL", "https://trendiatr.com")
-                alert_service.publish_to_channel(
-                    title=trend.title,
-                    summary=trend.summary,
-                    category=trend.category,
-                    url=f"{base_site_url}/trend/{trend.slug}"
-                )
+        # انتشار خودکار در کانال اگر امتیاز بسیار بالا باشد (فاز ۵.۳ ارتقا یافته)
+        if final_tps >= Config.THRESHOLD_AUTO_PUBLISH and trend.summary and trend.slug:
+             alert_service.publish_to_channel(
+                title=trend.title,
+                summary=trend.summary,
+                category=trend.category,
+                url=f"{Config.BASE_SITE_URL}/trend/{trend.slug}"
+            )
 
-        trend.previous_tps = trend.final_tps
-        
         # ۶. ذخیره‌سازی داده‌ها در آبجکت دیتابیس
+        trend.previous_tps = trend.final_tps
         trend.tps_signal = signal_score
         trend.tps_confidence = confidence
         trend.final_tps = final_tps
