@@ -227,6 +227,14 @@
                 const response = await fetch(`/api/trends/${trendId}/history`);
                 const historyData = await response.json();
                 
+                // IMPORTANT FIX: Handle single data point case
+                // Chart.js requires at least 2 points to draw a line.
+                // If we only have 1 point (new trend), we pre-pend a '0' point.
+                if (historyData.data.length === 1) {
+                    historyData.labels.unshift(''); // Empty label for start
+                    historyData.data.unshift(0);    // Start from 0 signal
+                }
+
                 new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -278,6 +286,7 @@
                             y: { 
                                 display: true, 
                                 beginAtZero: true,
+                                suggestedMax: 5, // Fix: Prevent chart from looking full with just 1 or 2 signals
                                 grid: { display: false },
                                 ticks: { maxTicksLimit: 3, font: { size: 8 } }
                             }
