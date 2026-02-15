@@ -126,7 +126,8 @@
                         <span class="text-[10px] font-bold {{ sig_color }} uppercase">{{ sig_label }}</span>
                     </div>
                     <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        <div class="h-full {{ bar_color }}" style="width: {{ (tps_val / 100 * 100) | min(100) }}%"></div>
+                        {% set bar_width = tps_val if tps_val < 100 else 100 %}
+<div class="h-full {{ bar_color }}" style="width: {{ bar_width }}%"></div>
                     </div>
                 </div>
 
