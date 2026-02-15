@@ -109,7 +109,7 @@
                     {% set sig_color = "text-slate-500" %}
                     {% set bar_color = "bg-slate-500" %}
                     {% set sig_label = "Düşük" %}
-                {% elif tps_val < 40 %}
+                {% elif tps_val <= 40 %}
                     {% set sig_color = "text-orange-500" %}
                     {% set bar_color = "bg-orange-500" %}
                     {% set sig_label = "Orta" %}
@@ -142,11 +142,12 @@
                 </div>
 
                 <!-- Sparkline Chart Container -->
-                <div class="bg-white px-3 py-2 rounded-xl border border-slate-100 shadow-sm overflow-hidden relative flex flex-col justify-center" style="width: 220px; height: 76px;">
+                <div class="bg-white px-3 py-2 rounded-xl border border-slate-100 shadow-sm overflow-hidden relative flex flex-col justify-center" style="width: 220px; min-height: 76px;">
                     <h3 class="text-[9px] font-black text-slate-400 uppercase mb-1">Trend Yörüngesi (Son 24s)</h3>
-                    <div class="flex-1 relative w-full">
+                    <div class="relative w-full h-12">
                         <canvas id="tpsChart"></canvas>
                     </div>
+                    <p class="text-[8px] text-slate-400 mt-1 italic leading-tight">Grafik, haberin son 24 saat içindeki yayılım hızını ve TPS artışını gösterir.</p>
                 </div>
             </div>
         </header>
@@ -254,7 +255,8 @@
                         maintainAspectRatio: false,
                         plugins: {
                             legend: { display: false },
-                            tooltip: { 
+                            title: { display: true, text: 'Haber Yayılım Hızı', font: { size: 10 } },
+                            tooltip: {
                                 enabled: true,
                                 mode: 'index',
                                 intersect: false,
@@ -279,8 +281,8 @@
                             y: { 
                                 display: true, 
                                 beginAtZero: true,
-                                grid: { color: '#f1f5f9', drawBorder: false },
-                                ticks: { display: false }
+                                grid: { display: false },
+                                ticks: { maxTicksLimit: 3, font: { size: 8 } }
                             }
                         },
                         interaction: {
