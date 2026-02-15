@@ -27,6 +27,7 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <!-- JSON-LD Structured Data for News Article -->
     <script type="application/ld+json">
@@ -128,6 +129,17 @@
                 </div>
             </div>
 
+            <!-- TPS History Chart -->
+            <div class="mb-12">
+                <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-4">
+                    Trend Analizi
+                    <div class="h-px bg-slate-100 flex-1"></div>
+                </h2>
+                <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm h-64 md:h-80 relative">
+                    <canvas id="tpsChart"></canvas>
+                </div>
+            </div>
+
             <!-- News Signal History -->
             <div class="mb-16">
                 <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-4">
@@ -186,5 +198,102 @@
         <p class="text-slate-400 text-sm italic">&copy; 2026 TrendiaTR - Tüm analizler yapای زکا tarafından gerçek zamanlı oluşturulmaktadır.</p>
     </footer>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', async function() {
+            const ctx = document.getElementById('tpsChart').getContext('2d');
+            const trendIdentifier = "{{ trend.slug if trend.slug else trend.cluster_id }}";
+            const trajectory = "{{ trend.trajectory }}";
+            
+            // Color logic based on trajectory
+            let chartColor = '#3b82f6'; // Default Blue
+            if (trajectory === 'up') chartColor = '#10b981'; // Green/Cyan
+            else if (trajectory === 'down') chartColor = '#f43f5e'; // Red
+
+            try {
+                const response = await fetch(`/api/trends/${trendIdentifier}/history`);
+                const historyData = await response.json();
+                
+                // Process data for Chart.js
+                const labels = historyData.map(d => {
+                    const date = new Date(d.timestamp);
+                    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                });
+                
+                const dataPoints = historyData.map(d => d.tps_value);
+
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Sinyal Büyümesi',
+                            data: dataPoints,
+                            borderColor: chartColor,
+                            backgroundColor: (context) => {
+                                const ctx = context.chart.ctx;
+                                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                                gradient.addColorStop(0, chartColor + '33'); // 20% opacity
+                                gradient.addColorStop(1, chartColor + '00'); // 0% opacity
+                                return gradient;
+                            },
+                            borderWidth: 3,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 6,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                                titleColor: '#f8fafc',
+                                bodyColor: '#f8fafc',
+                                borderColor: 'rgba(255,255,255,0.1)',
+                                borderWidth: 1,
+                                padding: 10,
+                                displayColors: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.parsed.y + ' Sinyal';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: {
+                                    maxTicksLimit: 8,
+                                    color: '#94a3b8',
+                                    font: { size: 10, family: "'Inter', sans-serif" }
+                                }
+                            },
+                            y: {
+                                grid: { color: '#f1f5f9' },
+                                ticks: {
+                                    color: '#94a3b8',
+                                    font: { size: 10, family: "'Inter', sans-serif" }
+                                },
+                                beginAtZero: true
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error("Chart loading failed:", e);
+            }
+        });
+    </script>
 </body>
 </html>

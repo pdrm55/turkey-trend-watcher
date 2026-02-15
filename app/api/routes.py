@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, render_template, request, make_response, abort
-from app.database.models import SessionLocal, Trend, RawNews
-from sqlalchemy import desc
+from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals
+from sqlalchemy import desc, func
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
 from app.config import Config
@@ -8,6 +8,7 @@ import re
 import redis
 import json
 import logging
+import time
 
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
@@ -25,6 +26,9 @@ except Exception as e:
 # دسته‌بندی‌های مجاز برای سئو
 VALID_CATEGORIES = ["Siyaset", "Ekonomi", "Gündem", "Spor", "Teknoloji", "Sanat"]
 JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop']
+
+# In-memory cache for trend history (Simple Dictionary)
+trend_history_cache = {}
 
 def get_public_url():
     """محاسبه URL عمومی با در نظر گرفتن پروکسی Nginx برای سئو"""
@@ -117,6 +121,68 @@ def render_trend_page(identifier):
             date_published=date_published,
             date_modified=date_modified
         )
+    finally:
+        db.close()
+
+@api_bp.route('/api/trends/<identifier>/history')
+def get_trend_history(identifier):
+    """API endpoint for trend history chart data (TPS/Signal Growth)"""
+    
+    # Database Indexing Suggestion:
+    # Run this SQL to optimize performance:
+    # CREATE INDEX idx_trend_arrivals_trend_ts ON trend_arrivals (trend_id, timestamp);
+
+    # 1. Check In-Memory Cache (60s TTL)
+    current_time = time.time()
+    if identifier in trend_history_cache:
+        cached_data, timestamp = trend_history_cache[identifier]
+        if current_time - timestamp < 60:
+            return jsonify(cached_data)
+
+    db = SessionLocal()
+    try:
+        # Resolve trend by slug, cluster_id, or ID
+        trend = db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
+        if not trend and identifier.isdigit():
+            trend = db.query(Trend).filter(Trend.id == int(identifier)).first()
+            
+        if not trend:
+            abort(404)
+
+        # 2. Time-Series Aggregation (5-minute buckets)
+        cutoff_time = datetime.utcnow() - timedelta(hours=48)
+        
+        # Bucket by 5 minutes (300 seconds) using epoch math (Postgres compatible)
+        time_bucket = func.to_timestamp(func.floor(func.extract('epoch', TrendArrivals.timestamp) / 300) * 300)
+        
+        results = db.query(
+            time_bucket.label('bucket'),
+            func.count(TrendArrivals.id).label('count')
+        ).filter(
+            TrendArrivals.trend_id == trend.id,
+            TrendArrivals.timestamp >= cutoff_time
+        ).group_by(
+            'bucket'
+        ).order_by(
+            'bucket'
+        ).all()
+        
+        labels = []
+        data = []
+        cumulative_signal = 0
+        
+        for bucket, count in results:
+            if not bucket: continue
+            cumulative_signal += count
+            labels.append(bucket.strftime('%H:%M'))
+            data.append(cumulative_signal)
+            
+        response_data = {"labels": labels, "data": data}
+        
+        # 3. Update Cache
+        trend_history_cache[identifier] = (response_data, current_time)
+            
+        return jsonify(response_data)
     finally:
         db.close()
 

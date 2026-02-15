@@ -87,6 +87,11 @@ class TrendArrivals(Base):
     raw_news_id = Column(Integer, ForeignKey('raw_news.id'), nullable=True)
     timestamp = Column(DateTime, default=utc_now)
 
+    # ایندکس ترکیبی برای بهینه‌سازی کوئری‌های نمودار تاریخچه (Time-Series Aggregation)
+    __table_args__ = (
+        Index('idx_trend_arrivals_trend_ts', 'trend_id', 'timestamp'),
+    )
+
 def init_db():
     """
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
@@ -146,6 +151,15 @@ def init_db():
             print("🛡️ Adding 'source_tier' to 'raw_news' table...")
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE raw_news ADD COLUMN source_tier INTEGER DEFAULT 3"))
+                conn.commit()
+        
+        # 4. بررسی و ایجاد ایندکس‌های حیاتی (Performance Tuning)
+        # ایندکس ترکیبی برای نمودار تاریخچه که در فاز ۶.۳ اضافه شد
+        ta_indexes = [i['name'] for i in inspector.get_indexes('trend_arrivals')]
+        if 'idx_trend_arrivals_trend_ts' not in ta_indexes:
+            print("⚡ Creating composite index 'idx_trend_arrivals_trend_ts'...")
+            with engine.connect() as conn:
+                conn.execute(text("CREATE INDEX idx_trend_arrivals_trend_ts ON trend_arrivals (trend_id, timestamp)"))
                 conn.commit()
             
         print("✅ Database synchronization successful. All strategic fields are ready.")
