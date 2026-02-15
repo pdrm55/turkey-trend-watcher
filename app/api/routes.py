@@ -258,10 +258,10 @@ def get_trends():
     
     # Search & Filter Params
     q = request.args.get('q', '').strip()
-    start_date_str = request.args.get('start_date', '')
+    date_str = request.args.get('date', '')
 
     # --- منطق کشینگ Redis ---
-    cache_key = f"trends_v1_{category}_{list_type}_{offset}_{limit}_{q}_{start_date_str}"
+    cache_key = f"trends_v1_{category}_{list_type}_{offset}_{limit}_{q}_{date_str}"
     if redis_client:
         cached_data = redis_client.get(cache_key)
         if cached_data:
@@ -282,10 +282,10 @@ def get_trends():
             )
         
         # --- Date Filter ---
-        if start_date_str:
+        if date_str:
             try:
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-                query = query.filter(Trend.last_updated >= start_date)
+                filter_date = datetime.strptime(date_str, '%Y-%m-%d')
+                query = query.filter(Trend.last_updated >= filter_date)
             except ValueError:
                 pass # Ignore invalid date format
 
