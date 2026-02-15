@@ -103,22 +103,49 @@
             </h1>
 
             <div class="flex flex-wrap items-center gap-4">
-                <div class="bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+                <!-- Dynamic Signal Strength with Progress Bar -->
+                {% set tps_val = trend.tps_signal %}
+                {% if tps_val < 20 %}
+                    {% set sig_color = "text-slate-500" %}
+                    {% set bar_color = "bg-slate-500" %}
+                    {% set sig_label = "Düşük" %}
+                {% elif tps_val < 40 %}
+                    {% set sig_color = "text-orange-500" %}
+                    {% set bar_color = "bg-orange-500" %}
+                    {% set sig_label = "Orta" %}
+                {% else %}
+                    {% set sig_color = "text-red-600" %}
+                    {% set bar_color = "bg-red-600" %}
+                    {% set sig_label = "Yüksek" %}
+                {% endif %}
+
+                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center min-w-[140px]">
                     <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Sinyal Gücü</span>
-                    <span class="text-sm font-bold text-slate-700">{{ trend.tps_signal | round(1) }}</span>
+                    <div class="flex items-baseline gap-2 mb-1">
+                        <span class="text-xl font-black {{ sig_color }}">{{ tps_val | round(1) }}</span>
+                        <span class="text-[10px] font-bold {{ sig_color }} uppercase">{{ sig_label }}</span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div class="h-full {{ bar_color }}" style="width: {{ (tps_val / 100 * 100) | min(100) }}%"></div>
+                    </div>
                 </div>
-                <div class="bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+
+                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm h-[76px] flex flex-col justify-center">
                     <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Güven Endeksi</span>
-                    <span class="text-sm font-bold text-slate-700">%{{ (trend.tps_confidence * 100) | int }}</span>
+                    <span class="text-xl font-black text-slate-700">%{{ (trend.tps_confidence * 100) | int }}</span>
                 </div>
-                <div class="bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+
+                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm h-[76px] flex flex-col justify-center">
                     <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Kaynak Sayısı</span>
-                    <span class="text-sm font-bold text-slate-700">{{ trend.message_count }}</span>
+                    <span class="text-xl font-black text-slate-700">{{ trend.message_count }}</span>
                 </div>
 
                 <!-- Sparkline Chart Container -->
-                <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden relative" style="width: 200px; height: 60px;">
-                    <canvas id="tpsChart"></canvas>
+                <div class="bg-white px-3 py-2 rounded-xl border border-slate-100 shadow-sm overflow-hidden relative flex flex-col justify-center" style="width: 220px; height: 76px;">
+                    <h3 class="text-[9px] font-black text-slate-400 uppercase mb-1">Trend Yörüngesi (Son 24s)</h3>
+                    <div class="flex-1 relative w-full">
+                        <canvas id="tpsChart"></canvas>
+                    </div>
                 </div>
             </div>
         </header>
@@ -226,11 +253,34 @@
                         maintainAspectRatio: false,
                         plugins: {
                             legend: { display: false },
-                            tooltip: { enabled: false }
+                            tooltip: { 
+                                enabled: true,
+                                mode: 'index',
+                                intersect: false,
+                                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                titleColor: '#64748b',
+                                bodyColor: '#0f172a',
+                                borderColor: '#e2e8f0',
+                                borderWidth: 1,
+                                padding: 6,
+                                displayColors: false,
+                                titleFont: { size: 10 },
+                                bodyFont: { size: 12, weight: 'bold' },
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.parsed.y + ' Sinyal';
+                                    }
+                                }
+                            }
                         },
                         scales: {
                             x: { display: false },
-                            y: { display: false, beginAtZero: true }
+                            y: { 
+                                display: true, 
+                                beginAtZero: true,
+                                grid: { color: '#f1f5f9', drawBorder: false },
+                                ticks: { display: false }
+                            }
                         },
                         interaction: {
                             mode: 'nearest',
