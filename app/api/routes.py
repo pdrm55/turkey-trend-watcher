@@ -4,6 +4,7 @@ from sqlalchemy import desc, func
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
 from app.config import Config
+from bs4 import BeautifulSoup
 import re
 import redis
 import json
@@ -106,13 +107,28 @@ def render_trend_page(identifier):
         
         formatted_news = []
         for n in news_items:
+            # پاک‌سازی تگ‌های HTML با BeautifulSoup
+            clean_content = n.content
+            try:
+                soup = BeautifulSoup(n.content, "html.parser")
+                # حذف تگ‌های مزاحم اگر وجود داشت
+                for script in soup(["script", "style"]):
+                    script.extract()
+                clean_content = soup.get_text()
+                # حذف فضاهای خالی اضافه
+                clean_content = " ".join(clean_content.split())
+            except Exception as e:
+                logger.error(f"Error cleaning HTML: {e}")
+                clean_content = n.content
+
             link = n.external_id or ""
             if link and not link.startswith('http'):
                 link = f"https://{link}"
+            
             formatted_news.append({
                 "source": n.source_name,
                 "time": n.published_at,
-                "content": n.content,
+                "content": clean_content,
                 "link": link
             })
             

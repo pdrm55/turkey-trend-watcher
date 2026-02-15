@@ -194,7 +194,7 @@ class TPSCalculator:
             
         final_conf = base_confidence * diversity_multiplier
         
-        # محدودسازی سقف ضریب اطمینان
+        # محدودسازی سقف ضریب اطمینان برای جلوگیری از نمایش ۱۵۰٪ در فرانت‌اند
         return min(1.0, final_conf)
 
     def determine_trajectory(self, current_tps, previous_tps):

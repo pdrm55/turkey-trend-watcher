@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- Dynamic SEO Meta Tags -->
-    <title>{{ trend.title }} | TrendiaTR Haber Analizi</title>
+    <title>{{ trend.title }} | TrendiaTR AI</title>
     <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapای زکا haber analizi.' }}">
     <link rel="canonical" href="https://trendiatr.com/trend/{{ trend.slug }}">
     
@@ -26,8 +24,8 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23ef4444'/%3E%3Ctext x='50%25' y='53%25' dominant-baseline='middle' text-anchor='middle' font-family='Inter, sans-serif' font-weight='800' font-size='60' fill='white'%3ETT%3C/text%3E%3C/svg%3E">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     
     <!-- JSON-LD Structured Data for News Article -->
     <script type="application/ld+json">
@@ -56,6 +54,7 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .trajectory-up { color: #10b981; }
         .trajectory-down { color: #f43f5e; }
+        .sparkline-container { width: 220px; height: 65px; }
     </style>
 </head>
 <body class="p-4 md:p-8 pb-20">
@@ -103,36 +102,32 @@
             </h1>
 
             <div class="flex flex-wrap items-center gap-4">
-                <!-- Dynamic Signal Strength with Progress Bar -->
-                {% set tps_val = trend.tps_signal %}
+                <!-- Sinyal Gücü با نوار پیشرفت داینامیک و رفع ارور ۵۰۰ -->
+                {% set tps_val = trend.tps_signal if trend.tps_signal is not none else 0 %}
                 {% if tps_val < 20 %}
-                    {% set sig_color = "text-slate-500" %}
-                    {% set bar_color = "bg-slate-500" %}
-                    {% set sig_label = "Düşük" %}
+                    {% set sig_color, bar_color, sig_label = "text-slate-500", "bg-slate-500", "Düşük" %}
                 {% elif tps_val <= 40 %}
-                    {% set sig_color = "text-orange-500" %}
-                    {% set bar_color = "bg-orange-500" %}
-                    {% set sig_label = "Orta" %}
+                    {% set sig_color, bar_color, sig_label = "text-orange-500", "bg-orange-500", "Orta" %}
                 {% else %}
-                    {% set sig_color = "text-red-600" %}
-                    {% set bar_color = "bg-red-600" %}
-                    {% set sig_label = "Yüksek" %}
+                    {% set sig_color, bar_color, sig_label = "text-red-600", "bg-red-600", "Yüksek" %}
                 {% endif %}
 
-                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center min-w-[140px]">
-                    <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Sinyal Gücü</span>
+                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm min-w-[140px]">
+                    <span class="text-[9px] font-black text-slate-400 block uppercase mb-1">Sinyal Gücü</span>
                     <div class="flex items-baseline gap-2 mb-1">
                         <span class="text-xl font-black {{ sig_color }}">{{ tps_val | round(1) }}</span>
                         <span class="text-[10px] font-bold {{ sig_color }} uppercase">{{ sig_label }}</span>
                     </div>
                     <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        {% set bar_width = tps_val if tps_val < 100 else 100 %}
-<div class="h-full {{ bar_color }}" style="width: {{ bar_width }}%"></div>
+                        <!-- رفع ارور ۵۰۰ با حذف فیلتر min و استفاده از منطق شرطی -->
+                        {% set bar_width = tps_val if tps_val <= 100 else 100 %}
+                        <div class="h-full {{ bar_color }}" style="width: {{ bar_width }}%"></div>
                     </div>
                 </div>
 
-                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm h-[76px] flex flex-col justify-center">
-                    <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Güven Endeksi</span>
+                <!-- Güven Endeksi (حداکثر ۱۰۰٪) -->
+                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center h-[76px]">
+                    <span class="text-[9px] font-black text-slate-400 block uppercase mb-1">Güven Endeksi</span>
                     <span class="text-xl font-black text-slate-700">%{{ (trend.tps_confidence * 100) | int }}</span>
                 </div>
 
@@ -141,13 +136,13 @@
                     <span class="text-xl font-black text-slate-700">{{ trend.message_count }}</span>
                 </div>
 
-                <!-- Sparkline Chart Container -->
-                <div class="bg-white px-3 py-2 rounded-xl border border-slate-100 shadow-sm overflow-hidden relative flex flex-col justify-center" style="width: 220px; min-height: 76px;">
-                    <h3 class="text-[9px] font-black text-slate-400 uppercase mb-1">Trend Yörüngesi (Son 24s)</h3>
-                    <div class="relative w-full h-12">
+                <!-- نمودار مینیاتوری با توضیح شفاف -->
+                <div class="bg-white px-3 py-2 rounded-xl border border-slate-100 shadow-sm sparkline-container relative flex flex-col justify-center">
+                    <h3 class="text-[9px] font-black text-slate-400 uppercase mb-1">Haber Yayılım Hızı (TPS)</h3>
+                    <div class="relative w-full h-8">
                         <canvas id="tpsChart"></canvas>
                     </div>
-                    <p class="text-[8px] text-slate-400 mt-1 italic leading-tight">Grafik, haberin son 24 saat içindeki yayılım hızını ve TPS artışını gösterir.</p>
+                    <p class="text-[7px] text-slate-400 mt-1 italic">ℹ️ Grafik خبرهای جدید را در طول زمان نشان می‌دهد.</p>
                 </div>
             </div>
         </header>
