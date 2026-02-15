@@ -92,6 +92,14 @@ class TrendArrivals(Base):
         Index('idx_trend_arrivals_trend_ts', 'trend_id', 'timestamp'),
     )
 
+class SystemSettings(Base):
+    """تنظیمات داینامیک سیستم برای مدیریت از پنل ادمین"""
+    __tablename__ = "system_settings"
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(50), unique=True, index=True)
+    value = Column(String(255))
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
 def init_db():
     """
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
@@ -161,6 +169,13 @@ def init_db():
             with engine.connect() as conn:
                 conn.execute(text("CREATE INDEX idx_trend_arrivals_trend_ts ON trend_arrivals (trend_id, timestamp)"))
                 conn.commit()
+        
+        # 5. تنظیمات اولیه سیستم (System Settings Seed)
+        with SessionLocal() as session:
+            if not session.query(SystemSettings).filter_by(key="auto_publish_threshold").first():
+                print("⚙️ Seeding default system settings...")
+                session.add(SystemSettings(key="auto_publish_threshold", value="35.0"))
+                session.commit()
             
         print("✅ Database synchronization successful. All strategic fields are ready.")
     except Exception as e:

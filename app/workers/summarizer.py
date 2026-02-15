@@ -10,7 +10,7 @@ from google.genai import types
 
 # Add project root to sys path for internal imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-from app.database.models import SessionLocal, Trend, RawNews
+from app.database.models import SessionLocal, Trend, RawNews, SystemSettings
 from sqlalchemy import desc
 from app.config import Config
 from app.core.indexing_utils import notify_google 
@@ -335,8 +335,12 @@ def process_pending_trends():
                 log_to_csv(trend.id, MODEL_NAME, in_tok, out_tok, duration, trend.category, "Success")
                 db.commit()
 
-                # --- فاز ۵.۳: انتشار خودکار در کانال تلگرام (آستانه 30) ---
-                if trend.final_tps >= 30:
+                # --- فاز ۵.۳: انتشار خودکار با آستانه داینامیک ---
+                # دریافت آستانه از تنظیمات سیستم
+                threshold_setting = db.query(SystemSettings).filter(SystemSettings.key == "auto_publish_threshold").first()
+                publish_threshold = float(threshold_setting.value) if threshold_setting else 35.0
+                
+                if trend.final_tps >= publish_threshold:
                     target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
                     alert_service.publish_to_channel(
                         title=trend.title,
