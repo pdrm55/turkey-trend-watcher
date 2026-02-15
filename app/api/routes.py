@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response
+from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect
 from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings
 from sqlalchemy import desc, func
 from datetime import datetime, timedelta
@@ -56,6 +56,26 @@ def requires_auth(f):
         return f(*args, **kwargs)
     return decorated
 
+def resolve_trend_smart(db, identifier):
+    """
+    جستجوی هوشمند ترند با پشتیبانی از فرمت ID-Slug برای جلوگیری از لینک‌های شکسته.
+    اولویت: 1. ID استخراج شده از ابتدای رشته 2. شناسه عددی خالص 3. اسلاگ یا کلاستر ID
+    """
+    # 1. تلاش برای استخراج ID از فرمت "123-slug-name"
+    match = re.match(r'^(\d+)-', identifier)
+    if match:
+        try:
+            trend_id = int(match.group(1))
+            trend = db.query(Trend).filter(Trend.id == trend_id).first()
+            if trend: return trend
+        except: pass
+
+    # 2. جستجوی استاندارد (ID خالص، Slug یا Cluster ID)
+    if identifier.isdigit():
+        return db.query(Trend).filter(Trend.id == int(identifier)).first()
+    
+    return db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
+
 @api_bp.route('/')
 def dashboard():
     """رندر کردن داشبورد اصلی (Home)"""
@@ -98,10 +118,17 @@ def render_trend_page(identifier):
     from app.core.ai_engine import ai_engine 
     try:
         # جستجو بر اساس اسلاگ سئو یا شناسه کلاستر
-        trend = db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
+        trend = resolve_trend_smart(db, identifier)
         
         if not trend:
             abort(404)
+            
+        # ریدایرکت کانونیکال برای سئو (اگر اسلاگ تغییر کرده باشد، به آدرس جدید هدایت می‌کند)
+        if trend.slug:
+            canonical_slug = f"{trend.id}-{trend.slug}"
+            # اگر درخواست با ID شروع شده ولی اسلاگش قدیمی است، ریدایرکت کن
+            if (re.match(r'^(\d+)-', identifier) or identifier.isdigit()) and identifier != canonical_slug:
+                return redirect(f"/trend/{canonical_slug}", code=301)
             
         news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(20).all()
         
@@ -141,7 +168,7 @@ def render_trend_page(identifier):
         ).all()
             
         base_url = get_public_url()
-        canonical_url = f"{base_url}/trend/{trend.slug if trend.slug else trend.cluster_id}"
+        canonical_url = f"{base_url}/trend/{trend.id}-{trend.slug}" if trend.slug else f"{base_url}/trend/{trend.cluster_id}"
         
         date_published = trend.first_seen.isoformat() + "+00:00" if trend.first_seen else None
         date_modified = trend.last_updated.isoformat() + "+00:00" if trend.last_updated else date_published
@@ -180,10 +207,7 @@ def get_trend_history(identifier=None, trend_id=None):
     db = SessionLocal()
     try:
         # Resolve trend by slug, cluster_id, or ID
-        trend = db.query(Trend).filter((Trend.slug == target_id) | (Trend.cluster_id == target_id)).first()
-        if not trend and target_id.isdigit():
-            trend = db.query(Trend).filter(Trend.id == int(target_id)).first()
-            
+        trend = resolve_trend_smart(db, target_id)
         if not trend:
             abort(404)
 
@@ -261,6 +285,7 @@ def get_trends():
             last_news = db.query(RawNews).filter(RawNews.trend_id == t.id).order_by(desc(RawNews.published_at)).first()
             results.append({
                 "id": t.cluster_id,
+                "trend_id": t.id, # شناسه عددی برای ساخت لینک‌های پایدار
                 "slug": t.slug,
                 "title": t.title or "Analiz Bekleniyor...",
                 "summary": t.summary or "Haber detayları işleniyor...",
@@ -295,7 +320,7 @@ def get_trend_details(identifier):
     db = SessionLocal()
     from app.core.ai_engine import ai_engine
     try:
-        trend = db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
+        trend = resolve_trend_smart(db, identifier)
         if not trend: return jsonify({"error": "Trend not found"}), 404
         
         # واکشی اخبار مربوطه
@@ -363,7 +388,7 @@ def sitemap():
 
         for trend in trends:
             if not trend.last_updated: continue
-            identifier = trend.slug if trend.slug else trend.cluster_id
+            identifier = f"{trend.id}-{trend.slug}" if trend.slug else trend.cluster_id
             if not identifier: continue
             
             lastmod = trend.last_updated.strftime('%Y-%m-%d')

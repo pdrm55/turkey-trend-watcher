@@ -224,7 +224,8 @@
             const icon = TRAJECTORY_ICONS[trajectory];
             const catClass = CAT_COLORS[trend.category] || "bg-slate-100 text-slate-600 border-slate-200";
             const wrapperClass = isHot ? "card-hot-section" : "bg-white border-slate-200 hover:border-blue-300 hover:shadow-xl";
-            const identifier = trend.slug || trend.id; 
+            // استفاده از فرمت ID-Slug برای پایداری لینک در صورت تغییر Slug توسط هوش مصنوعی
+            const identifier = trend.slug ? `${trend.trend_id}-${trend.slug}` : trend.id; 
 
             return `
             <a href="/trend/${identifier}" onclick="handleTrendClick(event, '${identifier}')"
