@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ trend.title }} | TrendiaTR AI</title>
+    
+    <!-- Dynamic SEO Meta Tags -->
+    <title>{{ trend.title }} | TrendiaTR Haber Analizi</title>
     <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapای زکا haber analizi.' }}">
     <link rel="canonical" href="https://trendiatr.com/trend/{{ trend.slug }}">
     
@@ -54,7 +56,7 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .trajectory-up { color: #10b981; }
         .trajectory-down { color: #f43f5e; }
-        .sparkline-container { width: 220px; height: 65px; }
+        .sparkline-container { width: 220px; height: 80px; } /* Increased height for chart visibility */
     </style>
 </head>
 <body class="p-4 md:p-8 pb-20">
@@ -102,7 +104,7 @@
             </h1>
 
             <div class="flex flex-wrap items-center gap-4">
-                <!-- Sinyal Gücü با نوار پیشرفت داینامیک و رفع ارور ۵۰۰ -->
+                <!-- Dynamic Signal Strength with Progress Bar -->
                 {% set tps_val = trend.tps_signal if trend.tps_signal is not none else 0 %}
                 {% if tps_val < 20 %}
                     {% set sig_color, bar_color, sig_label = "text-slate-500", "bg-slate-500", "Düşük" %}
@@ -112,22 +114,21 @@
                     {% set sig_color, bar_color, sig_label = "text-red-600", "bg-red-600", "Yüksek" %}
                 {% endif %}
 
-                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm min-w-[140px]">
-                    <span class="text-[9px] font-black text-slate-400 block uppercase mb-1">Sinyal Gücü</span>
+                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center min-w-[140px]">
+                    <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Sinyal Gücü</span>
                     <div class="flex items-baseline gap-2 mb-1">
                         <span class="text-xl font-black {{ sig_color }}">{{ tps_val | round(1) }}</span>
                         <span class="text-[10px] font-bold {{ sig_color }} uppercase">{{ sig_label }}</span>
                     </div>
                     <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        <!-- رفع ارور ۵۰۰ با حذف فیلتر min و استفاده از منطق شرطی -->
+                        <!-- FIX: Error 500 removed by using conditional logic instead of | min filter -->
                         {% set bar_width = tps_val if tps_val <= 100 else 100 %}
                         <div class="h-full {{ bar_color }}" style="width: {{ bar_width }}%"></div>
                     </div>
                 </div>
 
-                <!-- Güven Endeksi (حداکثر ۱۰۰٪) -->
-                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center h-[76px]">
-                    <span class="text-[9px] font-black text-slate-400 block uppercase mb-1">Güven Endeksi</span>
+                <div class="bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm h-[76px] flex flex-col justify-center">
+                    <span class="text-[9px] font-black text-slate-400 block uppercase tracking-widest mb-1">Güven Endeksi</span>
                     <span class="text-xl font-black text-slate-700">%{{ (trend.tps_confidence * 100) | int }}</span>
                 </div>
 
@@ -136,13 +137,14 @@
                     <span class="text-xl font-black text-slate-700">{{ trend.message_count }}</span>
                 </div>
 
-                <!-- نمودار مینیاتوری با توضیح شفاف -->
+                <!-- Sparkline Chart Container -->
                 <div class="bg-white px-3 py-2 rounded-xl border border-slate-100 shadow-sm sparkline-container relative flex flex-col justify-center">
                     <h3 class="text-[9px] font-black text-slate-400 uppercase mb-1">Haber Yayılım Hızı (TPS)</h3>
-                    <div class="relative w-full h-8">
+                    <!-- Chart area with defined height -->
+                    <div class="relative w-full h-12">
                         <canvas id="tpsChart"></canvas>
                     </div>
-                    <p class="text-[7px] text-slate-400 mt-1 italic">ℹ️ Grafik خبرهای جدید را در طول زمان نشان می‌دهد.</p>
+                    <p class="text-[7px] text-slate-400 mt-1 italic leading-tight">ℹ️ Grafik, haberin kaynaklar arasındaki yayılım hızını gösterir.</p>
                 </div>
             </div>
         </header>
@@ -250,7 +252,7 @@
                         maintainAspectRatio: false,
                         plugins: {
                             legend: { display: false },
-                            title: { display: true, text: 'Haber Yayılım Hızı', font: { size: 10 } },
+                            title: { display: false }, // Title handled by HTML now
                             tooltip: {
                                 enabled: true,
                                 mode: 'index',
