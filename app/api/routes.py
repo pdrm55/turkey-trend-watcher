@@ -255,9 +255,13 @@ def get_trends():
     list_type = request.args.get('type', 'timeline')
     offset = int(request.args.get('offset', 0))
     limit = int(request.args.get('limit', 32))
+    
+    # Search & Filter Params
+    q = request.args.get('q', '').strip()
+    start_date_str = request.args.get('start_date', '')
 
     # --- منطق کشینگ Redis ---
-    cache_key = f"trends_v1_{category}_{list_type}_{offset}_{limit}"
+    cache_key = f"trends_v1_{category}_{list_type}_{offset}_{limit}_{q}_{start_date_str}"
     if redis_client:
         cached_data = redis_client.get(cache_key)
         if cached_data:
@@ -269,6 +273,21 @@ def get_trends():
         
         if category != 'All':
             query = query.filter(Trend.category == category)
+
+        # --- Advanced Search Logic ---
+        if q:
+            # PostgreSQL Full Text Search (Turkish)
+            query = query.filter(
+                func.to_tsvector('turkish', Trend.title).op('@@')(func.plainto_tsquery('turkish', q))
+            )
+        
+        # --- Date Filter ---
+        if start_date_str:
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+                query = query.filter(Trend.last_updated >= start_date)
+            except ValueError:
+                pass # Ignore invalid date format
 
         if list_type == 'hot':
             # ترندهای داغ بر اساس امتیاز TPS در ۲۴ ساعت اخیر
