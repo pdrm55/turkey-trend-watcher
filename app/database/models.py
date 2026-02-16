@@ -67,6 +67,7 @@ class Trend(Base):
     # --- فاز ۶.۲: فلگ پردازش آسنکرون ---
     # اگر True باشد، یعنی خبر جدیدی آمده و باید امتیاز دوباره محاسبه شود
     needs_scoring = Column(Boolean, default=True, index=True)
+    is_published = Column(Boolean, default=False)
 
     first_seen = Column(DateTime, default=utc_now)
     last_updated = Column(DateTime, default=utc_now)
@@ -150,6 +151,11 @@ def init_db():
                 print("⚡ Adding 'needs_scoring' for Async Processing...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN needs_scoring BOOLEAN DEFAULT TRUE"))
                 conn.execute(text("CREATE INDEX idx_needs_scoring ON trends (needs_scoring)"))
+            
+            # و) اضافه کردن فلگ انتشار (فاز ۶.۴)
+            if 'is_published' not in trend_columns:
+                print("📢 Adding 'is_published' column to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN is_published BOOLEAN DEFAULT FALSE"))
             
             conn.commit()
 

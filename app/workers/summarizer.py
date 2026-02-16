@@ -294,48 +294,64 @@ def process_pending_trends():
     try:
         # Fetching high-priority trends for summarization
         pending_trends = db.query(Trend).filter(
-            (Trend.summary == None) | (Trend.summary == ""),
+            Trend.is_active == True,
             Trend.final_tps >= 20,
-            Trend.is_active == True
+            Trend.is_published == False
         ).order_by(desc(Trend.final_tps)).limit(5).all()
 
         if not pending_trends: return False
 
-        print(f"✍️  Processing {len(pending_trends)} High-TPS Trends...")
+        print(f"✍️  Processing {len(pending_trends)} Trends for Summary/Publishing...")
 
         for trend in pending_trends:
-            # Aggregate news context for the trend
-            news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).limit(15).all()
-            if not news_items: continue
+            # 1. Content Generation Phase (Only if summary is missing)
+            if not trend.summary:
+                # Aggregate news context for the trend
+                news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).limit(15).all()
+                if not news_items: continue
 
-            cluster_text = "\n".join([f"- {n.content[:1000]}" for n in news_items])
+                cluster_text = "\n".join([f"- {n.content[:1000]}" for n in news_items])
 
-            # Generate AI Content
-            ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text)
-            
-            if ai_result and ai_result.get("is_relevant_to_turkey", True):
-                ai_cat = ai_result.get("category", "Gündem")
+                # Generate AI Content
+                ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text)
                 
-                # Verify category through manual keyword analysis
-                final_category, overridden = decide_final_category(ai_cat, cluster_text)
-                
-                # Update Trend Record
-                trend.title = ai_result.get("headline", trend.title)
-                trend.summary = ai_result.get("summary", "")
-                trend.category = final_category 
-                
-                # SEO CRITICAL: Upgrade temporary slug to professional slug
-                trend.slug = generate_unique_slug(db, trend.title, trend.id)
-                trend.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
+                if ai_result and ai_result.get("is_relevant_to_turkey", True):
+                    ai_cat = ai_result.get("category", "Gündem")
+                    
+                    # Verify category through manual keyword analysis
+                    final_category, overridden = decide_final_category(ai_cat, cluster_text)
+                    
+                    # Update Trend Record
+                    trend.title = ai_result.get("headline", trend.title)
+                    trend.summary = ai_result.get("summary", "")
+                    trend.category = final_category 
+                    
+                    # SEO CRITICAL: Upgrade temporary slug to professional slug
+                    trend.slug = generate_unique_slug(db, trend.title, trend.id)
+                    trend.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
 
-                print(f"   ✅ Published: [{trend.category}] {trend.title} (TPS: {trend.final_tps:.1f})")
-                print(f"   🚀 SEO Slug: /trend/{trend.slug}")
-                
-                # Save and Log Stats
-                log_to_csv(trend.id, MODEL_NAME, in_tok, out_tok, duration, trend.category, "Success")
-                db.commit()
+                    print(f"   ✅ Summarized: [{trend.category}] {trend.title} (TPS: {trend.final_tps:.1f})")
+                    print(f"   🚀 SEO Slug: /trend/{trend.slug}")
+                    
+                    # Save and Log Stats
+                    log_to_csv(trend.id, MODEL_NAME, in_tok, out_tok, duration, trend.category, "Success")
+                    
+                    # Notify Google for instant indexing (Only on creation)
+                    if trend.final_tps >= GOOGLE_INDEXING_THRESHOLD:
+                        target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
+                        success, msg = notify_google(target_url)
+                        if success: print(f"   🔗 Pushed to Google Indexing API.")
+                        else: print(f"   ⚠️ SEO Indexing Warning: {msg}")
 
-                # --- فاز ۵.۳: انتشار خودکار با آستانه داینامیک ---
+                else:
+                    # Mark irrelevant or failed content as inactive
+                    trend.is_active = False 
+                    db.commit()
+                    print(f"   🗑️  Discarded Trend {trend.id} (Irrelevant Content)")
+                    continue
+
+            # 2. Publishing Phase (Check if ready to publish)
+            if trend.summary:
                 # دریافت آستانه از تنظیمات سیستم
                 threshold_setting = db.query(SystemSettings).filter(SystemSettings.key == "auto_publish_threshold").first()
                 publish_threshold = float(threshold_setting.value) if threshold_setting else 35.0
@@ -348,20 +364,10 @@ def process_pending_trends():
                         category=trend.category,
                         url=target_url
                     )
+                    trend.is_published = True
                     print(f"   📢 Automatically published to Public Channel.")
 
-                # Notify Google for instant indexing
-                if trend.final_tps >= GOOGLE_INDEXING_THRESHOLD:
-                    target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
-                    success, msg = notify_google(target_url)
-                    if success: print(f"   🔗 Pushed to Google Indexing API.")
-                    else: print(f"   ⚠️ SEO Indexing Warning: {msg}")
-
-            else:
-                # Mark irrelevant or failed content as inactive
-                trend.is_active = False 
-                db.commit()
-                print(f"   🗑️  Discarded Trend {trend.id} (Irrelevant Content)")
+            db.commit()
 
         return True
     finally:
