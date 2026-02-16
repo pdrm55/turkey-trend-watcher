@@ -51,7 +51,7 @@ services:
         curl -X POST http://ttw_ollama:11434/api/pull -d '{"name": "qwen2.5:1.5b"}'
         echo "✅ Initialization Complete."
 
-  # --- [Web Services - ارتقا یافته به Gunicorn] ---
+  # --- [Web Services] ---
   api_server:
     build: .
     container_name: ttw_api
@@ -59,12 +59,11 @@ services:
       db_init: { condition: service_completed_successfully }
     volumes: 
       - ".:/app"
-      - "ttw_media_data:/app/app/static/media"
+      - "./app/static/media:/app/app/static/media"
     env_file: [".env"]
     ports: ["5000:5000"]
     networks: ["ttw_network"]
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
-    # تنظیم شده برای سخت‌افزار ۶ هسته‌ای: ۶ ورکر مستقل با تایم‌اوت مناسب برای پردازش‌های سنگین
     command: gunicorn --workers 6 --bind 0.0.0.0:5000 --timeout 120 --access-logfile - web_server:app
 
   dashboard:
@@ -118,11 +117,14 @@ services:
     build: .
     container_name: ttw_image_worker
     profiles: ["workers"]
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       db_init: { condition: service_completed_successfully }
     volumes:
       - ".:/app"
-      - "ttw_media_data:/app/app/static/media"
+      - "./app/static/media:/app/app/static/media"
       - "./ttw_session.session:/app/ttw_session.session"
     env_file: [".env"]
     networks: ["ttw_network"]
@@ -159,7 +161,6 @@ volumes:
   postgres_data:
   ollama_data:
   chroma_data:
-  ttw_media_data:
 
 networks:
   ttw_network:
