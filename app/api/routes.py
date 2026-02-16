@@ -520,3 +520,31 @@ def admin_trend_action(trend_id):
         return jsonify({"status": "success", "is_active": trend.is_active})
     finally:
         db.close()
+
+@api_bp.route('/api/admin/trends/<int:trend_id>/update', methods=['POST'])
+@requires_auth
+def admin_update_trend(trend_id):
+    """Update trend title and category manually"""
+    data = request.json
+    new_title = data.get('title')
+    new_category = data.get('category')
+    
+    db = SessionLocal()
+    try:
+        trend = db.query(Trend).filter(Trend.id == trend_id).first()
+        if not trend:
+            return jsonify({"error": "Trend not found"}), 404
+            
+        if new_title:
+            trend.title = new_title
+        if new_category:
+            trend.category = new_category
+            
+        trend.last_updated = datetime.utcnow()
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()

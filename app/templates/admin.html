@@ -68,7 +68,39 @@
         </section>
     </div>
 
+    <!-- Edit Modal -->
+    <div id="editModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onclick="closeEditModal()"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl p-6">
+            <h3 class="text-xl font-bold text-white mb-4">Edit Trend</h3>
+            
+            <div class="mb-4">
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Title</label>
+                <input type="text" id="editTitle" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none">
+            </div>
+            
+            <div class="mb-6">
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Category</label>
+                <select id="editCategory" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none">
+                    <option value="Siyaset">Siyaset</option>
+                    <option value="Ekonomi">Ekonomi</option>
+                    <option value="Gündem">Gündem</option>
+                    <option value="Spor">Spor</option>
+                    <option value="Teknoloji">Teknoloji</option>
+                    <option value="Sanat">Sanat</option>
+                </select>
+            </div>
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="closeEditModal()" class="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
+                <button onclick="saveEdit()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2 rounded-lg transition-colors">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let currentEditId = null;
+
         async function updateSettings() {
             const val = document.getElementById('thresholdInput').value;
             try {
@@ -93,6 +125,39 @@
             } catch(e) { console.error(e); }
         }
 
+        function openEditModal(id, title, category) {
+            currentEditId = id;
+            document.getElementById('editTitle').value = title;
+            document.getElementById('editCategory').value = category;
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+            currentEditId = null;
+        }
+
+        async function saveEdit() {
+            if (!currentEditId) return;
+            const title = document.getElementById('editTitle').value;
+            const category = document.getElementById('editCategory').value;
+            
+            try {
+                const res = await fetch(`/api/admin/trends/${currentEditId}/update`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ title, category })
+                });
+                const data = await res.json();
+                if(data.status === 'success') {
+                    closeEditModal();
+                    loadTrends();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) { alert('Error updating trend'); }
+        }
+
         async function loadTrends() {
             try {
                 const res = await fetch('/api/admin/trends');
@@ -101,6 +166,7 @@
                 tbody.innerHTML = '';
                 
                 trends.forEach(t => {
+                    const safeTitle = t.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     const row = `
                         <tr class="hover:bg-slate-700/50 transition-colors">
                             <td class="p-4 font-mono text-xs text-slate-500">#${t.id}</td>
@@ -114,6 +180,9 @@
                                 </span>
                             </td>
                             <td class="p-4 text-right space-x-2">
+                                <button onclick="openEditModal(${t.id}, '${safeTitle}', '${t.category}')" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded border border-blue-500">
+                                    Edit
+                                </button>
                                 <button onclick="toggleTrend(${t.id})" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded border border-slate-600">
                                     ${t.is_active ? 'Disable' : 'Enable'}
                                 </button>
