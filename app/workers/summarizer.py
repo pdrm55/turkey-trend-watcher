@@ -11,7 +11,7 @@ from google.genai import types
 # Add project root to sys path for internal imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from app.database.models import SessionLocal, Trend, RawNews, SystemSettings
-from sqlalchemy import desc
+from sqlalchemy import desc, or_, and_
 from app.config import Config
 from app.core.indexing_utils import notify_google 
 from app.core.text_utils import slugify_turkish 
@@ -198,7 +198,7 @@ def apply_negative_logic(scores: dict, text: str) -> dict:
                     if target in scores: scores[target] = max(0, scores[target] + config["soft_penalty"])
     return scores
 
-def decide_final_category(ai_category: str, text: str) -> str:
+def decide_final_category(ai_category: str, text: str) -> tuple:
     """Safety guard: Confirms Gemini's category choice against keyword density"""
     scores = {
         "Spor": calculate_keyword_score(text, SPORTS_KEYWORDS),
@@ -288,31 +288,54 @@ def generate_summary_with_gemini(text_cluster):
         print(f"   ❌ LLM Execution Error: {e}")
         return None, 0, 0, 0
 
+# ==========================================
+# FIXED LOGIC: Smart Action Filtering
+# ==========================================
+
 def process_pending_trends():
-    """Fetches high-TPS trends, processes them with AI, and updates SEO slugs"""
+    """
+    Fetches high-TPS trends, processes them with AI if needed, or publishes them if ready.
+    Uses OR logic to capture both unsummarized trends AND unpublished high-score trends.
+    """
     db = SessionLocal()
     try:
-        # Fetching high-priority trends for summarization
+        # 1. Fetch current publishing threshold
+        threshold_setting = db.query(SystemSettings).filter(SystemSettings.key == "auto_publish_threshold").first()
+        publish_threshold = float(threshold_setting.value) if threshold_setting else 35.0
+
+        # 2. Define Action Conditions
+        # A) Needs Content: High score (>20) but no summary
+        condition_needs_summary = and_(
+            Trend.final_tps >= 20,
+            or_(Trend.summary == None, Trend.summary == "")
+        )
+        
+        # B) Needs Publishing: High score (>Threshold) but not yet published to Telegram
+        condition_needs_publish = and_(
+            Trend.final_tps >= publish_threshold,
+            Trend.is_published == False
+        )
+
+        # 3. Query with OR logic
         pending_trends = db.query(Trend).filter(
             Trend.is_active == True,
-            Trend.final_tps >= 20,
-            Trend.is_published == False
+            or_(condition_needs_summary, condition_needs_publish)
         ).order_by(desc(Trend.final_tps)).limit(5).all()
 
         if not pending_trends: return False
 
-        print(f"✍️  Processing {len(pending_trends)} Trends for Summary/Publishing...")
+        print(f"✍️  Processing {len(pending_trends)} Actionable Trends...")
 
         for trend in pending_trends:
-            # 1. Content Generation Phase (Only if summary is missing)
+            # --- Phase 1: Content Generation (If summary missing) ---
             if not trend.summary:
-                # Aggregate news context for the trend
+                print(f"   🧠 Generating summary for: {trend.title[:30]}...")
+                
                 news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).limit(15).all()
                 if not news_items: continue
 
                 cluster_text = "\n".join([f"- {n.content[:1000]}" for n in news_items])
 
-                # Generate AI Content
                 ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text)
                 
                 if ai_result and ai_result.get("is_relevant_to_turkey", True):
@@ -335,14 +358,7 @@ def process_pending_trends():
                     
                     # Save and Log Stats
                     log_to_csv(trend.id, MODEL_NAME, in_tok, out_tok, duration, trend.category, "Success")
-                    
-                    # Notify Google for instant indexing (Only on creation)
-                    if trend.final_tps >= GOOGLE_INDEXING_THRESHOLD:
-                        target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
-                        success, msg = notify_google(target_url)
-                        if success: print(f"   🔗 Pushed to Google Indexing API.")
-                        else: print(f"   ⚠️ SEO Indexing Warning: {msg}")
-
+                    db.commit() # Save content immediately
                 else:
                     # Mark irrelevant or failed content as inactive
                     trend.is_active = False 
@@ -350,32 +366,29 @@ def process_pending_trends():
                     print(f"   🗑️  Discarded Trend {trend.id} (Irrelevant Content)")
                     continue
 
-            # 2. Publishing Phase (Check if ready to publish)
-            if trend.summary:
-                # دریافت آستانه از تنظیمات سیستم
-                threshold_setting = db.query(SystemSettings).filter(SystemSettings.key == "auto_publish_threshold").first()
-                publish_threshold = float(threshold_setting.value) if threshold_setting else 35.0
+            # --- Phase 2: Publishing (If score met & unpublished) ---
+            # Check logic again in case TPS changed or threshold wasn't met in previous loop
+            if trend.final_tps >= publish_threshold and not trend.is_published and trend.summary:
+                target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
                 
-                if trend.final_tps >= publish_threshold:
-                    target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
-                    
-                    # Call the service and check return value (Ensure alert_service returns True/False)
-                    success = alert_service.publish_to_channel(
-                        title=trend.title,
-                        summary=trend.summary,
-                        category=trend.category,
-                        url=target_url
-                    )
-                    
-                    # IF SUCCESSFUL, MARK AS PUBLISHED TO STOP THE LOOP
-                    if success:
-                        trend.is_published = True
-                        db.commit()
-                        print(f"   📢 PUBLISHED to Telegram: {trend.title}")
-                    else:
-                        print(f"   ⚠️ Publish failed, will retry next cycle.")
+                # Call the service and check return value
+                success = alert_service.publish_to_channel(
+                    title=trend.title,
+                    summary=trend.summary,
+                    category=trend.category,
+                    url=target_url
+                )
+                
+                if success:
+                    trend.is_published = True  # CRITICAL: Mark as published to stop loop
+                    db.commit() # Commit state change immediately
+                    print(f"   📢 PUBLISHED to Telegram: {trend.title}")
+                else:
+                    print(f"   ⚠️ Publish failed, will retry next cycle.")
 
-            db.commit()
+                # Notify Google for instant indexing
+                if trend.final_tps >= GOOGLE_INDEXING_THRESHOLD:
+                    notify_google(target_url)
 
         return True
     finally:
