@@ -12,6 +12,11 @@ import logging
 import time
 from functools import wraps
 
+# --- اصلاح حیاتی: انتقال ایمپورت به سطح ماژول ---
+# این کار باعث می‌شود مدل هوش مصنوعی فقط یک‌بار (زمان روشن شدن سرور) لود شود
+# و نه هر بار که کاربر روی لینک کلیک می‌کند.
+from app.core.ai_engine import ai_engine 
+
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
 
@@ -115,7 +120,7 @@ def category_page(name):
 def render_trend_page(identifier):
     """رندر سمت سرور (SSR) برای صفحات جزئیات ترند"""
     db = SessionLocal()
-    from app.core.ai_engine import ai_engine 
+    # ایمپورت ai_engine از اینجا حذف شد و به بالا منتقل گردید
     try:
         # جستجو بر اساس اسلاگ سئو یا شناسه کلاستر
         trend = resolve_trend_smart(db, identifier)
@@ -159,7 +164,7 @@ def render_trend_page(identifier):
                 "link": link
             })
             
-        # دریافت اخبار مرتبط (ممکن است زمان‌بر باشد، در پایتون هندل می‌شود)
+        # دریافت اخبار مرتبط (بدون لودینگ مجدد مدل)
         related_ids = ai_engine.get_related_trends(trend.cluster_id, limit=4)
         related_trends = db.query(Trend).filter(
             Trend.cluster_id.in_(related_ids), 
@@ -337,7 +342,7 @@ def get_trend_details(identifier):
             return make_response(cached_data, 200, {"Content-Type": "application/json"})
 
     db = SessionLocal()
-    from app.core.ai_engine import ai_engine
+    # ایمپورت ai_engine از اینجا حذف شد
     try:
         trend = resolve_trend_smart(db, identifier)
         if not trend: return jsonify({"error": "Trend not found"}), 404
