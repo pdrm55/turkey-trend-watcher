@@ -358,14 +358,22 @@ def process_pending_trends():
                 
                 if trend.final_tps >= publish_threshold:
                     target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
-                    alert_service.publish_to_channel(
+                    
+                    # Call the service and check return value (Ensure alert_service returns True/False)
+                    success = alert_service.publish_to_channel(
                         title=trend.title,
                         summary=trend.summary,
                         category=trend.category,
                         url=target_url
                     )
-                    trend.is_published = True
-                    print(f"   📢 Automatically published to Public Channel.")
+                    
+                    # IF SUCCESSFUL, MARK AS PUBLISHED TO STOP THE LOOP
+                    if success:
+                        trend.is_published = True
+                        db.commit()
+                        print(f"   📢 PUBLISHED to Telegram: {trend.title}")
+                    else:
+                        print(f"   ⚠️ Publish failed, will retry next cycle.")
 
             db.commit()
 
