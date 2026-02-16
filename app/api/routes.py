@@ -318,7 +318,8 @@ def get_trends():
                 "category": t.category,
                 "first_seen": t.first_seen.isoformat() + 'Z' if t.first_seen else None,
                 "last_update": t.last_updated.isoformat() + 'Z' if t.last_updated else None, 
-                "source_sample": last_news.source_name if last_news else "Bilinmiyor"
+                "source_sample": last_news.source_name if last_news else "Bilinmiyor",
+                "image": t.cover_image
             })
         
         response_json = json.dumps(results)
@@ -375,6 +376,7 @@ def get_trend_details(identifier):
             "category": trend.category,
             "tps_score": round(trend.final_tps, 1),
             "summary": trend.summary or "Generating summary...",
+            "image": trend.cover_image,
             "news_list": formatted_news,
             "related_trends": [{
                 "title": r.title,

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Index, Float, ForeignKey, inspect, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Index, Float, ForeignKey, inspect, text, JSON
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime, timezone
 from app.config import Config
@@ -33,6 +33,12 @@ class RawNews(Base):
     published_at = Column(DateTime)
     created_at = Column(DateTime, default=utc_now)
     trend_id = Column(Integer, ForeignKey('trends.id'), nullable=True)
+    
+    # Media Tracking Fields (Phase 7.1)
+    media_status = Column(Integer, default=0) # 0: Pending, 1: Downloading, 2: Ready, -1: Error
+    media_url = Column(String(500), nullable=True)
+    media_path = Column(String(255), nullable=True)
+    media_meta = Column(JSON, nullable=True)
     
     # رابطه با جدول ورود سیگنال‌ها (برای محاسبات Velocity)
     arrivals = relationship("TrendArrivals", backref="news_item", cascade="all, delete-orphan")
@@ -72,6 +78,7 @@ class Trend(Base):
     first_seen = Column(DateTime, default=utc_now)
     last_updated = Column(DateTime, default=utc_now)
     is_active = Column(Boolean, default=True)
+    cover_image = Column(String(255), nullable=True)
     
     # روابط دیتابیسی
     news_items = relationship("RawNews", backref="trend")
@@ -157,15 +164,28 @@ def init_db():
                 print("📢 Adding 'is_published' column to 'trends'...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN is_published BOOLEAN DEFAULT FALSE"))
             
+            # Migration for Trend Cover Image
+            if 'cover_image' not in trend_columns:
+                print("🖼️ Adding 'cover_image' to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN cover_image VARCHAR(255)"))
+            
             conn.commit()
 
         # ۳. بررسی و بروزرسانی جدول raw_news
         news_columns = [c['name'] for c in inspector.get_columns('raw_news')]
-        if 'source_tier' not in news_columns:
-            print("🛡️ Adding 'source_tier' to 'raw_news' table...")
-            with engine.connect() as conn:
+        with engine.connect() as conn:
+            if 'source_tier' not in news_columns:
+                print("🛡️ Adding 'source_tier' to 'raw_news' table...")
                 conn.execute(text("ALTER TABLE raw_news ADD COLUMN source_tier INTEGER DEFAULT 3"))
-                conn.commit()
+            
+            if 'media_status' not in news_columns:
+                print("🖼️ Adding media columns to 'raw_news'...")
+                conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_status INTEGER DEFAULT 0"))
+                conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_url VARCHAR(500)"))
+                conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_path VARCHAR(255)"))
+                conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_meta JSONB"))
+            
+            conn.commit()
         
         # 4. بررسی و ایجاد ایندکس‌های حیاتی (Performance Tuning)
         # ایندکس ترکیبی برای نمودار تاریخچه که در فاز ۶.۳ اضافه شد

@@ -57,7 +57,9 @@ services:
     container_name: ttw_api
     depends_on:
       db_init: { condition: service_completed_successfully }
-    volumes: [".:/app"]
+    volumes: 
+      - ".:/app"
+      - "ttw_media_data:/app/app/static/media"
     env_file: [".env"]
     ports: ["5000:5000"]
     networks: ["ttw_network"]
@@ -112,6 +114,21 @@ services:
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/summarizer.py
 
+  image_worker:
+    build: .
+    container_name: ttw_image_worker
+    profiles: ["workers"]
+    depends_on:
+      db_init: { condition: service_completed_successfully }
+    volumes:
+      - ".:/app"
+      - "ttw_media_data:/app/app/static/media"
+      - "./ttw_session.session:/app/ttw_session.session"
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 app/workers/image_processor.py
+
   gravity_worker:
     build: .
     container_name: ttw_gravity
@@ -142,6 +159,7 @@ volumes:
   postgres_data:
   ollama_data:
   chroma_data:
+  ttw_media_data:
 
 networks:
   ttw_network:

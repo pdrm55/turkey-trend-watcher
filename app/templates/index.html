@@ -251,30 +251,39 @@
             // استفاده از فرمت ID-Slug برای پایداری لینک در صورت تغییر Slug توسط هوش مصنوعی
             const identifier = trend.slug ? `${trend.trend_id}-${trend.slug}` : trend.id; 
 
+            const hasImage = !!trend.image;
+            const containerPadding = hasImage ? "p-0" : "p-6";
+            const contentPadding = hasImage ? "p-6" : "";
+            const imageHtml = hasImage ? 
+                `<img src="/static/${trend.image}" alt="${trend.title}" class="h-48 w-full object-cover rounded-t-2xl mb-4" loading="lazy" onerror="this.style.display='none'">` : '';
+
             return `
             <a href="/trend/${identifier}" onclick="handleTrendClick(event, '${identifier}')"
-                class="trend-card ${wrapperClass} rounded-2xl p-6 border relative overflow-hidden group cursor-pointer transition-all flex flex-col h-full">
-                <div class="flex justify-between items-start mb-4">
-                    <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border uppercase tracking-wider ${catClass}">
-                        ${trend.category || 'Gündem'}
-                    </span>
-                    <div class="flex items-center gap-1.5">
-                        ${icon}
-                        <span class="text-[10px] font-bold ${trajectory === 'hot' ? 'text-red-600' : 'text-slate-500'}">
-                            ${Math.round(trend.score)} TPS
+                class="trend-card ${wrapperClass} rounded-2xl ${containerPadding} border relative overflow-hidden group cursor-pointer transition-all flex flex-col h-full">
+                ${imageHtml}
+                <div class="flex flex-col flex-1 ${contentPadding}">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border uppercase tracking-wider ${catClass}">
+                            ${trend.category || 'Gündem'}
                         </span>
+                        <div class="flex items-center gap-1.5">
+                            ${icon}
+                            <span class="text-[10px] font-bold ${trajectory === 'hot' ? 'text-red-600' : 'text-slate-500'}">
+                                ${Math.round(trend.score)} TPS
+                            </span>
+                        </div>
                     </div>
-                </div>
-                <h3 class="text-base font-bold mb-4 leading-snug text-slate-800 group-hover:text-red-600 transition-colors line-clamp-3">
-                    ${trend.title}
-                </h3>
-                <div class="mt-auto flex items-center justify-between pt-4 border-t border-slate-50">
-                    <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                        <span class="text-blue-600 truncate max-w-[100px]">${trend.source_sample}</span>
-                        <span class="opacity-30">•</span>
-                        <span>${formatTime(trend.last_update)}</span>
+                    <h3 class="text-base font-bold mb-4 leading-snug text-slate-800 group-hover:text-red-600 transition-colors line-clamp-3">
+                        ${trend.title}
+                    </h3>
+                    <div class="mt-auto flex items-center justify-between pt-4 border-t border-slate-50">
+                        <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                            <span class="text-blue-600 truncate max-w-[100px]">${trend.source_sample}</span>
+                            <span class="opacity-30">•</span>
+                            <span>${formatTime(trend.last_update)}</span>
+                        </div>
+                        <div class="text-[9px] font-black text-slate-300">${trend.count} KAYNAK</div>
                     </div>
-                    <div class="text-[9px] font-black text-slate-300">${trend.count} KAYNAK</div>
                 </div>
             </a>`;
         }

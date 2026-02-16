@@ -72,6 +72,14 @@
     </nav>
 
     <article class="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
+        {% if trend.cover_image %}
+        <div class="w-full h-64 md:h-96 relative mb-6">
+            <img src="/static/{{ trend.cover_image }}" 
+                 alt="{{ trend.title }}" 
+                 class="w-full h-full object-cover rounded-t-3xl md:rounded-3xl shadow-sm">
+            <div class="absolute inset-0 rounded-t-3xl md:rounded-3xl bg-gradient-to-t from-black/30 to-transparent"></div>
+        </div>
+        {% endif %}
         <header class="p-8 md:p-12 border-b border-slate-50 bg-slate-50/50">
             <div class="flex justify-between items-start mb-6">
                 <div class="flex items-center gap-3">
