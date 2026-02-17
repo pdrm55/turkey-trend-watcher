@@ -483,10 +483,31 @@ def update_settings():
 @api_bp.route('/api/admin/trends')
 @requires_auth
 def admin_get_trends():
-    """لیست تمام ترندها برای مدیریت"""
+    """لیست تمام ترندها برای مدیریت با فیلتر و صفحه‌بندی"""
+    offset = int(request.args.get('offset', 0))
+    limit = int(request.args.get('limit', 50))
+    q = request.args.get('q', '').strip()
+    category = request.args.get('category', 'All')
+    date_str = request.args.get('date', '')
+
     db = SessionLocal()
     try:
-        trends = db.query(Trend).order_by(desc(Trend.last_updated)).limit(100).all()
+        query = db.query(Trend)
+
+        if category != 'All':
+            query = query.filter(Trend.category == category)
+        
+        if q:
+            query = query.filter(Trend.title.ilike(f'%{q}%'))
+            
+        if date_str:
+            try:
+                filter_date = datetime.strptime(date_str, '%Y-%m-%d')
+                query = query.filter(Trend.last_updated >= filter_date, Trend.last_updated < filter_date + timedelta(days=1))
+            except ValueError:
+                pass
+
+        trends = query.order_by(desc(Trend.last_updated)).offset(offset).limit(limit).all()
         results = []
         for t in trends:
             results.append({
@@ -495,7 +516,7 @@ def admin_get_trends():
                 "tps": round(t.final_tps, 1),
                 "is_active": t.is_active,
                 "category": t.category,
-                "last_updated": t.last_updated.strftime('%H:%M') if t.last_updated else "-"
+                "last_updated": t.last_updated.strftime('%Y-%m-%d %H:%M') if t.last_updated else "-"
             })
         return jsonify(results)
     finally:

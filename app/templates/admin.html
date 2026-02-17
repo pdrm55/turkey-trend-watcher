@@ -43,9 +43,26 @@
         <section class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-lg">
             <div class="p-6 border-b border-slate-700 flex justify-between items-center">
                 <h2 class="text-xl font-bold">Live Trends Management</h2>
-                <button onclick="loadTrends()" class="text-sm text-blue-400 hover:text-blue-300">Refresh Data ⟳</button>
+                <button onclick="loadTrends(false)" class="text-sm text-blue-400 hover:text-blue-300">Refresh Data ⟳</button>
             </div>
             
+            <!-- Filter Bar -->
+            <div class="p-4 border-b border-slate-700 bg-slate-800/50 flex flex-wrap gap-4 items-center">
+                <input type="text" id="searchQuery" placeholder="Search keywords..." class="bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm text-white focus:border-blue-500 focus:outline-none w-full md:w-64">
+                <select id="filterCategory" class="bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                    <option value="All">All Categories</option>
+                    <option value="Siyaset">Siyaset</option>
+                    <option value="Ekonomi">Ekonomi</option>
+                    <option value="Gündem">Gündem</option>
+                    <option value="Spor">Spor</option>
+                    <option value="Teknoloji">Teknoloji</option>
+                    <option value="Sanat">Sanat</option>
+                </select>
+                <input type="date" id="filterDate" class="bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                <button onclick="loadTrends(false)" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors">Search</button>
+                <button onclick="clearFilters()" class="text-slate-400 hover:text-white px-4 py-2 text-sm transition-colors">Clear</button>
+            </div>
+
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
                     <thead class="bg-slate-900/50 text-slate-400 uppercase text-xs">
@@ -64,6 +81,13 @@
                         <tr><td colspan="7" class="p-8 text-center text-slate-500">Loading trends...</td></tr>
                     </tbody>
                 </table>
+            </div>
+            
+            <!-- Load More -->
+            <div class="p-4 text-center border-t border-slate-700">
+                <button id="loadMoreBtn" onclick="loadTrends(true)" class="hidden bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded-lg text-sm font-bold transition-colors">
+                    Load More
+                </button>
             </div>
         </section>
     </div>
@@ -100,6 +124,8 @@
 
     <script>
         let currentEditId = null;
+        let currentOffset = 0;
+        const limit = 50;
 
         async function updateSettings() {
             const val = document.getElementById('thresholdInput').value;
@@ -158,17 +184,44 @@
             } catch(e) { alert('Error updating trend'); }
         }
 
-        async function loadTrends() {
+        function clearFilters() {
+            document.getElementById('searchQuery').value = '';
+            document.getElementById('filterCategory').value = 'All';
+            document.getElementById('filterDate').value = '';
+            loadTrends(false);
+        }
+
+        async function loadTrends(append = false) {
+            const tbody = document.getElementById('trendsTableBody');
+            const loadMoreBtn = document.getElementById('loadMoreBtn');
+            
+            if (!append) {
+                currentOffset = 0;
+                tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-slate-500">Loading trends...</td></tr>';
+                loadMoreBtn.classList.add('hidden');
+            } else {
+                loadMoreBtn.innerText = 'Loading...';
+                loadMoreBtn.disabled = true;
+            }
+
+            const q = document.getElementById('searchQuery').value;
+            const cat = document.getElementById('filterCategory').value;
+            const date = document.getElementById('filterDate').value;
+
             try {
-                const res = await fetch('/api/admin/trends');
+                const url = `/api/admin/trends?offset=${currentOffset}&limit=${limit}&q=${encodeURIComponent(q)}&category=${cat}&date=${date}`;
+                const res = await fetch(url);
                 const trends = await res.json();
-                const tbody = document.getElementById('trendsTableBody');
-                tbody.innerHTML = '';
                 
+                if (!append) tbody.innerHTML = '';
+                
+                if (trends.length === 0 && !append) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-slate-500">No trends found.</td></tr>';
+                } else {
                 trends.forEach(t => {
                     const safeTitle = t.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     const row = `
-                        <tr class="hover:bg-slate-700/50 transition-colors">
+                        <tr class="hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 last:border-0">
                             <td class="p-4 font-mono text-xs text-slate-500">#${t.id}</td>
                             <td class="p-4"><span class="bg-slate-700 px-2 py-1 rounded text-xs font-bold">${t.category}</span></td>
                             <td class="p-4 font-medium text-white truncate max-w-md">${t.title}</td>
@@ -189,15 +242,27 @@
                             </td>
                         </tr>
                     `;
-                    tbody.innerHTML += row;
+                    tbody.insertAdjacentHTML('beforeend', row);
                 });
+                }
+
+                currentOffset += limit;
+                
+                if (trends.length < limit) {
+                    loadMoreBtn.classList.add('hidden');
+                } else {
+                    loadMoreBtn.classList.remove('hidden');
+                    loadMoreBtn.innerText = 'Load More';
+                    loadMoreBtn.disabled = false;
+                }
             } catch(e) {
-                document.getElementById('trendsTableBody').innerHTML = '<tr><td colspan="7" class="p-4 text-center text-red-400">Failed to load data</td></tr>';
+                console.error(e);
+                if (!append) tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-red-400">Failed to load data</td></tr>';
             }
         }
 
         // Initial Load
-        loadTrends();
+        loadTrends(false);
     </script>
 </body>
 </html>
