@@ -285,24 +285,35 @@ def generate_summary_with_gemini(text_cluster):
 
     prompt = f"""
     ### SYSTEM ROLE
-    You are a "Professional News Editor and Semantic Gatekeeper". Your goal is to filter out content poisoning and extract the single true story from a cluster of raw, potentially noisy news snippets.
+    You are a "Professional News Editor, Semantic Gatekeeper, and SEO Specialist". Your goal is to filter out content poisoning, extract the single true story, and optimize metadata for search engines.
     
     ### INTERNAL PROCESS (Follow these steps before generating output)
     1. SCRUTINIZE: Analyze the provided RAW TEXT DATA below. Identify and mentally discard:
        - Advertisements (betting, bonuses, sales).
        - "Read more" links or navigational text.
-       - "Related News" snippets that discuss a completely different topic (e.g., a football transfer rumor appearing inside a traffic accident report).
+       - "Related News" snippets that discuss a completely different topic.
     
     2. IDENTIFY CORE EVENT: Find the "Main Event" that is consistent across the majority of source snippets.
-       - If a specific detail (like a name or cause) appears in only one snippet but contradicts the consensus of others, treat it as noise/hallucination and discard it.
     
-    3. LOGICAL CAUSALITY: Ensure the summary maintains correct cause-and-effect relationships (e.g., "Surgery was performed due to injury", NOT "Injury occurred due to surgery").
+    3. LOGICAL CAUSALITY (Layer 5: Self-Correction): 
+       - Verify cause-and-effect relationships (e.g., "Surgery was performed due to injury", NOT "Injury occurred due to surgery").
+       - Perform a brief internal fact-check to ensure the summary logically follows the consensus of the sources.
+
+    4. SEO EXTRACTION:
+       - Extract relevant tags (keywords) for search indexing.
+       - Identify structured entities (People, Locations, Organizations).
+
+    5. CONFLICT RESOLUTION (Layer 6):
+       - Compare numerical data (dates, death tolls, prices, percentages) across all input sources.
+       - If sources provide contradicting facts or numbers, DO NOT pick one at random.
+       - Report the discrepancy in the summary using phrases like "Sources report varying figures between X and Y" or "While some sources claim X, others report Y".
+       - Ensure the summary reflects the consensus of Tier 1 sources but acknowledges minority reports if they are significant.
 
     ### CONSTRAINTS
     - Language: Turkish (TR) only.
     - Style: Strictly professional, neutral, and journalistic. No clickbait.
-    - Category Accuracy: Determine the category ONLY based on the "Core Event" identified in Step 2. Ignore keywords found in the discarded noise.
-    - Headline: Catchy, SEO-optimized, and factually accurate based on the Core Event.
+    - Category Accuracy: Determine the category ONLY based on the "Core Event".
+    - Headline: Catchy, SEO-optimized, and factually accurate.
     - Category List: [Siyaset, Ekonomi, Gündem, Spor, Teknoloji, Sanat].
 
     ### OUTPUT FORMAT (JSON ONLY)
@@ -310,6 +321,11 @@ def generate_summary_with_gemini(text_cluster):
         "headline": "...",
         "summary": "...",
         "category": "...",
+        "fact_check": "Brief validation of logic...",
+        "tags": ["tag1", "tag2"],
+        "entities": {{"people": [], "locations": [], "organizations": []}},
+        "has_conflicting_data": false,
+        "conflict_details": "Description of conflict if any...",
         "is_relevant_to_turkey": true
     }}
 
@@ -396,7 +412,7 @@ def process_pending_trends():
                     # 1. Build Global Frequency Map
                     word_doc_freq = {}
                     for n in news_items:
-                        words = set(normalize_turkish_local(n.content).split())
+                        words = set(normalize_turkish_local(n.content[:500]).split())
                         for w in words:
                             if len(w) > 3: word_doc_freq[w] = word_doc_freq.get(w, 0) + 1
                     
@@ -407,15 +423,15 @@ def process_pending_trends():
                     # 3. Filter Paragraphs
                     filtered_lines = []
                     for n in news_items:
-                        for p in n.content.split('.'): # Split by sentences for better granularity
+                        for p in n.content[:500].split('.'): # Split by sentences for better granularity
                             p = p.strip()
                             if len(p) < 40: continue
                             overlap = len(set(normalize_turkish_local(p).split()).intersection(consensus_vocab))
                             if overlap >= 2: filtered_lines.append(f"- {p}")
                     
-                    cluster_text = "\n".join(filtered_lines) if len(filtered_lines) > 0 else "\n".join([f"- {n.content[:1000]}" for n in news_items])
+                    cluster_text = "\n".join(filtered_lines) if len(filtered_lines) > 0 else "\n".join([f"- {n.content[:500]}" for n in news_items])
                 else:
-                    cluster_text = "\n".join([f"- {n.content[:1000]}" for n in news_items])
+                    cluster_text = "\n".join([f"- {n.content[:500]}" for n in news_items])
 
                 ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text)
                 
@@ -429,6 +445,12 @@ def process_pending_trends():
                     trend.title = ai_result.get("headline", trend.title)
                     trend.summary = ai_result.get("summary", "")
                     trend.category = final_category 
+                    trend.tags = ai_result.get("tags")
+                    trend.entities = ai_result.get("entities")
+                    
+                    # Handle Conflict Data (Layer 6)
+                    if ai_result.get("has_conflicting_data"):
+                        print(f"   ⚠️ Conflict Detected: {ai_result.get('conflict_details')}")
                     
                     # SEO CRITICAL: Upgrade temporary slug to professional slug
                     trend.slug = generate_unique_slug(db, trend.title, trend.id)

@@ -79,6 +79,8 @@ class Trend(Base):
     last_updated = Column(DateTime, default=utc_now)
     is_active = Column(Boolean, default=True)
     cover_image = Column(String(255), nullable=True)
+    tags = Column(JSON, nullable=True)
+    entities = Column(JSON, nullable=True)
     
     # روابط دیتابیسی
     news_items = relationship("RawNews", backref="trend")
@@ -168,6 +170,14 @@ def init_db():
             if 'cover_image' not in trend_columns:
                 print("🖼️ Adding 'cover_image' to 'trends'...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN cover_image VARCHAR(255)"))
+            
+            if 'tags' not in trend_columns:
+                print("🏷️ Adding 'tags' column to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN tags JSONB"))
+
+            if 'entities' not in trend_columns:
+                print("🧩 Adding 'entities' column to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN entities JSONB"))
             
             conn.commit()
 
