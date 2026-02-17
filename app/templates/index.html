@@ -69,7 +69,7 @@
                 <h1 class="text-4xl font-extrabold flex items-center tracking-tight">
                     <span class="text-black">Trendia</span><span class="text-red-600">TR</span>
                 </h1>
-                <p class="text-slate-500 mt-1 text-sm font-medium">
+                <p id="header-subtitle" class="text-slate-500 mt-1 text-sm font-medium">
                     {% if active_category and active_category != 'Hepsi' %}
                         {{ active_category }} Dünyasından Gerçek Zamanlı Analizler
                     {% else %}
@@ -127,7 +127,7 @@
         <div class="flex items-center gap-2 mb-6">
             <span class="text-2xl">🔥</span>
             <h2 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">
-                {{ active_category if active_category and active_category != 'Hepsi' else '' }} SIÇRAMA YAPANLAR
+                <span id="dynamic-hot-title">{{ active_category if active_category and active_category != 'Hepsi' else '' }}</span> SIÇRAMA YAPANLAR
             </h2>
             <span class="text-[10px] font-bold text-red-500 ml-2 animate-pulse bg-red-50 px-2 py-0.5 rounded-full border border-red-100">CANLI TPS</span>
         </div>
@@ -328,6 +328,18 @@
             activeCategory = cat;
             timelineOffset = 0;
             
+            // Update Dynamic Titles
+            const hotTitle = document.getElementById('dynamic-hot-title');
+            const headerSubtitle = document.getElementById('header-subtitle');
+            
+            if (cat === "Hepsi") {
+                if (hotTitle) hotTitle.innerText = "";
+                if (headerSubtitle) headerSubtitle.innerText = "Yapay Zeka Destekli Gerçek Zamanlı Analiz";
+            } else {
+                if (hotTitle) hotTitle.innerText = cat + " ";
+                if (headerSubtitle) headerSubtitle.innerText = `${cat} Dünyasından Gerçek Zamanlı Analizler`;
+            }
+
             // SEO History update
             const url = cat === "Hepsi" ? "/" : `/category/${cat.toLowerCase()}`;
             window.history.pushState(null, '', url);
