@@ -159,13 +159,13 @@ class ImageProcessor:
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
             resp = requests.get(external_id, headers=headers, timeout=10)
-            if resp.status_code != 200: return None
+            if resp.status_code != 200: return None, None
             
             soup = BeautifulSoup(resp.content, 'html.parser')
             og_image = soup.find("meta", property="og:image")
             
             if not og_image or not og_image.get("content"):
-                return None
+                return None, None
                 
             img_url = og_image["content"]
             img_resp = requests.get(img_url, headers=headers, timeout=10)
@@ -177,7 +177,7 @@ class ImageProcessor:
             logger.error(f"RSS Download Error ({external_id}): {e}")
             return None, None
 
-    def save_file(self, image_data):
+    def save_file(self, image_data, news_id):
         """ذخیره فایل در ساختار پوشه‌بندی تاریخ‌محور"""
         now = datetime.now()
         year, month, day = now.strftime("%Y"), now.strftime("%m"), now.strftime("%d")
@@ -187,6 +187,8 @@ class ImageProcessor:
         
         filename = f"{uuid.uuid4()}.webp"
         full_path = os.path.join(folder_path, filename)
+        
+        logger.info(f"💾 Attempting to save processed image for News {news_id} to {full_path}")
         
         with open(full_path, "wb") as f:
             f.write(image_data)
@@ -217,55 +219,60 @@ class ImageProcessor:
                 logger.info(f"📸 Processing {len(pending_news)} actionable images...")
                 
                 for news in pending_news:
-                    image_data = None
-                    source_url = None
-                    
-                    # ۱. منطق دانلود
-                    if news.source_type == 'telegram':
-                        image_data = await self.download_from_telegram(news.external_id)
-                        source_url = news.external_id
-                    elif news.source_type == 'rss':
-                        loop = asyncio.get_event_loop()
-                        image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id)
-                    
-                    if not image_data:
-                        news.media_status = -1 
-                        db.commit()
-                        continue
+                    try:
+                        image_data = None
+                        source_url = None
                         
-                    # ۲. منطق پردازش تصویر (با نام منبع)
-                    current_source = news.source_name if news.source_name else "TrendiaTR"
-                    processed_data, w, h = self.process_image_data(image_data, current_source)
-                    
-                    if not processed_data:
+                        # ۱. منطق دانلود
+                        if news.source_type == 'telegram':
+                            image_data = await self.download_from_telegram(news.external_id)
+                            source_url = news.external_id
+                        elif news.source_type == 'rss':
+                            loop = asyncio.get_event_loop()
+                            image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id)
+                        
+                        if not image_data:
+                            news.media_status = -1 
+                            db.commit()
+                            continue
+                            
+                        # ۲. منطق پردازش تصویر (با نام منبع)
+                        current_source = news.source_name if news.source_name else "TrendiaTR"
+                        processed_data, w, h = self.process_image_data(image_data, current_source)
+                        
+                        if not processed_data:
+                            news.media_status = -1
+                            db.commit()
+                            continue
+                            
+                        # ۳. ذخیره‌سازی فیزیکی
+                        rel_path = self.save_file(processed_data, news.id)
+                        
+                        # ۴. بروزرسانی دیتابیس
+                        news.media_path = rel_path
+                        news.media_url = source_url
+                        news.media_status = 2 # Ready
+                        news.media_meta = {"width": w, "height": h, "size": len(processed_data)}
+                        
+                        # ۵. منطق انتخاب بهترین تصویر برای ترند (Promotion Logic)
+                        if news.trend_id:
+                            trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
+                            if trend:
+                                # قانون ۱: اگر ترند هنوز عکس ندارد، این اولین عکس شاخص شود
+                                if not trend.cover_image:
+                                    trend.cover_image = rel_path
+                                    logger.info(f"🖼️ Set initial cover for Trend {trend.id}")
+                                
+                                # قانون ۲: ارتقای منبع (خبرگزاری‌های رسمی Tier 1 جایگزین تلگرام می‌شوند)
+                                elif news.source_tier == 1:
+                                    trend.cover_image = rel_path
+                                    logger.info(f"🖼️ Upgraded cover for Trend {trend.id} (Tier 1 Source)")
+                        
+                        db.commit()
+                    except Exception as e:
+                        logger.error(f"Error processing news {news.id}: {e}")
                         news.media_status = -1
                         db.commit()
-                        continue
-                        
-                    # ۳. ذخیره‌سازی فیزیکی
-                    rel_path = self.save_file(processed_data)
-                    
-                    # ۴. بروزرسانی دیتابیس
-                    news.media_path = rel_path
-                    news.media_url = source_url
-                    news.media_status = 2 # Ready
-                    news.media_meta = {"width": w, "height": h, "size": len(processed_data)}
-                    
-                    # ۵. منطق انتخاب بهترین تصویر برای ترند (Promotion Logic)
-                    if news.trend_id:
-                        trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
-                        if trend:
-                            # قانون ۱: اگر ترند هنوز عکس ندارد، این اولین عکس شاخص شود
-                            if not trend.cover_image:
-                                trend.cover_image = rel_path
-                                logger.info(f"🖼️ Set initial cover for Trend {trend.id}")
-                            
-                            # قانون ۲: ارتقای منبع (خبرگزاری‌های رسمی Tier 1 جایگزین تلگرام می‌شوند)
-                            elif news.source_tier == 1:
-                                trend.cover_image = rel_path
-                                logger.info(f"🖼️ Upgraded cover for Trend {trend.id} (Tier 1 Source)")
-                    
-                    db.commit()
                     
             except Exception as e:
                 logger.error(f"Loop Error: {e}")
