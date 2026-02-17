@@ -201,7 +201,7 @@ def apply_negative_logic(scores: dict, text: str) -> dict:
 def decide_final_category(ai_category: str, text: str) -> tuple:
     """
     Layer 4: Density-Based Categorization & Safety Guard.
-    Calculates Keyword Density (Score / Word Count) to prevent noise-based misclassification.
+    Calculates Keyword Density (Score / Word Count) * 100 to prevent noise-based misclassification.
     """
     # 1. Calculate Word Count
     words = text.split()
@@ -220,25 +220,45 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
     # 3. Apply Negative Logic
     scores = apply_negative_logic(scores, text)
     
-    # 4. Calculate Density Scores
-    density_scores = {k: v / word_count for k, v in scores.items()}
+    # 4. Calculate Density Scores (Scaled by 100)
+    density_scores = {k: (v / word_count) * 100 for k, v in scores.items()}
     
     top_cat = max(density_scores, key=density_scores.get)
     top_density = density_scores[top_cat]
     gundem_density = density_scores["Gündem"]
 
+    # Map for high-keyword check
+    cat_keywords = {
+        "Spor": SPORTS_KEYWORDS,
+        "Ekonomi": ECONOMY_KEYWORDS,
+        "Teknoloji": TECHNOLOGY_KEYWORDS,
+        "Siyaset": POLITICS_KEYWORDS,
+        "Sanat": ART_KEYWORDS,
+        "Gündem": GUNDEM_KEYWORDS
+    }
+
     # 5. Gündem Safety Rule
-    # If the top category isn't Gündem, it must be significantly denser (2x) than Gündem
+    # If the top category isn't Gündem, it must be significantly denser (2.2x) than Gündem
     if top_cat != "Gündem":
-        if top_density < (2.0 * gundem_density):
+        # Rule A: Density Threshold (2.2x)
+        if top_density < (2.2 * gundem_density):
             return "Gündem", True
+            
+        # Rule B: High-Weight Keyword Count (< 2 matches forces Gündem)
+        text_norm = normalize_turkish_local(text)
+        kw_config = cat_keywords.get(top_cat)
+        if kw_config:
+            high_matches = sum(1 for w in kw_config["high"] if w in text_norm)
+            if high_matches < 2:
+                return "Gündem", True
 
     # 6. AI Validation
     if ai_category == top_cat:
         return top_cat, False
         
     # If AI disagrees, check if AI's choice has reasonable density
-    if density_scores.get(ai_category, 0) < 0.1 and top_density > 0.5:
+    # Thresholds adjusted for *100 scale: 0.1 -> 10, 0.5 -> 50
+    if density_scores.get(ai_category, 0) < 10 and top_density > 50:
         return top_cat, True
 
     return ai_category, False
@@ -265,7 +285,7 @@ def generate_summary_with_gemini(text_cluster):
 
     prompt = f"""
     ### SYSTEM ROLE
-    You are a "Noise-Aware News Editor" and Semantic Gatekeeper. Your goal is to filter out content poisoning and extract the single true story from a cluster of raw, potentially noisy news snippets.
+    You are a "Professional News Editor and Semantic Gatekeeper". Your goal is to filter out content poisoning and extract the single true story from a cluster of raw, potentially noisy news snippets.
     
     ### INTERNAL PROCESS (Follow these steps before generating output)
     1. SCRUTINIZE: Analyze the provided RAW TEXT DATA below. Identify and mentally discard:
@@ -382,12 +402,12 @@ def process_pending_trends():
                     
                     # 2. Identify Consensus Vocabulary (> 50% of sources)
                     threshold = len(news_items) / 2
-                    consensus_vocab = {w for w, count in word_doc_freq.items() if count > threshold}
+                    consensus_vocab = {w for w, count in word_doc_freq.items() if count >= threshold}
                     
                     # 3. Filter Paragraphs
                     filtered_lines = []
                     for n in news_items:
-                        for p in n.content.split('\n'):
+                        for p in n.content.split('.'): # Split by sentences for better granularity
                             p = p.strip()
                             if len(p) < 40: continue
                             overlap = len(set(normalize_turkish_local(p).split()).intersection(consensus_vocab))

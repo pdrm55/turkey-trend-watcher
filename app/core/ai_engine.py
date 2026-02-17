@@ -76,11 +76,11 @@ class AIEngine:
     def ask_local_llm(self, reference_news, candidate_news):
         """Final semantic verification using local Qwen model"""
         prompt = f"""
-        Act as a strict news editor. Compare these two Turkish news texts.
-        Do they report the EXACT SAME specific incident/event occurring at the same time?
+        Act as a news editor. Compare these two Turkish news texts.
+        Do these two texts refer to the **same news story, event chain, or ongoing topic**?
         
-        If it is a new update about an old event, answer: false.
-        If it is the exact same report, answer: true.
+        Answer **true** if they discuss the same subject (e.g., an accident and its death toll update, or a match and its post-game analysis).
+        Answer **false** ONLY if they describe completely different events involving different people/places.
         
         Ref News: "{reference_news[:700]}"
         New News: "{candidate_news[:700]}"
@@ -166,13 +166,13 @@ class AIEngine:
 
                 target_text = self.get_cluster_reference_doc(candidate_cluster_id) or results['documents'][0][i]
                 
-                # Case 1: Extremely high similarity (Direct copy/repost)
-                if distance < 0.07:
+                # Case 1: High similarity (Auto-Merge Zone)
+                if distance < 0.20:
                     cluster_id = candidate_cluster_id
                     is_duplicate = True
                     break
 
-                # Case 2: Semantic similarity -> Ask Local LLM
+                # Case 2: Uncertain Zone -> Ask Local LLM
                 if self.ask_local_llm(target_text, cleaned_text):
                     cluster_id = candidate_cluster_id
                     is_duplicate = True

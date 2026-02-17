@@ -18,7 +18,9 @@ NOISE_PATTERNS = [
     r'ilgili haber', r'son dakika', r'tıklayın', r'abone ol', 
     r'takip et', r'daha fazlası için', r'ilginizi çekebilir', 
     r'haberin devamı', r'gelen aramalar', r'okuma süresi', 
-    r'yayınlanma tarihi'
+    r'yayınlanma tarihi', r'devamı için', r'tıkla', r'ilgili haberler', 
+    r'galeri için', r'video için', r'paylaş', r'yorum yap', r'yazdır', 
+    r'haberleri', r'son dakika haberi', r'gelişmeler için', r'kaynak\s*:'
 ]
 
 def normalize_turkish(text: str) -> str:
@@ -62,12 +64,25 @@ def is_noise_line(line: str) -> bool:
         
     norm_line = normalize_turkish(line).strip()
     
-    # 1. Check against noise patterns
-    for pattern in NOISE_PATTERNS:
-        if re.search(pattern, norm_line):
-            return True
+    # 1. Check for lines that consist ONLY of numbers, dates, or social media handles
+    # Remove handles, dates, numbers and separators to see if any content remains
+    temp = re.sub(r'@\w+', '', norm_line)
+    temp = re.sub(r'\d+[\./-]\d+[\./-]\d+', '', temp)
+    temp = re.sub(r'[\d\s\.,:/-]+', '', temp)
+    if not temp.strip():
+        return True
+
+    # 2. Filter out lines that are just "reklam" or "advertisement"
+    if norm_line in ['reklam', 'advertisement', 'ilan']:
+        return True
+    
+    # 3. Word Count heuristic: If < 5 words AND contains noise keywords
+    if len(norm_line.split()) < 5:
+        for pattern in NOISE_PATTERNS:
+            if re.search(pattern, norm_line):
+                return True
             
-    # 2. Short line heuristics (< 40 chars) with irrelevant symbols
+    # 4. Short line heuristics (< 40 chars) with irrelevant symbols
     if len(norm_line) < 40:
         if re.search(r'[>|/\\_]', norm_line):
             return True
@@ -93,17 +108,21 @@ def clean_text(text: str) -> str:
         for tag in soup(["script", "style", "iframe", "noscript"]):
             tag.decompose()
             
-        text = soup.get_text(separator="\n")
+        text = soup.get_text(separator=" | ")
     except Exception:
         # اگر BeautifulSoup خطا داد، از رگکس ساده استفاده کن
         text = re.sub(r'<[^>]+>', '', text)
 
     # ۲. فیلتر کردن خطوط مزاحم (Layer 1 Noise Filtering)
-    lines = text.split('\n')
+    lines = re.split(r'[|\n]', text)
     cleaned_lines = []
     for line in lines:
         if not is_noise_line(line):
-            cleaned_lines.append(line.strip())
+            # Strip artifacts (dots, dashes) often left after removing links
+            line = line.strip(' .-_')
+            line = re.sub(r'\s+', ' ', line).strip()
+            if line:
+                cleaned_lines.append(line)
     
     text = " ".join(cleaned_lines)
 
