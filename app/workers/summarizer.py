@@ -376,7 +376,8 @@ def process_pending_trends():
                     title=trend.title,
                     summary=trend.summary,
                     category=trend.category,
-                    url=target_url
+                    url=target_url,
+                    image_path=trend.cover_image
                 )
                 
                 if success:

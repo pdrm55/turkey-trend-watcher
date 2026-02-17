@@ -51,14 +51,14 @@ class ImageProcessor:
         stat = ImageStat.Stat(greyscale_image)
         return stat.mean[0]
 
-    def process_image_data(self, image_data):
-        """تغییر سایز، برش، واترمارک و تبدیل به WebP"""
+    def process_image_data(self, image_data, source_name="Bilinmiyor"):
+        """تغییر سایز، برش، واترمارک دوگانه (برند + منبع) و تبدیل به WebP"""
         try:
             img = Image.open(io.BytesIO(image_data))
             
             # ۱. حذف ۵۰ پیکسل پایین (برای پاک‌سازی واترمارک‌های منبع اصلی)
             w, h = img.size
-            if h > 150: 
+            if h > 100: 
                 img = img.crop((0, 0, w, h - 50))
             
             # ۲. تغییر سایز با حفظ نسبت ابعاد (عرض ثابت ۸۰۰)
@@ -67,9 +67,10 @@ class ImageProcessor:
             new_h = int(TARGET_WIDTH * aspect_ratio)
             img = img.resize((TARGET_WIDTH, new_h), Image.Resampling.LANCZOS)
             
-            # ۳. واترمارک هوشمند
-            font_size = 22
-            padding = 20
+            # ۳. تنظیمات واترمارک
+            draw = ImageDraw.Draw(img)
+            font_size = 20
+            padding = 15
             
             try:
                 # مسیر فونت در کانتینر لینوکسی
@@ -77,31 +78,49 @@ class ImageProcessor:
             except:
                 font = ImageFont.load_default()
 
-            # محاسبه ابعاد متن
-            if hasattr(font, 'getbbox'):
-                bbox = font.getbbox(WATERMARK_TEXT)
-                text_w = bbox[2] - bbox[0]
-                text_h = bbox[3] - bbox[1]
-            else:
-                text_w, text_h = 100, 20
+            # تابع کمکی برای درج متن با کنتراست هوشمند
+            def draw_smart_text(text, align='left'):
+                # محاسبه ابعاد متن
+                if hasattr(font, 'getbbox'):
+                    bbox = font.getbbox(text)
+                    text_w = bbox[2] - bbox[0]
+                    text_h = bbox[3] - bbox[1]
+                else:
+                    text_w, text_h = font.getsize(text)
 
-            x = TARGET_WIDTH - text_w - padding
-            y = new_h - text_h - padding
+                # تعیین موقعیت
+                if align == 'right':
+                    # پایین سمت راست (نام منبع)
+                    x = TARGET_WIDTH - text_w - padding
+                else:
+                    # پایین سمت چپ (برند)
+                    x = padding
+                
+                y = new_h - text_h - padding
+                
+                # تحلیل روشنایی دقیقاً در محل درج متن
+                box = (max(0, x-5), max(0, y-5), min(TARGET_WIDTH, x + text_w + 5), min(new_h, y + text_h + 5))
+                watermark_area = img.crop(box)
+                lum = self.get_luminance(watermark_area)
+                
+                # کنتراست خودکار
+                text_color = (255, 255, 255) if lum < 128 else (0, 0, 0)
+                shadow_color = (0, 0, 0) if lum < 128 else (255, 255, 255)
+                
+                # رسم سایه و متن
+                draw.text((x+1, y+1), text, font=font, fill=shadow_color)
+                draw.text((x, y), text, font=font, fill=text_color)
+
+            # درج نام برند در سمت چپ
+            draw_smart_text(WATERMARK_TEXT, align='left')
+
+            # درج نام منبع در سمت راست
+            display_source = f"Kaynak: {source_name}"
+            if len(display_source) > 30:
+                display_source = display_source[:27] + "..."
+            draw_smart_text(display_source, align='right')
             
-            # تحلیل روشنایی دقیقاً در محل درج متن
-            watermark_area = img.crop((max(0, x-5), max(0, y-5), min(TARGET_WIDTH, x + text_w + 5), min(new_h, y + text_h + 5)))
-            lum = self.get_luminance(watermark_area)
-            
-            # کنتراست خودکار: محیط تیره -> متن سفید | محیط روشن -> متن مشکی
-            text_color = (255, 255, 255) if lum < 128 else (0, 0, 0)
-            shadow_color = (0, 0, 0) if lum < 128 else (255, 255, 255)
-            
-            draw = ImageDraw.Draw(img)
-            # رسم یک سایه بسیار نرم برای خوانایی بیشتر
-            draw.text((x+1, y+1), WATERMARK_TEXT, font=font, fill=shadow_color)
-            draw.text((x, y), WATERMARK_TEXT, font=font, fill=text_color)
-            
-            # ۴. خروجی به فرمت WebP با کیفیت بهینه
+            # ۴. خروجی به فرمت WebP
             output = io.BytesIO()
             img.save(output, format="WEBP", quality=80)
             return output.getvalue(), TARGET_WIDTH, new_h
@@ -163,8 +182,7 @@ class ImageProcessor:
         now = datetime.now()
         year, month, day = now.strftime("%Y"), now.strftime("%m"), now.strftime("%d")
         
-        rel_dir = os.path.join(year, month, day)
-        folder_path = os.path.join(MEDIA_ROOT, rel_dir)
+        folder_path = os.path.join(MEDIA_ROOT, year, month, day)
         os.makedirs(folder_path, exist_ok=True)
         
         filename = f"{uuid.uuid4()}.webp"
@@ -215,8 +233,9 @@ class ImageProcessor:
                         db.commit()
                         continue
                         
-                    # ۲. منطق پردازش تصویر
-                    processed_data, w, h = self.process_image_data(image_data)
+                    # ۲. منطق پردازش تصویر (با نام منبع)
+                    current_source = news.source_name if news.source_name else "TrendiaTR"
+                    processed_data, w, h = self.process_image_data(image_data, current_source)
                     
                     if not processed_data:
                         news.media_status = -1

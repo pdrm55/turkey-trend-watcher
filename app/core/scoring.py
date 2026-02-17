@@ -260,13 +260,13 @@ class TPSCalculator:
         
         # --- فاز ۶.۲: مدیریت هشدار آسنکرون ---
         # فقط به ادمین اطلاع می‌دهد. انتشار خودکار (Auto-Pilot) توسط Summarizer انجام می‌شود.
-        if final_tps >= Config.THRESHOLD_ADMIN_ALERT and trend.previous_tps < Config.THRESHOLD_ADMIN_ALERT:
-            alert_service.send_admin_alert(
-                title=trend.title or ref_doc[:60],
-                tps=final_tps,
-                trajectory=trend.trajectory,
-                cluster_id=trend.cluster_id
-            )
+        # if final_tps >= Config.THRESHOLD_ADMIN_ALERT and trend.previous_tps < Config.THRESHOLD_ADMIN_ALERT:
+        #     alert_service.send_admin_alert(
+        #         title=trend.title or ref_doc[:60],
+        #         tps=final_tps,
+        #         trajectory=trend.trajectory,
+        #         cluster_id=trend.cluster_id
+        #     )
 
         # ۶. ذخیره‌سازی داده‌ها در آبجکت دیتابیس
         trend.previous_tps = trend.final_tps

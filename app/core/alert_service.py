@@ -72,7 +72,7 @@ class AlertService:
         }
         return self._send("sendMessage", payload)
 
-    def publish_to_channel(self, title, summary, category, url):
+    def publish_to_channel(self, title, summary, category, url, image_path=None):
         """انتشار خبر در کانال عمومی تلگرام (اتوماسیون کامل)"""
         if not self.channel_id: return False
         
@@ -95,17 +95,30 @@ class AlertService:
             f"{clean_summary}\n"
         )
         
-        payload = {
-            "chat_id": self.channel_id,
-            "text": msg,
-            "parse_mode": "HTML",
-            "reply_markup": {
-                "inline_keyboard": [[
-                    {"text": "🚀 Haberin Tamamını Oku", "url": url}
-                ]]
-            }
+        reply_markup = {
+            "inline_keyboard": [[
+                {"text": "🚀 Haberin Tamamını Oku", "url": url}
+            ]]
         }
-        return self._send("sendMessage", payload)
+
+        if image_path:
+            full_image_url = f"{Config.BASE_SITE_URL}/static/{image_path}"
+            payload = {
+                "chat_id": self.channel_id,
+                "photo": full_image_url,
+                "caption": msg,
+                "parse_mode": "HTML",
+                "reply_markup": reply_markup
+            }
+            return self._send("sendPhoto", payload)
+        else:
+            payload = {
+                "chat_id": self.channel_id,
+                "text": msg,
+                "parse_mode": "HTML",
+                "reply_markup": reply_markup
+            }
+            return self._send("sendMessage", payload)
 
 # نمونه‌سازی واحد برای استفاده در کل اپلیکیشن
 alert_service = AlertService()
