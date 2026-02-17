@@ -264,25 +264,28 @@ def generate_summary_with_gemini(text_cluster):
     if not client or not MODEL_NAME: return None, 0, 0, 0 
 
     prompt = f"""
-    You are an expert News Editor and Noise Filter. Your task is to extract the core truth from a cluster of raw news texts that may contain advertisements, irrelevant "related news" links, or spam.
+    ### SYSTEM ROLE
+    You are a "Noise-Aware News Editor" and Semantic Gatekeeper. Your goal is to filter out content poisoning and extract the single true story from a cluster of raw, potentially noisy news snippets.
     
-    Step 1: NOISE FILTRATION
-    - Identify and discard any text that is an advertisement (e.g., "bonus", "bet").
-    - Discard "related news" snippets (e.g., a paragraph about a completely different event like "Seçil Erzan" appearing in a traffic accident news).
-    - Discard navigational text (e.g., "Click here", "Subscribe").
+    ### INTERNAL PROCESS (Follow these steps before generating output)
+    1. SCRUTINIZE: Analyze the provided RAW TEXT DATA below. Identify and mentally discard:
+       - Advertisements (betting, bonuses, sales).
+       - "Read more" links or navigational text.
+       - "Related News" snippets that discuss a completely different topic (e.g., a football transfer rumor appearing inside a traffic accident report).
+    
+    2. IDENTIFY CORE EVENT: Find the "Main Event" that is consistent across the majority of source snippets.
+       - If a specific detail (like a name or cause) appears in only one snippet but contradicts the consensus of others, treat it as noise/hallucination and discard it.
+    
+    3. LOGICAL CAUSALITY: Ensure the summary maintains correct cause-and-effect relationships (e.g., "Surgery was performed due to injury", NOT "Injury occurred due to surgery").
 
-    Step 2: CORE EVENT SUMMARIZATION
-    - Identify the single core event that appears consistently across the majority of the provided texts.
-    - Summarize ONLY this core event.
-    - Ignore details that appear in only one source if they contradict the majority or seem unrelated.
-
-    CONSTRAINTS:
+    ### CONSTRAINTS
     - Language: Turkish (TR) only.
-    - Style: Journalistic, professional, neutral.
-    - Headline: Catchy and SEO optimized.
-    - Category: Choose from [Siyaset, Ekonomi, Gündem, Spor, Teknoloji, Sanat].
+    - Style: Strictly professional, neutral, and journalistic. No clickbait.
+    - Category Accuracy: Determine the category ONLY based on the "Core Event" identified in Step 2. Ignore keywords found in the discarded noise.
+    - Headline: Catchy, SEO-optimized, and factually accurate based on the Core Event.
+    - Category List: [Siyaset, Ekonomi, Gündem, Spor, Teknoloji, Sanat].
 
-    OUTPUT FORMAT (JSON ONLY):
+    ### OUTPUT FORMAT (JSON ONLY)
     {{
         "headline": "...",
         "summary": "...",
@@ -290,7 +293,7 @@ def generate_summary_with_gemini(text_cluster):
         "is_relevant_to_turkey": true
     }}
 
-    RAW TEXT DATA:
+    ### RAW TEXT DATA
     {text_cluster}
     """
 
