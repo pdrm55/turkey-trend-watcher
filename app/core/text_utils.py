@@ -13,6 +13,14 @@ JUNK_KEYWORDS = [
     'burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop', 'astrolog'
 ]
 
+# Layer 1: Structural Noise Patterns (Turkish News Clutter)
+NOISE_PATTERNS = [
+    r'ilgili haber', r'son dakika', r'tıklayın', r'abone ol', 
+    r'takip et', r'daha fazlası için', r'ilginizi çekebilir', 
+    r'haberin devamı', r'gelen aramalar', r'okuma süresi', 
+    r'yayınlanma tarihi'
+]
+
 def normalize_turkish(text: str) -> str:
     """
     Normalizes specific Turkish characters for consistent text processing.
@@ -45,6 +53,27 @@ def is_spam(text: str) -> bool:
             
     return False
 
+def is_noise_line(line: str) -> bool:
+    """
+    Helper to identify structural noise lines in news content.
+    """
+    if not line or not line.strip():
+        return True
+        
+    norm_line = normalize_turkish(line).strip()
+    
+    # 1. Check against noise patterns
+    for pattern in NOISE_PATTERNS:
+        if re.search(pattern, norm_line):
+            return True
+            
+    # 2. Short line heuristics (< 40 chars) with irrelevant symbols
+    if len(norm_line) < 40:
+        if re.search(r'[>|/\\_]', norm_line):
+            return True
+            
+    return False
+
 def clean_text(text: str) -> str:
     """
     پاکسازی پیشرفته متن (بروزرسانی شده برای حذف کدهای HTML)
@@ -58,24 +87,37 @@ def clean_text(text: str) -> str:
     try:
         soup = BeautifulSoup(text, "html.parser")
         # حذف بخش‌هایی که معمولاً حاوی کدهای مزاحم هستند مثل 'İlginizi Çekebilir'
-        for section in soup.find_all("section", class_="mceNonEditable"):
+        for section in soup.find_all(["section", "script", "style", "iframe", "noscript"], class_=lambda x: x and "mceNonEditable" in x):
             section.decompose()
-        text = soup.get_text(separator=" ")
+        # Remove all script and style tags
+        for tag in soup(["script", "style", "iframe", "noscript"]):
+            tag.decompose()
+            
+        text = soup.get_text(separator="\n")
     except Exception:
         # اگر BeautifulSoup خطا داد، از رگکس ساده استفاده کن
         text = re.sub(r'<[^>]+>', '', text)
 
-    # ۲. حذف URLها
+    # ۲. فیلتر کردن خطوط مزاحم (Layer 1 Noise Filtering)
+    lines = text.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        if not is_noise_line(line):
+            cleaned_lines.append(line.strip())
+    
+    text = " ".join(cleaned_lines)
+
+    # ۳. حذف URLها
     text = re.sub(r'http\S+|www\.\S+', '', text)
     
-    # ۳. حذف منشن‌ها و هشتگ‌ها
+    # ۴. حذف منشن‌ها و هشتگ‌ها
     text = re.sub(r'@\w+', '', text)
     text = re.sub(r'#\w+', '', text)
     
-    # ۴. حذف کاراکترهای غیرمجاز (فقط حروف ترکی، اعداد و علائم نگارشی پایه)
+    # ۵. حذف کاراکترهای غیرمجاز (فقط حروف ترکی، اعداد و علائم نگارشی پایه)
     text = re.sub(r'[^\w\sçğıöşüÇĞİÖŞÜ,.?!-]', ' ', text)
     
-    # ۵. پاکسازی فضاهای خالی اضافی
+    # ۶. پاکسازی فضاهای خالی اضافی
     text = re.sub(r'\s+', ' ', text).strip()
     
     return text

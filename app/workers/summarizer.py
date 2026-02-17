@@ -117,7 +117,7 @@ ECONOMY_KEYWORDS = {
 TECHNOLOGY_KEYWORDS = {
     "high": ["apple", "google", "microsoft", "openai", "chatgpt", "yapay zeka", "ai", "siber güvenlik", "baykar", "tusaş", "aselsan", "uzay", "roket", "savunma sanayii", "togg", "insansız hava aracı"],
     "medium": ["yazılım", "donanım", "ios", "android", "akıllı telefon", "işlemci", "güncelleme", "robot", "drone", "uygulama", "blockchain", "kripto para", "bulut bilişim"],
-    "low": ["cihaz", "teknoloji", "dijital", "platform", "şifre", "bağlantı", "hız", "ekran", "fiber", "internet"]
+    "low": ["teknoloji", "fiber altyapı", "5g", "start-up", "girişimcilik"]
 }
 
 POLITICS_KEYWORDS = {
@@ -143,12 +143,12 @@ NEGATIVE_KEYWORDS = {
     "political_vs_sports": {
         "dominant_category": "Spor",
         "keywords": ["galatasaray", "fenerbahçe", "beşiktaş", "trabzonspor", "süper lig", "maç", "gol", "transfer"],
-        "penalty": -60, "affects": ["Siyaset"]
+        "penalty": -100, "affects": ["Siyaset"]
     },
     "political_vs_accident": {
         "dominant_category": "Gündem",
         "keywords": ["deprem", "yangın", "sel", "kaza", "can kaybı", "patlama"],
-        "penalty": -40, "affects": ["Siyaset", "Ekonomi"]
+        "penalty": -80, "affects": ["Siyaset", "Ekonomi"]
     },
     "politics_exclusive": {
         "dominant_category": "Siyaset", 
@@ -199,7 +199,15 @@ def apply_negative_logic(scores: dict, text: str) -> dict:
     return scores
 
 def decide_final_category(ai_category: str, text: str) -> tuple:
-    """Safety guard: Confirms Gemini's category choice against keyword density"""
+    """
+    Layer 4: Density-Based Categorization & Safety Guard.
+    Calculates Keyword Density (Score / Word Count) to prevent noise-based misclassification.
+    """
+    # 1. Calculate Word Count
+    words = text.split()
+    word_count = len(words) if len(words) > 0 else 1
+
+    # 2. Calculate Raw Scores
     scores = {
         "Spor": calculate_keyword_score(text, SPORTS_KEYWORDS),
         "Ekonomi": calculate_keyword_score(text, ECONOMY_KEYWORDS),
@@ -209,13 +217,29 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
         "Gündem": calculate_keyword_score(text, GUNDEM_KEYWORDS)
     }
     
+    # 3. Apply Negative Logic
     scores = apply_negative_logic(scores, text)
-    top_cat = max(scores, key=scores.get)
-    top_score = scores[top_cat]
+    
+    # 4. Calculate Density Scores
+    density_scores = {k: v / word_count for k, v in scores.items()}
+    
+    top_cat = max(density_scores, key=density_scores.get)
+    top_density = density_scores[top_cat]
+    gundem_density = density_scores["Gündem"]
 
-    # Rule: If Gemini choice is weak in keywords but another category is extremely dominant
-    if scores.get(ai_category, 0) < 15 and top_score > 65:
-        return top_cat, True 
+    # 5. Gündem Safety Rule
+    # If the top category isn't Gündem, it must be significantly denser (2x) than Gündem
+    if top_cat != "Gündem":
+        if top_density < (2.0 * gundem_density):
+            return "Gündem", True
+
+    # 6. AI Validation
+    if ai_category == top_cat:
+        return top_cat, False
+        
+    # If AI disagrees, check if AI's choice has reasonable density
+    if density_scores.get(ai_category, 0) < 0.1 and top_density > 0.5:
+        return top_cat, True
 
     return ai_category, False
 
@@ -240,8 +264,18 @@ def generate_summary_with_gemini(text_cluster):
     if not client or not MODEL_NAME: return None, 0, 0, 0 
 
     prompt = f"""
-    You are a professional Turkish news editor. Summarize the following news cluster into a high-quality news post.
+    You are an expert News Editor and Noise Filter. Your task is to extract the core truth from a cluster of raw news texts that may contain advertisements, irrelevant "related news" links, or spam.
     
+    Step 1: NOISE FILTRATION
+    - Identify and discard any text that is an advertisement (e.g., "bonus", "bet").
+    - Discard "related news" snippets (e.g., a paragraph about a completely different event like "Seçil Erzan" appearing in a traffic accident news).
+    - Discard navigational text (e.g., "Click here", "Subscribe").
+
+    Step 2: CORE EVENT SUMMARIZATION
+    - Identify the single core event that appears consistently across the majority of the provided texts.
+    - Summarize ONLY this core event.
+    - Ignore details that appear in only one source if they contradict the majority or seem unrelated.
+
     CONSTRAINTS:
     - Language: Turkish (TR) only.
     - Style: Journalistic, professional, neutral.
@@ -334,7 +368,31 @@ def process_pending_trends():
                 news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).limit(15).all()
                 if not news_items: continue
 
-                cluster_text = "\n".join([f"- {n.content[:1000]}" for n in news_items])
+                # --- Layer 2: Semantic Intersection Heuristic ---
+                if len(news_items) > 1:
+                    # 1. Build Global Frequency Map
+                    word_doc_freq = {}
+                    for n in news_items:
+                        words = set(normalize_turkish_local(n.content).split())
+                        for w in words:
+                            if len(w) > 3: word_doc_freq[w] = word_doc_freq.get(w, 0) + 1
+                    
+                    # 2. Identify Consensus Vocabulary (> 50% of sources)
+                    threshold = len(news_items) / 2
+                    consensus_vocab = {w for w, count in word_doc_freq.items() if count > threshold}
+                    
+                    # 3. Filter Paragraphs
+                    filtered_lines = []
+                    for n in news_items:
+                        for p in n.content.split('\n'):
+                            p = p.strip()
+                            if len(p) < 40: continue
+                            overlap = len(set(normalize_turkish_local(p).split()).intersection(consensus_vocab))
+                            if overlap >= 2: filtered_lines.append(f"- {p}")
+                    
+                    cluster_text = "\n".join(filtered_lines) if len(filtered_lines) > 0 else "\n".join([f"- {n.content[:1000]}" for n in news_items])
+                else:
+                    cluster_text = "\n".join([f"- {n.content[:1000]}" for n in news_items])
 
                 ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text)
                 
