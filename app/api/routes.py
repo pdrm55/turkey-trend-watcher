@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect
-from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings
+from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory
 from sqlalchemy import desc, func
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
@@ -437,6 +437,45 @@ def get_stats():
             "total_news": db.query(RawNews).count(),
             "total_trends": db.query(Trend).filter(Trend.is_active == True).count()
         })
+    finally:
+        db.close()
+
+@api_bp.route('/api/market/live')
+def get_live_market_data():
+    """API endpoint for live market ticker data"""
+    # 1. Try Redis
+    if redis_client:
+        try:
+            cached_data = redis_client.get("market_ticker")
+            if cached_data:
+                response = make_response(cached_data)
+                response.headers['Content-Type'] = 'application/json'
+                response.headers['Cache-Control'] = 'public, max-age=30'
+                return response
+        except Exception as e:
+            logger.error(f"Redis error in market endpoint: {e}")
+
+    # 2. Fallback to DB
+    db = SessionLocal()
+    try:
+        assets = db.query(MarketAsset).filter(MarketAsset.is_active == True).all()
+        data = {}
+        
+        for asset in assets:
+            latest = db.query(MarketHistory)\
+                .filter(MarketHistory.asset_id == asset.id)\
+                .order_by(desc(MarketHistory.timestamp))\
+                .first()
+            
+            if latest:
+                data[asset.symbol] = {"price": latest.price, "change": latest.change_rate}
+        
+        response = jsonify(data)
+        response.headers['Cache-Control'] = 'public, max-age=30'
+        return response
+    except Exception as e:
+        logger.error(f"DB error in market endpoint: {e}")
+        return jsonify({})
     finally:
         db.close()
 

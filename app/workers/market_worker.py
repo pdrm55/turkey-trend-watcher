@@ -9,30 +9,64 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
-# Add project root to sys path
+# اضافه کردن مسیر ریشه پروژه به سیستم
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from app.config import Config
 from app.database.models import SessionLocal, MarketAsset, MarketHistory
 
-# Configure Logging
+# تنظیمات لاگ سیستم
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("MarketWorker")
 
+def safe_float(value):
+    """تبدیل ایمن مقادیر به float پایتون و مدیریت تایپ‌های Numpy و رشته‌های ترکی."""
+    if value is None:
+        return 0.0
+    try:
+        if isinstance(value, str):
+            # جایگزینی کاما با نقطه برای فرمت‌های قیمت ترکی
+            value = value.replace('.', '').replace(',', '.').replace('%', '').strip()
+        return float(value)
+    except Exception:
+        return 0.0
+
 class MarketWorker:
     def __init__(self):
         self.redis_client = None
+        self.last_history_save = 0
         try:
             self.redis_client = redis.from_url(Config.REDIS_URL, decode_responses=True)
             logger.info("✅ Redis Connected for Market Data.")
         except Exception as e:
             logger.error(f"❌ Redis Connection Error: {e}")
 
+    def seed_assets(self):
+        """ایجاد ردیف‌های اولیه در دیتابیس اگر جدول خالی باشد."""
+        db = SessionLocal()
+        try:
+            if db.query(MarketAsset).count() == 0:
+                logger.info("🌱 Seeding initial market assets...")
+                assets = [
+                    MarketAsset(symbol="USDTRY", name="Dolar", asset_type="currency"),
+                    MarketAsset(symbol="EURTRY", name="Euro", asset_type="currency"),
+                    MarketAsset(symbol="GRAM-ALTIN", name="Gram Altın", asset_type="gold"),
+                    MarketAsset(symbol="BIST100", name="Borsa İstanbul", asset_type="stock")
+                ]
+                db.add_all(assets)
+                db.commit()
+                logger.info("✅ Seeding complete.")
+        except Exception as e:
+            logger.error(f"❌ Seeding Error: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
     def fetch_bigpara_data(self):
-        """Scrapes currency and gold data from BigPara"""
+        """استخراج داده‌های ارز و طلا از BigPara"""
         url = "https://bigpara.hurriyet.com.tr/doviz/"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -42,39 +76,28 @@ class MarketWorker:
         try:
             response = requests.get(url, headers=headers, timeout=10)
             if response.status_code != 200:
-                logger.error(f"BigPara HTTP Error: {response.status_code}")
                 return {}
 
             soup = BeautifulSoup(response.content, "html.parser")
             
-            # Mapping BigPara labels to our symbols
-            # Note: Selectors might need adjustment if BigPara changes layout
-            # This is a generic robust selector strategy
-            items = soup.select(".dovizBar .dbItem")
-            
+            # استخراج از باکس‌های قیمت (Kur Boxes)
+            items = soup.select(".kurBox")
             for item in items:
                 try:
-                    label = item.select_one(".dbType").text.strip()
-                    price_str = item.select_one(".dbValue").text.strip().replace(',', '.')
-                    change_str = item.select_one(".dbChange").text.strip().replace('%', '').replace(',', '.')
-                    
-                    price = float(price_str)
-                    change = float(change_str)
+                    label = item.select_one(".kurTitle, .kurBoxTitle").text.strip().upper()
+                    price = safe_float(item.select_one(".value").text)
+                    change_tag = item.select_one(".change")
+                    change = safe_float(change_tag.text) if change_tag else 0.0
                     
                     symbol = None
                     if "DOLAR" in label: symbol = "USDTRY"
                     elif "EURO" in label: symbol = "EURTRY"
-                    elif "GRAM ALTIN" in label: symbol = "GRAM-ALTIN"
+                    elif "ALTIN" in label and "GRAM" in label: symbol = "GRAM-ALTIN"
                     
                     if symbol:
                         data[symbol] = {"price": price, "change": change}
-                        
-                except Exception as e:
+                except:
                     continue
-                    
-            # Fallback for ONS if not in header bar
-            # (Implementation simplified for reliability, can be expanded)
-            data["ONS"] = {"price": 0.0, "change": 0.0} # Placeholder if not scraped
             
             return data
         except Exception as e:
@@ -82,38 +105,38 @@ class MarketWorker:
             return {}
 
     def fetch_bist100(self):
-        """Fetches BIST 100 data using yfinance"""
+        """دریافت شاخص BIST 100 با استفاده از yfinance"""
         try:
             ticker = yf.Ticker("XU100.IS")
+            # دریافت دیتای ۲ روز اخیر برای محاسبه درصد تغییر دقیق
             hist = ticker.history(period="2d")
             
-            if len(hist) < 2:
-                # If market just opened or data is scarce, use regular info
-                info = ticker.info
-                price = info.get('regularMarketPrice', 0)
-                prev_close = info.get('previousClose', price)
-            else:
-                price = hist['Close'].iloc[-1]
+            if hist.empty:
+                return {}
+            
+            price = hist['Close'].iloc[-1]
+            if len(hist) > 1:
                 prev_close = hist['Close'].iloc[-2]
+                change = ((price - prev_close) / prev_close) * 100
+            else:
+                change = 0.0
             
-            change = ((price - prev_close) / prev_close) * 100
-            
-            return {"BIST100": {"price": price, "change": change}}
+            return {"BIST100": {"price": safe_float(price), "change": safe_float(change)}}
         except Exception as e:
             logger.error(f"YFinance Error: {e}")
             return {}
 
     def update_cache(self, data):
-        """Updates Redis cache with latest market data"""
+        """آپدیت کش Redis برای نمایش در Ticker سایت"""
         if not self.redis_client or not data: return
         try:
-            self.redis_client.setex("market_ticker", 120, json.dumps(data))
+            self.redis_client.setex("market_ticker", 300, json.dumps(data))
             logger.info("✅ Redis Cache Updated")
         except Exception as e:
             logger.error(f"Redis Update Error: {e}")
 
     def save_history(self, data):
-        """Saves snapshot to PostgreSQL history table"""
+        """ذخیره وضعیت در جدول تاریخچه دیتابیس"""
         if not data: return
         
         db = SessionLocal()
@@ -121,13 +144,15 @@ class MarketWorker:
             assets = db.query(MarketAsset).filter(MarketAsset.is_active == True).all()
             asset_map = {a.symbol: a.id for a in assets}
             
+            timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
+            
             for symbol, values in data.items():
                 if symbol in asset_map:
                     history = MarketHistory(
                         asset_id=asset_map[symbol],
-                        price=values['price'],
-                        change_rate=values['change'],
-                        timestamp=datetime.now(timezone.utc).replace(tzinfo=None)
+                        price=safe_float(values['price']),
+                        change_rate=safe_float(values['change']),
+                        timestamp=timestamp
                     )
                     db.add(history)
             
@@ -141,24 +166,32 @@ class MarketWorker:
 
     def run(self):
         logger.info("🚀 Market Worker Started")
-        history_counter = 0
+        # اطمینان از وجود دارایی‌ها در دیتابیس
+        self.seed_assets()
+        
+        last_history_time = 0
         
         while True:
-            # 1. Fetch Data
-            market_data = self.fetch_bigpara_data()
-            bist_data = self.fetch_bist100()
-            market_data.update(bist_data)
+            try:
+                # ۱. جمع‌آوری داده‌ها
+                market_data = self.fetch_bigpara_data()
+                bist_data = self.fetch_bist100()
+                market_data.update(bist_data)
+                
+                if market_data:
+                    # ۲. آپدیت کش (در هر چرخه)
+                    self.update_cache(market_data)
+                    
+                    # ۳. ذخیره تاریخچه (هر ۱۵ دقیقه)
+                    current_time = time.time()
+                    if current_time - last_history_time >= 900: # 900 seconds = 15 mins
+                        self.save_history(market_data)
+                        last_history_time = current_time
+                
+            except Exception as e:
+                logger.error(f"Loop error: {e}")
             
-            # 2. Update Cache (Every cycle)
-            self.update_cache(market_data)
-            
-            # 3. Save History (Every 15 cycles -> 15 mins)
-            if history_counter >= 15:
-                self.save_history(market_data)
-                history_counter = 0
-            else:
-                history_counter += 1
-            
+            # انتظار ۶۰ ثانیه برای دور بعدی
             time.sleep(60)
 
 if __name__ == "__main__":

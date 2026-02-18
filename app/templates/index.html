@@ -57,6 +57,13 @@
 </head>
 <body class="min-h-screen p-4 md:p-8 pb-20">
 
+    <!-- Financial Ticker Bar -->
+    <div class="bg-slate-900 text-white py-2 px-4 mb-6 rounded-xl shadow-sm overflow-x-auto whitespace-nowrap custom-scroll">
+        <div id="market-ticker" class="flex items-center gap-6 text-[10px] font-bold tracking-wider justify-center md:justify-start min-w-max">
+            <span class="text-slate-500 animate-pulse">Piyasa verileri yükleniyor...</span>
+        </div>
+    </div>
+
     <!-- Header Section -->
     <header class="max-w-7xl mx-auto mb-6 flex flex-col md:flex-row justify-between items-center border-b border-slate-200 pb-6">
         <div class="mb-4 md:mb-0 flex items-center gap-4">
@@ -321,6 +328,33 @@
             } catch (e) {}
         }
 
+        async function fetchMarketData() {
+            try {
+                const res = await fetch('/api/market/live');
+                const data = await res.json();
+                const container = document.getElementById('market-ticker');
+                
+                if (Object.keys(data).length === 0) return;
+
+                container.innerHTML = Object.entries(data).map(([symbol, values]) => {
+                    const changeClass = values.change >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const arrow = values.change >= 0 ? '▲' : '▼';
+                    const displayName = symbol.replace('USDTRY', 'DOLAR').replace('EURTRY', 'EURO').replace('GRAM-ALTIN', 'GRAM ALTIN').replace('BIST100', 'BIST 100');
+                    
+                    return `
+                        <div class="flex items-center gap-2">
+                            <span class="text-slate-400">${displayName}</span>
+                            <span class="text-white">${values.price.toFixed(2)}</span>
+                            <span class="${changeClass} flex items-center gap-0.5">
+                                ${arrow} %${Math.abs(values.change).toFixed(2)}
+                            </span>
+                        </div>
+                        <div class="w-px h-3 bg-slate-700 mx-2"></div>
+                    `;
+                }).join('').slice(0, -42); // Remove last separator div
+            } catch (e) {}
+        }
+
         function setCategory(event, cat) {
             if (event && (event.ctrlKey || event.metaKey)) return; 
             if (event) event.preventDefault();
@@ -466,12 +500,16 @@
         // Init routine
         fetchHot();
         fetchTimeline();
+        fetchMarketData();
         document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
         
         // Auto-refresh hot trends every 2 mins
         setInterval(() => {
             fetchHot();
         }, 120000);
+        
+        // Refresh market data every 60s
+        setInterval(fetchMarketData, 60000);
 
         window.onpopstate = () => closeModal();
     </script>
