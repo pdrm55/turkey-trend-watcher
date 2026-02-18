@@ -11,7 +11,7 @@ from google.genai import types
 # Add project root to sys path for internal imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from app.database.models import SessionLocal, Trend, RawNews, SystemSettings
-from sqlalchemy import desc, or_, and_
+from sqlalchemy import desc, or_, and_, func
 from app.config import Config
 from app.core.indexing_utils import notify_google 
 from app.core.text_utils import slugify_turkish 
@@ -103,39 +103,39 @@ if GOOGLE_API_KEY:
 # ==========================================
 
 SPORTS_KEYWORDS = {
-    "high": ["futbol", "süper lig", "şampiyonlar ligi", "avrupa ligi", "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "milli takım", "voleybol", "basketbol", "derbi", "puan durumu", "teknik direktör", "gol kralı", "fikstür"],
-    "medium": ["penaltı", "transfer", "kadro", "madalya", "şampiyon", "kupa", "bonservis", "sarı kart", "kırmızı kart", "ofsayt", "var incelemesi"],
-    "low": ["maç", "skor", "takım", "kulüp", "hakem", "oyuncu", "antrenman", "karşılaşma"]
+    "high": ["futbol", "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "samsunspor", "antalyaspor", "kasımpaşa", "başakşehir", "sivasspor", "adana demirspor", "konyaspor", "alanyaspor", "göztepe", "eyüpspor", "bodrum fk", "rizespor", "uefa", "şampiyonlar ligi", "avrupa ligi", "konferans ligi", "milli takım", "voleybol", "basketbol", "derbi", "puan durumu", "teknik direktör", "transfer haberi", "bonservis", "euroleague", "nba", "wimbledon", "grand slam", "olimpiyat", "altın ayakkabı"],
+    "medium": ["penaltı", "gol kralı", "kadro", "madalya", "şampiyon", "kupa", "sarı kart", "kırmızı kart", "ofsayt", "var incelemesi", "stadyum", "idman", "deplasman", "fikstür", "kura çekimi", "antrenör", "scout"],
+    "low": ["maç", "skor", "takım", "kulüp", "hakem", "oyuncu", "antrenman", "karşılaşma", "lig"]
 }
 
 ECONOMY_KEYWORDS = {
-    "high": ["enflasyon", "faiz", "zam", "maaş", "borsa istanbul", "bist 100", "tcmb", "merkez bankası", "dolar/tl", "euro/tl", "akaryakıt", "halka arz", "asgari ücret", "emekli zammı", "vergi artışı"],
-    "medium": ["tüfe", "üfe", "ihracat", "ithalat", "gsyh", "kredi", "vergi", "bütçe", "cari açık", "döviz kuru", "altın fiyatları", "temettü", "spk", "kap"],
-    "low": ["fiyat", "artış", "yatırım", "borç", "şirket", "piyasa", "kar", "zarar", "maliyet", "tüketici", "alım gücü"]
+    "high": ["enflasyon", "tcmb", "merkez bankası", "faiz kararı", "borsa istanbul", "bist 100", "dolar/tl", "euro/tl", "akaryakıt", "halka arz", "asgari ücret", "emekli zammı", "vergi artışı", "cari açık", "gsyh", "kripto para", "bitcoin", "ethereum", "moody's", "fitch", "s&p"],
+    "medium": ["tüfe", "üfe", "ihracat", "ithalat", "kredi notu", "mevduat", "swap", "altın fiyatları", "temettü", "kap bildirimi", "resesyon", "konkordato", "vergi paketi", "bütçe", "alım gücü"],
+    "low": ["fiyat", "artış", "yatırım", "borç", "şirket", "piyasa", "kar", "zarar", "maliyet", "tüketici", "zam", "maas"]
 }
 
 TECHNOLOGY_KEYWORDS = {
-    "high": ["apple", "google", "microsoft", "openai", "chatgpt", "yapay zeka", "ai", "siber güvenlik", "baykar", "tusaş", "aselsan", "uzay", "roket", "savunma sanayii", "togg", "insansız hava aracı"],
-    "medium": ["yazılım", "donanım", "ios", "android", "akıllı telefon", "işlemci", "güncelleme", "robot", "drone", "uygulama", "blockchain", "kripto para", "bulut bilişim"],
-    "low": ["teknoloji", "fiber altyapı", "5g", "start-up", "girişimcilik"]
+    "high": ["yapay zeka", "ai", "openai", "chatgpt", "deepfake", "siber güvenlik", "baykar", "tusaş", "aselsan", "savunma sanayii", "togg", "iha", "siha", "uzay", "roket", "spacex", "starlink", "kuantum", "yarı iletken", "yazılım güncellemesi"],
+    "medium": ["apple", "google", "microsoft", "tesla", "meta", "instagram", "tiktok", "x twitter", "threads", "5g", "6g", "bulut bilişim", "robot", "drone", "uygulama", "blockchain", "donanım", "çip krizi", "siber saldırı", "veri sızıntısı"],
+    "low": ["dijital", "internet", "platform", "fiber", "akıllı telefon", "işlemci", "otonom"]
 }
 
 POLITICS_KEYWORDS = {
-    "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "ak parti", "chp", "mhp", "tbmm", "meclis", "başkan", "kabine", "seçim", "ysk", "anayasa", "bakanlığı"],
-    "medium": ["miting", "aday", "ittifak", "yasa", "kanun", "zirve", "diplomasi", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge"],
-    "low": ["açıklama", "toplantı", "karar", "kriz", "gündem", "lider", "tepki", "eleştiri", "ziyaret", "diplomatik"]
+    "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "mansur yavaş", "ak parti", "chp", "mhp", "dem partisi", "iyi parti", "zafer partisi", "tbmm", "meclis", "kabine", "ysk", "anayasa", "beyaz saray", "kremlin", "pentagon"],
+    "medium": ["seçim anketi", "erken seçim", "ittifak", "yasa", "kanun", "zirve", "diplomasi", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge", "koalisyon", "gensoru", "torba yasa"],
+    "low": ["açıklama", "toplantı", "karar", "bakanlık", "lider", "tepki", "eleştiri", "ziyaret", "gündem"]
 }
 
 ART_KEYWORDS = {
-    "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "albüm", "tarkan", "sezen aksu", "magazin", "ünlü", "cem yılmaz"],
-    "medium": ["vizyon", "gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "sosyal medya", "instagram"],
-    "low": ["izle", "dinle", "eğlence", "moda", "tarz", "trend", "stil", "kırmızı halı", "tiktok", "paylaşım"]
+    "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "albüm", "tarkan", "sezen aksu", "cem yılmaz", "oscar", "altın portakal", "cannes", "bienal", "netflix", "disney+", "bluetv"],
+    "medium": ["vizyon", "gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "influencer", "gişe rekoru", "tiyatro", "prömiyer"],
+    "low": ["izle", "dinle", "eğlence", "magazin", "ünlü", "moda", "tarz", "viral", "ödül töreni"]
 }
 
 GUNDEM_KEYWORDS = {
-    "high": ["deprem", "yangın", "kaza", "sel", "cinayet", "operasyon", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına"],
-    "medium": ["vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "don", "sağanak"],
-    "low": ["haber", "olay", "hava durumu", "sıcaklık", "belediye", "valilik", "hizmet", "duyuru"]
+    "high": ["deprem", "yangın", "sel", "cinayet", "kaza", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına", "son dakika", "flaş haber", "acil durum"],
+    "medium": ["vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "sağanak", "ağır ceza", "müebbet", "dolandırıcılık", "gasp", "hırsızlık"],
+    "low": ["haber", "olay", "hava durumu", "sıcaklık", "belediye", "valilik", "hizmet", "duyuru", "trafik yoğunluğu"]
 }
 
 # Cross-category penalties for classification refinement
@@ -238,10 +238,10 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
     }
 
     # 5. Gündem Safety Rule
-    # If the top category isn't Gündem, it must be significantly denser (2.2x) than Gündem
+    # If the top category isn't Gündem, it must be significantly denser (1.8x) than Gündem
     if top_cat != "Gündem":
-        # Rule A: Density Threshold (2.2x)
-        if top_density < (2.2 * gundem_density):
+        # Rule A: Density Threshold (1.8x)
+        if top_density < (1.8 * gundem_density):
             return "Gündem", True
             
         # Rule B: High-Weight Keyword Count (< 2 matches forces Gündem)
@@ -308,6 +308,9 @@ def generate_summary_with_gemini(text_cluster):
        - If sources provide contradicting facts or numbers, DO NOT pick one at random.
        - Report the discrepancy in the summary using phrases like "Sources report varying figures between X and Y" or "While some sources claim X, others report Y".
        - Ensure the summary reflects the consensus of Tier 1 sources but acknowledges minority reports if they are significant.
+
+    ### EVOLUTIONARY CONTEXT:
+    The provided text may contain updates to an older story. If the new data contains a definitive outcome, final score, or major update that makes the previous context obsolete, overwrite the previous headline and summary with the most recent and important 'Core Event'.
 
     ### CONSTRAINTS
     - Language: Turkish (TR) only.
@@ -383,7 +386,14 @@ def process_pending_trends():
             or_(Trend.summary == None, Trend.summary == "")
         )
         
-        # B) Needs Publishing: High score (>Threshold) but not yet published to Telegram
+        # B) Needs Update: Significant new messages since last summary (Event Evolution)
+        condition_needs_update = and_(
+            Trend.final_tps >= 20,
+            Trend.summary != None,
+            (Trend.message_count - func.coalesce(Trend.last_summary_msg_count, 0)) >= 5
+        )
+        
+        # C) Needs Publishing: High score (>Threshold) but not yet published to Telegram
         condition_needs_publish = and_(
             Trend.final_tps >= publish_threshold,
             Trend.is_published == False
@@ -392,7 +402,7 @@ def process_pending_trends():
         # 3. Query with OR logic
         pending_trends = db.query(Trend).filter(
             Trend.is_active == True,
-            or_(condition_needs_summary, condition_needs_publish)
+            or_(condition_needs_summary, condition_needs_update, condition_needs_publish)
         ).order_by(desc(Trend.final_tps)).limit(5).all()
 
         if not pending_trends: return False
@@ -400,11 +410,18 @@ def process_pending_trends():
         print(f"✍️  Processing {len(pending_trends)} Actionable Trends...")
 
         for trend in pending_trends:
-            # --- Phase 1: Content Generation (If summary missing) ---
+            # --- Phase 1: Content Generation (If summary missing OR needs update) ---
+            needs_content = False
             if not trend.summary:
-                print(f"   🧠 Generating summary for: {trend.title[:30]}...")
+                needs_content = True
+            elif (trend.message_count - (trend.last_summary_msg_count or 0)) >= 5:
+                needs_content = True
+
+            if needs_content:
+                print(f"   🧠 Generating/Updating summary for: {trend.title[:30]}...")
                 
-                news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).limit(15).all()
+                # Use latest 7 news items for consensus (Layer 2) to prioritize recent updates
+                news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(7).all()
                 if not news_items: continue
 
                 # --- Layer 2: Semantic Intersection Heuristic ---
@@ -452,12 +469,15 @@ def process_pending_trends():
                     if ai_result.get("has_conflicting_data"):
                         print(f"   ⚠️ Conflict Detected: {ai_result.get('conflict_details')}")
                     
-                    # SEO CRITICAL: Upgrade temporary slug to professional slug
-                    trend.slug = generate_unique_slug(db, trend.title, trend.id)
+                    # SEO CRITICAL: Only set slug if it's missing (Preserve original slug during updates)
+                    if not trend.slug:
+                        trend.slug = generate_unique_slug(db, trend.title, trend.id)
+                    
                     trend.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
+                    trend.last_summary_msg_count = trend.message_count
 
-                    print(f"   ✅ Summarized: [{trend.category}] {trend.title} (TPS: {trend.final_tps:.1f})")
-                    print(f"   🚀 SEO Slug: /trend/{trend.slug}")
+                    print(f"   ✅ Summarized/Updated: [{trend.category}] {trend.title} (TPS: {trend.final_tps:.1f})")
+                    if not trend.slug: print(f"   🚀 SEO Slug: /trend/{trend.slug}")
                     
                     # Save and Log Stats
                     log_to_csv(trend.id, MODEL_NAME, in_tok, out_tok, duration, trend.category, "Success")

@@ -39,7 +39,8 @@ def get_source_tier(source_name: str) -> int:
 # --- لیست کلمات کلیدی بحرانی برای تقویت آنی امتیاز (Strategic Boost) ---
 CRITICAL_KEYWORDS = {
     "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör", "faci", "şehit"],
-    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber", "son dakika", "kararname"]
+    "sports_gold": ["tarihi zafer", "tarihi galibiyet", "rekor", "şampiyon", "mağlup etti"],
+    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber", "son dakika", "kararname", "tur atladı", "çeyrek final", "yarı final", "final"]
 }
 
 class TPSCalculator:
@@ -60,6 +61,8 @@ class TPSCalculator:
         
         if any(word in text_norm for word in CRITICAL_KEYWORDS["high"]):
             return 1.6  # ۶۰ درصد تقویت برای اخبار حیاتی (زلزله، انفجار و غیره)
+        elif any(word in text_norm for word in CRITICAL_KEYWORDS["sports_gold"]):
+            return 1.6  # ۶۰ درصد تقویت برای رویدادهای ورزشی تاریخی
         elif any(word in text_norm for word in CRITICAL_KEYWORDS["medium"]):
             return 1.25 # ۲۵ درصد تقویت برای اخبار مهم سیاسی/اقتصادی
         return 1.0
@@ -80,9 +83,20 @@ class TPSCalculator:
         last_time = arrivals[-1].timestamp
         
         # محاسبه فاصله زمانی به دقیقه (حداقل ۱ دقیقه لحاظ می‌شود)
-        duration_mins = max(1.0, (last_time - first_time).total_seconds() / 60.0)
+        raw_duration = (last_time - first_time).total_seconds() / 60.0
+        duration_mins = max(1.0, raw_duration)
+        
+        # For sports, sustained updates are common, so we compress time to boost velocity
+        trend = self.db.query(Trend).get(trend_id)
+        if trend and trend.category == "Spor":
+            duration_mins *= 0.6
         
         velocity = 35 * math.log2(1 + (source_count / duration_mins))
+        
+        # Viral Multiplier for high volume
+        if source_count > 20: velocity += 40
+        elif source_count > 10: velocity += 20
+            
         return min(100.0, velocity)
 
     def calculate_acceleration(self, trend_id: int) -> str:
