@@ -34,7 +34,7 @@ class ImageProcessor:
     def __init__(self):
         # مقداردهی کلاینت تلگرام (فقط یک بار متصل می‌شود)
         self.client = TelegramClient(
-            'ttw_session', 
+            'ttw_image', 
             Config.TELEGRAM_API_ID, 
             Config.TELEGRAM_API_HASH
         )
