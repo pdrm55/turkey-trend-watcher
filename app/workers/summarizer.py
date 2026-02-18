@@ -103,9 +103,33 @@ if GOOGLE_API_KEY:
 # ==========================================
 
 SPORTS_KEYWORDS = {
-    "high": ["futbol", "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "samsunspor", "antalyaspor", "kasımpaşa", "başakşehir", "sivasspor", "adana demirspor", "konyaspor", "alanyaspor", "göztepe", "eyüpspor", "bodrum fk", "rizespor", "uefa", "şampiyonlar ligi", "avrupa ligi", "konferans ligi", "milli takım", "voleybol", "basketbol", "derbi", "puan durumu", "teknik direktör", "transfer haberi", "bonservis", "euroleague", "nba", "wimbledon", "grand slam", "olimpiyat", "altın ayakkabı"],
-    "medium": ["penaltı", "gol kralı", "kadro", "madalya", "şampiyon", "kupa", "sarı kart", "kırmızı kart", "ofsayt", "var incelemesi", "stadyum", "idman", "deplasman", "fikstür", "kura çekimi", "antrenör", "scout"],
-    "low": ["maç", "skor", "takım", "kulüp", "hakem", "oyuncu", "antrenman", "karşılaşma", "lig"]
+    "high": [
+        # --- Turkish Big Teams ---
+        "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "samsunspor", "başakşehir",
+        # --- England (Premier League) ---
+        "manchester city", "arsenal", "liverpool", "manchester united", "chelsea", "tottenham", "aston villa",
+        # --- Spain (La Liga) ---
+        "real madrid", "barcelona", "atletico madrid", "villarreal", "real sociedad", "girona",
+        # --- Italy (Serie A) ---
+        "inter milan", "ac milan", "juventus", "napoli", "as roma", "atalanta", "lazio",
+        # --- Germany (Bundesliga) ---
+        "bayern münih", "borussia dortmund", "bayer leverkusen", "rb leipzig", "stuttgart",
+        # --- France (Ligue 1) ---
+        "psg", "paris saint-germain", "marsilya", "lyon", "monaco", "lille",
+        # --- Global Icons & Players (30+) ---
+        "vinicius", "mbappe", "haaland", "bellingham", "rodri", "de bruyne", "mohamed salah",
+        "harry kane", "lewandowski", "bukayo saka", "phil foden", "florian wirtz", "musiala",
+        "lautaro martinez", "messi", "ronaldo", "luka modric", "neymar", "benzema", "yamal",
+        "griezmann", "bernardo silva", "kimmich", "valverde", "courtois", "alisson", "van dijk",
+        # --- Turkish Stars & Local Heroes ---
+        "arda güler", "kenan yıldız", "hakan çalhanoğlu", "barış alper yılmaz", "icardi",
+        "dzeko", "osimhen", "tadic", "fred", "rafa silva", "en-nesyri",
+        # --- Core Sports Terms ---
+        "futbol", "süper lig", "şampiyonlar ligi", "uefa", "avrupa ligi", "konferans ligi",
+        "derbi", "transfer", "teknik direktör", "euroleague", "nba", "voleybol", "tenis"
+    ],
+    "medium": ["penaltı", "gol", "maç", "skor", "kupa", "madalya", "stadyum", "idman", "fikstür"],
+    "low": ["takım", "oyuncu", "hakem", "antrenman"]
 }
 
 ECONOMY_KEYWORDS = {
@@ -127,8 +151,8 @@ POLITICS_KEYWORDS = {
 }
 
 ART_KEYWORDS = {
-    "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "albüm", "tarkan", "sezen aksu", "cem yılmaz", "oscar", "altın portakal", "cannes", "bienal", "netflix", "disney+", "bluetv"],
-    "medium": ["vizyon", "gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "influencer", "gişe rekoru", "tiyatro", "prömiyer"],
+    "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "oyuncuları", "başrol", "televizyon", "ekranlarda", "vizyon", "albüm", "tarkan", "sezen aksu", "cem yılmaz", "oscar", "altın portakal", "cannes", "bienal", "netflix", "disney+", "bluetv"],
+    "medium": ["gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "influencer", "gişe rekoru", "tiyatro", "prömiyer", "senaryo", "yapımcı", "karakter", "izleyici", "beyaz perde"],
     "low": ["izle", "dinle", "eğlence", "magazin", "ünlü", "moda", "tarz", "viral", "ödül töreni"]
 }
 
