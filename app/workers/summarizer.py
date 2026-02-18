@@ -105,7 +105,7 @@ if GOOGLE_API_KEY:
 SPORTS_KEYWORDS = {
     "high": [
         # --- Turkish Big Teams ---
-        "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "samsunspor", "başakşehir",
+        "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "samsunspor", "başakşehir" ,"Manisa FK", "süper lig","Bandırmaspor", "adana demirspor", "göztepe", "kasımpaşa", "alanyaspor", "antalyaspor",
         # --- England (Premier League) ---
         "manchester city", "arsenal", "liverpool", "manchester united", "chelsea", "tottenham", "aston villa",
         # --- Spain (La Liga) ---

@@ -142,6 +142,18 @@ services:
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/gravity_worker.py
 
+  market_worker:
+    build: .
+    container_name: ttw_market
+    profiles: ["workers"]
+    depends_on:
+      db_init: { condition: service_completed_successfully }
+    volumes: [".:/app"]
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 app/workers/market_worker.py
+
   telegram_bot_worker:
     build: .
     container_name: ttw_interactive_bot

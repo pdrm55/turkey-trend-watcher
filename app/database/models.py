@@ -111,6 +111,30 @@ class SystemSettings(Base):
     value = Column(String(255))
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
+class MarketAsset(Base):
+    """تعریف دارایی‌های مالی (ارز، طلا، بورس)"""
+    __tablename__ = "market_assets"
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), unique=True, index=True)
+    name = Column(String(100))
+    asset_type = Column(String(20)) # currency, gold, stock
+    is_active = Column(Boolean, default=True)
+    
+    history = relationship("MarketHistory", backref="asset", cascade="all, delete-orphan")
+
+class MarketHistory(Base):
+    """تاریخچه قیمتی دارایی‌ها برای رسم نمودار"""
+    __tablename__ = "market_history"
+    id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(Integer, ForeignKey('market_assets.id'), nullable=False)
+    price = Column(Float)
+    change_rate = Column(Float) # درصد تغییر نسبت به روز قبل
+    timestamp = Column(DateTime, default=utc_now)
+
+    __table_args__ = (
+        Index('idx_market_history_asset_ts', 'asset_id', 'timestamp'),
+    )
+
 def init_db():
     """
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
@@ -216,6 +240,25 @@ def init_db():
             if not session.query(SystemSettings).filter_by(key="auto_publish_threshold").first():
                 print("⚙️ Seeding default system settings...")
                 session.add(SystemSettings(key="auto_publish_threshold", value="35.0"))
+                session.commit()
+
+        # 6. داده‌گذاری اولیه بازار مالی (Market Data Seed)
+        with SessionLocal() as session:
+            if session.query(MarketAsset).count() == 0:
+                print("💰 Seeding default market assets...")
+                assets = [
+                    {"symbol": "USDTRY", "name": "Dolar", "asset_type": "currency"},
+                    {"symbol": "EURTRY", "name": "Euro", "asset_type": "currency"},
+                    {"symbol": "GRAM-ALTIN", "name": "Gram Altın", "asset_type": "gold"},
+                    {"symbol": "ONS", "name": "Ons Altın", "asset_type": "gold"},
+                    {"symbol": "BIST100", "name": "Borsa İstanbul", "asset_type": "stock"}
+                ]
+                for a in assets:
+                    session.add(MarketAsset(
+                        symbol=a["symbol"], 
+                        name=a["name"], 
+                        asset_type=a["asset_type"]
+                    ))
                 session.commit()
             
         print("✅ Database synchronization successful. All strategic fields are ready.")
