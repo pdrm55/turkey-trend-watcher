@@ -3,6 +3,7 @@ import os
 import time
 import feedparser
 from datetime import datetime, timezone
+from dateutil import parser as date_parser
 
 # Add project root to sys path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -81,6 +82,17 @@ def fetch_and_process_rss():
                 summary = entry.get('summary', '') or entry.get('description', '')
                 link = entry.get('link', '')
                 
+                # Extract actual publication time
+                pub_date_str = entry.get('published') or entry.get('updated')
+                if pub_date_str:
+                    try:
+                        actual_pub_time = date_parser.parse(pub_date_str).astimezone(timezone.utc).replace(tzinfo=None)
+                    except:
+                        actual_pub_time = current_time_utc
+                else:
+                    actual_pub_time = current_time_utc
+
+                
                 full_text = f"{title}. {summary}"
                 if len(full_text) < 30:
                     continue
@@ -100,7 +112,7 @@ def fetch_and_process_rss():
                 
                 if trend:
                     trend.message_count += 1
-                    trend.last_updated = current_time_utc
+                    trend.last_updated = max(trend.last_updated, actual_pub_time)
                     trend.needs_scoring = True # ASYNC TRIGGER: در صف امتیازدهی قرار گرفت
                     signal_updates_count += 1
                 else:
@@ -110,8 +122,8 @@ def fetch_and_process_rss():
                         message_count=1,
                         title=title[:120].strip(),
                         slug=generate_initial_slug(db, title), # SEO-First
-                        first_seen=current_time_utc,
-                        last_updated=current_time_utc,
+                        first_seen=actual_pub_time,
+                        last_updated=actual_pub_time,
                         needs_scoring=True # ASYNC TRIGGER: در صف امتیازدهی قرار گرفت
                     )
                     db.add(trend)
@@ -126,7 +138,7 @@ def fetch_and_process_rss():
                     source_tier=source_tier,
                     external_id=link,
                     content=full_text,
-                    published_at=current_time_utc,
+                    published_at=actual_pub_time,
                     trend_id=trend.id
                 )
                 db.add(news_item)
@@ -136,7 +148,7 @@ def fetch_and_process_rss():
                 arrival = TrendArrivals(
                     trend_id=trend.id,
                     raw_news_id=news_item.id,
-                    timestamp=current_time_utc
+                    timestamp=actual_pub_time
                 )
                 db.add(arrival)
                 db.commit()

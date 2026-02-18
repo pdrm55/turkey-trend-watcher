@@ -39,8 +39,8 @@ def get_source_tier(source_name: str) -> int:
 # --- لیست کلمات کلیدی بحرانی برای تقویت آنی امتیاز (Strategic Boost) ---
 CRITICAL_KEYWORDS = {
     "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör", "faci", "şehit"],
-    "sports_gold": ["tarihi zafer", "tarihi galibiyet", "rekor", "şampiyon", "mağlup etti"],
-    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber", "son dakika", "kararname", "tur atladı", "çeyrek final", "yarı final", "final"]
+    "sports_gold": ["tarihi zafer", "tarihi galibiyet", "rekor", "şampiyon", "mağlup etti", "tur atladı"],
+    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber", "son dakika", "kararname", "çeyrek final", "yarı final", "final"]
 }
 
 class TPSCalculator:
@@ -85,6 +85,10 @@ class TPSCalculator:
         # محاسبه فاصله زمانی به دقیقه (حداقل ۱ دقیقه لحاظ می‌شود)
         raw_duration = (last_time - first_time).total_seconds() / 60.0
         duration_mins = max(1.0, raw_duration)
+        
+        # Batching Guard: If news arrived too fast (crawler batch), normalize time
+        if duration_mins < 2.0:
+            duration_mins = 5.0
         
         # For sports, sustained updates are common, so we compress time to boost velocity
         trend = self.db.query(Trend).get(trend_id)
@@ -201,12 +205,18 @@ class TPSCalculator:
         unique_source_names = set([n.source_name for n in news_items])
         source_count = len(unique_source_names)
         
-        diversity_multiplier = 1.0
-        if source_count >= 5: diversity_multiplier = 1.35
-        elif source_count >= 3: diversity_multiplier = 1.25
-        elif source_count >= 2: diversity_multiplier = 1.15
+        if source_count == 1:
+            diversity_multiplier = 0.75
+        elif source_count == 2:
+            diversity_multiplier = 0.85
+        else:
+            diversity_multiplier = 1.0 # 3+ sources (Full confidence allowed)
             
         final_conf = base_confidence * diversity_multiplier
+        
+        # Single-Source Safety Guard
+        if source_count == 1:
+            final_conf = min(0.75, final_conf)
         
         # محدودسازی سقف ضریب اطمینان برای جلوگیری از نمایش ۱۵۰٪ در فرانت‌اند
         return min(1.0, final_conf)
@@ -234,7 +244,18 @@ class TPSCalculator:
         if not trend: return None
         
         # دریافت سند مرجع (Reference Document) برای تحلیل معنایی
-        ref_doc = ai_engine.get_cluster_reference_doc(trend.cluster_id)
+        ref_doc = None
+        
+        # Smart Reference Doc: If high volume, pick the longest recent news for better context
+        if trend.message_count > 5:
+            recent_news = self.db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(RawNews.published_at.desc()).limit(3).all()
+            # Pick the one with longest content
+            best_news = max(recent_news, key=lambda x: len(x.content)) if recent_news else None
+            if best_news: ref_doc = best_news.content
+
+        if not ref_doc:
+            ref_doc = ai_engine.get_cluster_reference_doc(trend.cluster_id)
+            
         if not ref_doc:
             # اگر سند مرجع یافت نشد، از اولین خبر موجود استفاده کن
             first_news = self.db.query(RawNews).filter(RawNews.trend_id == trend.id).first()
@@ -259,6 +280,12 @@ class TPSCalculator:
         
         # ۴. محاسبه نهایی TPS و اعمال فیلترهای ایمنی
         final_tps = min(100.0, signal_score * confidence)
+        
+        # Single-Source Penalty (Safety Guard)
+        news_items = self.db.query(RawNews).filter(RawNews.trend_id == trend_id).all()
+        unique_sources = set(n.source_name for n in news_items)
+        if len(unique_sources) == 1:
+            final_tps *= 0.8
         
         # اعمال جریمه (Penalty) برای محتوای زرد یا نظرات شخصی
         normalized_title = normalize_turkish(trend.title or ref_doc[:100])
