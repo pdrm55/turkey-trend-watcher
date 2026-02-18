@@ -133,15 +133,42 @@ SPORTS_KEYWORDS = {
 }
 
 ECONOMY_KEYWORDS = {
-    "high": ["enflasyon", "tcmb", "merkez bankası", "faiz kararı", "borsa istanbul", "bist 100", "dolar/tl", "euro/tl", "akaryakıt", "halka arz", "asgari ücret", "emekli zammı", "vergi artışı", "cari açık", "gsyh", "kripto para", "bitcoin", "ethereum", "moody's", "fitch", "s&p"],
-    "medium": ["tüfe", "üfe", "ihracat", "ithalat", "kredi notu", "mevduat", "swap", "altın fiyatları", "temettü", "kap bildirimi", "resesyon", "konkordato", "vergi paketi", "bütçe", "alım gücü"],
-    "low": ["fiyat", "artış", "yatırım", "borç", "şirket", "piyasa", "kar", "zarar", "maliyet", "tüketici", "zam", "maas"]
+    "high": [
+        # --- Central Banks & Policy ---
+        "tcmb", "merkez bankası", "fed", "ecb", "faiz kararı", "enflasyon", "tüfe", "üfe",
+        # --- Markets & Indices ---
+        "borsa istanbul", "bist 100", "nasdaq", "dow jones", "s&p 500", "wall street", "nikkei", "dax",
+        # --- Currencies & Gold ---
+        "dolar/tl", "euro/tl", "döviz kuru", "altın fiyatları", "gram altın", "çeyrek altın", "ons altın",
+        # --- Crypto Assets ---
+        "kripto para", "bitcoin", "btc", "ethereum", "eth", "binance", "blockchain", "altcoin",
+        # --- Corporate & Macro ---
+        "halka arz", "temettü", "kap bildirimi", "asgari ücret", "emekli zammı", "vergi paketi",
+        "cari açık", "gsyh", "büyüme rakamları", "resesyon", "stagflasyon", "konkordato",
+        # --- Credit Rating ---
+        "moody's", "fitch", "s&p", "msci", "jpmorgan", "goldman sachs"
+    ],
+    "medium": ["ihracat", "ithalat", "mevduat", "swap", "kredi notu", "bütçe açığı", "alım gücü", "maliyet", "tüketici"],
+    "low": ["fiyat", "artış", "borç", "şirket", "piyasa", "kar", "zarar", "zam"]
 }
 
 TECHNOLOGY_KEYWORDS = {
-    "high": ["yapay zeka", "ai", "openai", "chatgpt", "deepfake", "siber güvenlik", "baykar", "tusaş", "aselsan", "savunma sanayii", "togg", "iha", "siha", "uzay", "roket", "spacex", "starlink", "kuantum", "yarı iletken", "yazılım güncellemesi"],
-    "medium": ["apple", "google", "microsoft", "tesla", "meta", "instagram", "tiktok", "x twitter", "threads", "5g", "6g", "bulut bilişim", "robot", "drone", "uygulama", "blockchain", "donanım", "çip krizi", "siber saldırı", "veri sızıntısı"],
-    "low": ["dijital", "internet", "platform", "fiber", "akıllı telefon", "işlemci", "otonom"]
+    "high": [
+        # --- Artificial Intelligence & Models ---
+        "yapay zeka", "ai", "openai", "chatgpt", "gemini", "claude", "deepfake", "makine öğrenmesi",
+        # --- Big Tech Giants ---
+        "nvidia", "apple", "iphone", "google", "alphabet", "microsoft", "microsoft azure", "tesla",
+        "meta", "instagram", "facebook", "whatsapp", "amazon", "netflix", "spacex", "starlink",
+        # --- Turkish Defense & Tech ---
+        "baykar", "tusaş", "aselsan", "savunma sanayii", "togg", "iha", "siha", "kaaan", "hürjet",
+        # --- Hardware & Infrastructure ---
+        "yarı iletken", "çip krizi", "işlemci", "intel", "amd", "tsmc", "5g", "6g", "fiber internet",
+        # --- Cybersecurity & Future ---
+        "siber güvenlik", "siber saldırı", "hacker", "veri sızıntısı", "kuantum", "blockchain",
+        "uzay", "nasa", "roket", "fırlatma", "uydu", "mavi orijin"
+    ],
+    "medium": ["yazılım", "donanım", "bulut bilişim", "cloud", "robot", "drone", "uygulama", "android", "ios", "windows"],
+    "low": ["dijital", "internet", "platform", "akıllı telefon", "otonom", "güncelleme", "şifre"]
 }
 
 POLITICS_KEYWORDS = {
