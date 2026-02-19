@@ -14,6 +14,7 @@ from app.core.ai_engine import ai_engine
 # نکته مهم فاز ۶.۲: ماژول scoring را از اینجا حذف کردیم چون پردازش آسنکرون شده است
 from app.core.scoring import get_source_tier
 from app.core.text_utils import slugify_turkish
+from app.core.classifier import fast_classify
 
 # Path for the monitored channels list
 CHANNELS_FILE = os.path.join(os.path.dirname(__file__), 'channels.txt')
@@ -153,18 +154,23 @@ async def main():
                 else:
                     # New trend detected: Create initial headline and SEO slug immediately
                     initial_title = raw_text[:70].strip() + "..."
+                    
+                    # Layer 0: Instant Classification
+                    initial_category = fast_classify(raw_text)
+                    
                     trend = Trend(
                         cluster_id=cluster_id,
                         message_count=1,
                         title=initial_title,
                         slug=generate_initial_slug(db, raw_text), # SEO-First logic
+                        category=initial_category,
                         first_seen=msg_time,
                         last_updated=msg_time,
                         needs_scoring=True # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه اولیه
                     )
                     db.add(trend)
                     db.flush() # Secure the trend.id
-                    action = "✨ Trend Created"
+                    action = f"✨ Trend Created [{initial_category}]"
                 
                 # --- Step 3: Raw News Persistence ---
                 source_tier = get_source_tier(ch_id)

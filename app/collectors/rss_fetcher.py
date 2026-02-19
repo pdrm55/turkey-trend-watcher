@@ -13,6 +13,7 @@ from app.core.ai_engine import ai_engine
 # نکته مهم: ماژول scoring کامل حذف نشد، فقط get_source_tier نگه داشته شد، محاسبه‌گر TPS حذف شد
 from app.core.scoring import get_source_tier
 from app.core.text_utils import slugify_turkish
+from app.core.classifier import fast_classify
 
 # Path for RSS sources configuration
 RSS_FILE = os.path.join(os.path.dirname(__file__), 'rss_sources.txt')
@@ -117,11 +118,13 @@ def fetch_and_process_rss():
                     signal_updates_count += 1
                 else:
                     # New Trend from RSS: Create instant SEO slug
+                    initial_category = fast_classify(full_text)
                     trend = Trend(
                         cluster_id=cluster_id,
                         message_count=1,
                         title=title[:120].strip(),
                         slug=generate_initial_slug(db, title), # SEO-First
+                        category=initial_category,
                         first_seen=actual_pub_time,
                         last_updated=actual_pub_time,
                         needs_scoring=True # ASYNC TRIGGER: در صف امتیازدهی قرار گرفت

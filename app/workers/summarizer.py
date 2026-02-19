@@ -16,6 +16,7 @@ from app.config import Config
 from app.core.indexing_utils import notify_google 
 from app.core.text_utils import slugify_turkish 
 from app.core.alert_service import alert_service
+from app.core.classifier import decide_final_category, normalize_text, CAT_MAP
 
 # --- Google AI & System Configuration ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -98,222 +99,6 @@ if GOOGLE_API_KEY:
     except Exception as e:
         print(f"❌ Gemini Initialization Error: {e}")
 
-# ==========================================
-# Turkish Categorical Keyword Optimization
-# ==========================================
-
-SPORTS_KEYWORDS = {
-    "high": [
-        # --- Turkish Big Teams ---
-        "beşiktaş", "fenerbahçe", "galatasaray", "trabzonspor", "samsunspor", "başakşehir" ,"Manisa FK", "süper lig","Bandırmaspor", "adana demirspor", "göztepe", "kasımpaşa", "alanyaspor", "antalyaspor",
-        # --- England (Premier League) ---
-        "manchester city", "arsenal", "liverpool", "manchester united", "chelsea", "tottenham", "aston villa",
-        # --- Spain (La Liga) ---
-        "real madrid", "barcelona", "atletico madrid", "villarreal", "real sociedad", "girona",
-        # --- Italy (Serie A) ---
-        "inter milan", "ac milan", "juventus", "napoli", "as roma", "atalanta", "lazio",
-        # --- Germany (Bundesliga) ---
-        "bayern münih", "borussia dortmund", "bayer leverkusen", "rb leipzig", "stuttgart",
-        # --- France (Ligue 1) ---
-        "psg", "paris saint-germain", "marsilya", "lyon", "monaco", "lille",
-        # --- Global Icons & Players (30+) ---
-        "vinicius", "mbappe", "haaland", "bellingham", "rodri", "de bruyne", "mohamed salah",
-        "harry kane", "lewandowski", "bukayo saka", "phil foden", "florian wirtz", "musiala",
-        "lautaro martinez", "messi", "ronaldo", "luka modric", "neymar", "benzema", "yamal",
-        "griezmann", "bernardo silva", "kimmich", "valverde", "courtois", "alisson", "van dijk",
-        # --- Turkish Stars & Local Heroes ---
-        "arda güler", "kenan yıldız", "hakan çalhanoğlu", "barış alper yılmaz", "icardi",
-        "dzeko", "osimhen", "tadic", "fred", "rafa silva", "en-nesyri",
-        # --- Core Sports Terms ---
-        "futbol", "süper lig", "şampiyonlar ligi", "uefa", "avrupa ligi", "konferans ligi",
-        "derbi", "transfer", "teknik direktör", "euroleague", "nba", "voleybol", "tenis"
-    ],
-    "medium": ["penaltı", "gol", "maç", "skor", "kupa", "madalya", "stadyum", "idman", "fikstür"],
-    "low": ["takım", "oyuncu", "hakem", "antrenman"]
-}
-
-ECONOMY_KEYWORDS = {
-    "high": [
-        # --- Central Banks & Policy ---
-        "tcmb", "merkez bankası", "fed", "ecb", "faiz kararı", "enflasyon", "tüfe", "üfe",
-        # --- Markets & Indices ---
-        "borsa istanbul", "bist 100", "nasdaq", "dow jones", "s&p 500", "wall street", "nikkei", "dax",
-        # --- Currencies & Gold ---
-        "dolar/tl", "euro/tl", "döviz kuru", "altın fiyatları", "gram altın", "çeyrek altın", "ons altın",
-        # --- Crypto Assets ---
-        "kripto para", "bitcoin", "btc", "ethereum", "eth", "binance", "blockchain", "altcoin",
-        # --- Corporate & Macro ---
-        "halka arz", "temettü", "kap bildirimi", "asgari ücret", "emekli zammı", "vergi paketi",
-        "cari açık", "gsyh", "büyüme rakamları", "resesyon", "stagflasyon", "konkordato",
-        # --- Credit Rating ---
-        "moody's", "fitch", "s&p", "msci", "jpmorgan", "goldman sachs"
-    ],
-    "medium": ["ihracat", "ithalat", "mevduat", "swap", "kredi notu", "bütçe açığı", "alım gücü", "maliyet", "tüketici"],
-    "low": ["fiyat", "artış", "borç", "şirket", "piyasa", "kar", "zarar", "zam"]
-}
-
-TECHNOLOGY_KEYWORDS = {
-    "high": [
-        # --- Artificial Intelligence & Models ---
-        "yapay zeka", "ai", "openai", "chatgpt", "gemini", "claude", "deepfake", "makine öğrenmesi",
-        # --- Big Tech Giants ---
-        "nvidia", "apple", "iphone", "google", "alphabet", "microsoft", "microsoft azure", "tesla",
-        "meta", "instagram", "facebook", "whatsapp", "amazon", "netflix", "spacex", "starlink",
-        # --- Turkish Defense & Tech ---
-        "baykar", "tusaş", "aselsan", "savunma sanayii", "togg", "iha", "siha", "kaaan", "hürjet",
-        # --- Hardware & Infrastructure ---
-        "yarı iletken", "çip krizi", "işlemci", "intel", "amd", "tsmc", "5g", "6g", "fiber internet",
-        # --- Cybersecurity & Future ---
-        "siber güvenlik", "siber saldırı", "hacker", "veri sızıntısı", "kuantum", "blockchain",
-        "uzay", "nasa", "roket", "fırlatma", "uydu", "mavi orijin"
-    ],
-    "medium": ["yazılım", "donanım", "bulut bilişim", "cloud", "robot", "drone", "uygulama", "android", "ios", "windows"],
-    "low": ["dijital", "internet", "platform", "akıllı telefon", "otonom", "güncelleme", "şifre"]
-}
-
-POLITICS_KEYWORDS = {
-    "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "mansur yavaş", "ak parti", "chp", "mhp", "dem partisi", "iyi parti", "zafer partisi", "tbmm", "meclis", "kabine", "ysk", "anayasa", "beyaz saray", "kremlin", "pentagon"],
-    "medium": ["seçim anketi", "erken seçim", "ittifak", "yasa", "kanun", "zirve", "diplomasi", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge", "koalisyon", "gensoru", "torba yasa"],
-    "low": ["açıklama", "toplantı", "karar", "bakanlık", "lider", "tepki", "eleştiri", "ziyaret", "gündem"]
-}
-
-ART_KEYWORDS = {
-    "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "oyuncuları", "başrol", "televizyon", "ekranlarda", "vizyon", "albüm", "tarkan", "sezen aksu", "cem yılmaz", "oscar", "altın portakal", "cannes", "bienal", "netflix", "disney+", "bluetv"],
-    "medium": ["gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "influencer", "gişe rekoru", "tiyatro", "prömiyer", "senaryo", "yapımcı", "karakter", "izleyici", "beyaz perde"],
-    "low": ["izle", "dinle", "eğlence", "magazin", "ünlü", "moda", "tarz", "viral", "ödül töreni"]
-}
-
-GUNDEM_KEYWORDS = {
-    "high": ["deprem", "yangın", "sel", "cinayet", "kaza", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına", "son dakika", "flaş haber", "acil durum"],
-    "medium": ["vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "sağanak", "ağır ceza", "müebbet", "dolandırıcılık", "gasp", "hırsızlık"],
-    "low": ["haber", "olay", "hava durumu", "sıcaklık", "belediye", "valilik", "hizmet", "duyuru", "trafik yoğunluğu"]
-}
-
-# Cross-category penalties for classification refinement
-NEGATIVE_KEYWORDS = {
-    "political_vs_sports": {
-        "dominant_category": "Spor",
-        "keywords": ["galatasaray", "fenerbahçe", "beşiktaş", "trabzonspor", "süper lig", "maç", "gol", "transfer"],
-        "penalty": -100, "affects": ["Siyaset"]
-    },
-    "political_vs_accident": {
-        "dominant_category": "Gündem",
-        "keywords": ["deprem", "yangın", "sel", "kaza", "can kaybı", "patlama"],
-        "penalty": -80, "affects": ["Siyaset", "Ekonomi"]
-    },
-    "politics_exclusive": {
-        "dominant_category": "Siyaset", 
-        "keywords": ["resmi gazete", "kararname", "kanun teklifi", "tbmm", "anayasa mahkemesi", "genel kurul", "grup toplantısı"],
-        "penalty": -50, "affects": ["Spor", "Sanat", "Teknoloji", "Gündem"],
-        "soft_penalty": -20, "soft_affects": ["Ekonomi"] 
-    },
-    "economy_exclusive": {
-        "dominant_category": "Ekonomi",
-        "keywords": ["borsa istanbul", "bist 100", "döviz kuru", "faiz kararı", "enflasyon rakamları", "temettü", "kap bildirimi"],
-        "penalty": -40, "affects": ["Spor", "Sanat", "Teknoloji"],
-        "soft_penalty": -15, "soft_affects": ["Siyaset", "Gündem"]
-    }
-}
-
-# ==========================================
-# Scoring & Categorization Logic
-# ==========================================
-
-def normalize_turkish_local(text: str) -> str:
-    """Strict Turkish character normalization for consistent matching"""
-    text = text.replace('İ', 'i').replace('I', 'ı').replace('Ğ', 'ğ').replace('Ü', 'ü').replace('Ş', 'ş').replace('Ö', 'ö').replace('Ç', 'ç')
-    return text.lower()
-
-def calculate_keyword_score(text: str, keywords_dict: dict) -> int:
-    """Calculates weighting for a specific category based on text frequency"""
-    text = normalize_turkish_local(text)
-    score = 0
-    for word in keywords_dict["high"]:
-        if word in text: score += 60 
-    for word in keywords_dict["medium"]:
-        if word in text: score += 20
-    for word in keywords_dict["low"]:
-        if word in text: score += 5
-    return score
-
-def apply_negative_logic(scores: dict, text: str) -> dict:
-    """Applies cross-categorical penalties to avoid classification bias"""
-    text = normalize_turkish_local(text)
-    for rule_name, config in NEGATIVE_KEYWORDS.items():
-        found = any(word in text for word in config["keywords"])
-        if found:
-            for target in config["affects"]:
-                if target in scores: scores[target] = max(0, scores[target] + config["penalty"])
-            if "soft_affects" in config:
-                for target in config["soft_affects"]:
-                    if target in scores: scores[target] = max(0, scores[target] + config["soft_penalty"])
-    return scores
-
-def decide_final_category(ai_category: str, text: str) -> tuple:
-    """
-    Layer 4: Density-Based Categorization & Safety Guard.
-    Calculates Keyword Density (Score / Word Count) * 100 to prevent noise-based misclassification.
-    """
-    # 1. Calculate Word Count
-    words = text.split()
-    word_count = len(words) if len(words) > 0 else 1
-
-    # 2. Calculate Raw Scores
-    scores = {
-        "Spor": calculate_keyword_score(text, SPORTS_KEYWORDS),
-        "Ekonomi": calculate_keyword_score(text, ECONOMY_KEYWORDS),
-        "Teknoloji": calculate_keyword_score(text, TECHNOLOGY_KEYWORDS),
-        "Siyaset": calculate_keyword_score(text, POLITICS_KEYWORDS),
-        "Sanat": calculate_keyword_score(text, ART_KEYWORDS),
-        "Gündem": calculate_keyword_score(text, GUNDEM_KEYWORDS)
-    }
-    
-    # 3. Apply Negative Logic
-    scores = apply_negative_logic(scores, text)
-    
-    # 4. Calculate Density Scores (Scaled by 100)
-    density_scores = {k: (v / word_count) * 100 for k, v in scores.items()}
-    
-    top_cat = max(density_scores, key=density_scores.get)
-    top_density = density_scores[top_cat]
-    gundem_density = density_scores["Gündem"]
-
-    # Map for high-keyword check
-    cat_keywords = {
-        "Spor": SPORTS_KEYWORDS,
-        "Ekonomi": ECONOMY_KEYWORDS,
-        "Teknoloji": TECHNOLOGY_KEYWORDS,
-        "Siyaset": POLITICS_KEYWORDS,
-        "Sanat": ART_KEYWORDS,
-        "Gündem": GUNDEM_KEYWORDS
-    }
-
-    # 5. Gündem Safety Rule
-    # If the top category isn't Gündem, it must be significantly denser (1.8x) than Gündem
-    if top_cat != "Gündem":
-        # Rule A: Density Threshold (1.8x)
-        if top_density < (1.8 * gundem_density):
-            return "Gündem", True
-            
-        # Rule B: High-Weight Keyword Count (< 2 matches forces Gündem)
-        text_norm = normalize_turkish_local(text)
-        kw_config = cat_keywords.get(top_cat)
-        if kw_config:
-            high_matches = sum(1 for w in kw_config["high"] if w in text_norm)
-            if high_matches < 2:
-                return "Gündem", True
-
-    # 6. AI Validation
-    if ai_category == top_cat:
-        return top_cat, False
-        
-    # If AI disagrees, check if AI's choice has reasonable density
-    # Thresholds adjusted for *100 scale: 0.1 -> 10, 0.5 -> 50
-    if density_scores.get(ai_category, 0) < 10 and top_density > 50:
-        return top_cat, True
-
-    return ai_category, False
-
 def generate_unique_slug(db, base_title, trend_id):
     """Ensures slug uniqueness in the database for SEO integrity"""
     if not base_title: return None
@@ -360,6 +145,10 @@ def generate_summary_with_gemini(text_cluster):
        - Report the discrepancy in the summary using phrases like "Sources report varying figures between X and Y" or "While some sources claim X, others report Y".
        - Ensure the summary reflects the consensus of Tier 1 sources but acknowledges minority reports if they are significant.
 
+    6. CATEGORY AUDIT:
+       - Analyze the core news event. Compare it strictly against [Siyaset, Ekonomi, Spor, Teknoloji, Sanat, Gündem].
+       - Provide the final category AND a new field "category_reasoning" explaining your choice.
+
     ### EVOLUTIONARY CONTEXT:
     The provided text may contain updates to an older story. If the new data contains a definitive outcome, final score, or major update that makes the previous context obsolete, overwrite the previous headline and summary with the most recent and important 'Core Event'.
 
@@ -375,6 +164,7 @@ def generate_summary_with_gemini(text_cluster):
         "headline": "...",
         "summary": "...",
         "category": "...",
+        "category_reasoning": "...",
         "fact_check": "Brief validation of logic...",
         "tags": ["tag1", "tag2"],
         "entities": {{"people": [], "locations": [], "organizations": []}},
@@ -480,7 +270,7 @@ def process_pending_trends():
                     # 1. Build Global Frequency Map
                     word_doc_freq = {}
                     for n in news_items:
-                        words = set(normalize_turkish_local(n.content[:500]).split())
+                        words = set(normalize_text(n.content[:500]).split())
                         for w in words:
                             if len(w) > 3: word_doc_freq[w] = word_doc_freq.get(w, 0) + 1
                     
@@ -494,7 +284,7 @@ def process_pending_trends():
                         for p in n.content[:500].split('.'): # Split by sentences for better granularity
                             p = p.strip()
                             if len(p) < 40: continue
-                            overlap = len(set(normalize_turkish_local(p).split()).intersection(consensus_vocab))
+                            overlap = len(set(normalize_text(p).split()).intersection(consensus_vocab))
                             if overlap >= 2: filtered_lines.append(f"- {p}")
                     
                     cluster_text = "\n".join(filtered_lines) if len(filtered_lines) > 0 else "\n".join([f"- {n.content[:500]}" for n in news_items])
@@ -506,6 +296,9 @@ def process_pending_trends():
                 if ai_result and ai_result.get("is_relevant_to_turkey", True):
                     ai_cat = ai_result.get("category", "Gündem")
                     
+                    if "category_reasoning" in ai_result:
+                        print(f"   🧠 AI Reasoning: {ai_result['category_reasoning']}")
+
                     # Verify category through manual keyword analysis
                     final_category, overridden = decide_final_category(ai_cat, cluster_text)
                     
