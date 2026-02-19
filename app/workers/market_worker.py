@@ -3,10 +3,8 @@ import os
 import time
 import json
 import logging
-import requests
 import redis
 import yfinance as yf
-from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 
 # اضافه کردن مسیر ریشه پروژه به سیستم
@@ -53,7 +51,8 @@ class MarketWorker:
                 assets = [
                     MarketAsset(symbol="USDTRY", name="Dolar", asset_type="currency"),
                     MarketAsset(symbol="EURTRY", name="Euro", asset_type="currency"),
-                    MarketAsset(symbol="GRAM-ALTIN", name="Gram Altın", asset_type="gold"),
+                    MarketAsset(symbol="GOLD-USD", name="Altın (Ounce/USD)", asset_type="gold"),
+                    MarketAsset(symbol="BTC-USD", name="Bitcoin (USD)", asset_type="crypto"),
                     MarketAsset(symbol="BIST100", name="Borsa İstanbul", asset_type="stock")
                 ]
                 db.add_all(assets)
@@ -65,65 +64,49 @@ class MarketWorker:
         finally:
             db.close()
 
-    def fetch_bigpara_data(self):
-        """استخراج داده‌های ارز و طلا از BigPara"""
-        url = "https://bigpara.hurriyet.com.tr/doviz/"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    def fetch_all_market_data(self):
+        """Fetches all market data using yfinance for stability."""
+        # Mapping: YFinance Symbol -> DB Symbol
+        tickers_map = {
+            "USDTRY=X": "USDTRY",
+            "EURTRY=X": "EURTRY",
+            "GC=F": "GOLD-USD",
+            "BTC-USD": "BTC-USD",
+            "XU100.IS": "BIST100"
         }
         
         data = {}
         try:
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code != 200:
-                return {}
-
-            soup = BeautifulSoup(response.content, "html.parser")
+            # Fetch all tickers at once
+            tickers = yf.Tickers(" ".join(tickers_map.keys()))
             
-            # استخراج از باکس‌های قیمت (Kur Boxes)
-            items = soup.select(".kurBox")
-            for item in items:
+            for yf_symbol, db_symbol in tickers_map.items():
                 try:
-                    label = item.select_one(".kurTitle, .kurBoxTitle").text.strip().upper()
-                    price = safe_float(item.select_one(".value").text)
-                    change_tag = item.select_one(".change")
-                    change = safe_float(change_tag.text) if change_tag else 0.0
+                    ticker = tickers.tickers[yf_symbol]
                     
-                    symbol = None
-                    if "DOLAR" in label: symbol = "USDTRY"
-                    elif "EURO" in label: symbol = "EURTRY"
-                    elif "ALTIN" in label and "GRAM" in label: symbol = "GRAM-ALTIN"
+                    # Try to get history for accurate price and change
+                    hist = ticker.history(period="2d")
                     
-                    if symbol:
-                        data[symbol] = {"price": price, "change": change}
-                except:
+                    if not hist.empty:
+                        price = hist['Close'].iloc[-1]
+                        if len(hist) > 1:
+                            prev_close = hist['Close'].iloc[-2]
+                        else:
+                            prev_close = ticker.info.get('regularMarketPreviousClose', price)
+                        
+                        change = ((price - prev_close) / prev_close) * 100
+                        
+                        data[db_symbol] = {
+                            "price": safe_float(price),
+                            "change": safe_float(change)
+                        }
+                except Exception as e:
+                    logger.error(f"Error processing {yf_symbol}: {e}")
                     continue
             
             return data
         except Exception as e:
-            logger.error(f"BigPara Scraping Error: {e}")
-            return {}
-
-    def fetch_bist100(self):
-        """دریافت شاخص BIST 100 با استفاده از yfinance"""
-        try:
-            ticker = yf.Ticker("XU100.IS")
-            # دریافت دیتای ۲ روز اخیر برای محاسبه درصد تغییر دقیق
-            hist = ticker.history(period="2d")
-            
-            if hist.empty:
-                return {}
-            
-            price = hist['Close'].iloc[-1]
-            if len(hist) > 1:
-                prev_close = hist['Close'].iloc[-2]
-                change = ((price - prev_close) / prev_close) * 100
-            else:
-                change = 0.0
-            
-            return {"BIST100": {"price": safe_float(price), "change": safe_float(change)}}
-        except Exception as e:
-            logger.error(f"YFinance Error: {e}")
+            logger.error(f"YFinance Batch Error: {e}")
             return {}
 
     def update_cache(self, data):
@@ -174,9 +157,7 @@ class MarketWorker:
         while True:
             try:
                 # ۱. جمع‌آوری داده‌ها
-                market_data = self.fetch_bigpara_data()
-                bist_data = self.fetch_bist100()
-                market_data.update(bist_data)
+                market_data = self.fetch_all_market_data()
                 
                 if market_data:
                     # ۲. آپدیت کش (در هر چرخه)

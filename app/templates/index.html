@@ -53,13 +53,22 @@
             0%, 100% { opacity: 1; }
             50% { opacity: .6; }
         }
+
+        /* Ticker Animation */
+        @keyframes ticker-scroll {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+        .ticker-content { animation: ticker-scroll 30s linear infinite; }
+        .ticker-container:hover .ticker-content { animation-play-state: paused; }
+        @media (max-width: 768px) { .ticker-content { animation-duration: 20s; } }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 pb-20">
 
     <!-- Financial Ticker Bar -->
-    <div class="bg-slate-900 text-white py-2 px-4 mb-6 rounded-xl shadow-sm overflow-x-auto whitespace-nowrap custom-scroll">
-        <div id="market-ticker" class="flex items-center gap-6 text-[10px] font-bold tracking-wider justify-center md:justify-start min-w-max">
+    <div class="bg-slate-900 text-white py-2 px-4 mb-6 rounded-xl shadow-sm overflow-hidden whitespace-nowrap ticker-container relative">
+        <div id="market-ticker" class="flex items-center gap-8 text-[11px] font-bold tracking-wider min-w-max ticker-content">
             <span class="text-slate-500 animate-pulse">Piyasa verileri yükleniyor...</span>
         </div>
     </div>
@@ -337,14 +346,22 @@
                 if (Object.keys(data).length === 0) return;
 
                 container.innerHTML = Object.entries(data).map(([symbol, values]) => {
-                    const changeClass = values.change >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const changeClass = values.change >= 0 ? 'text-emerald-400' : 'text-rose-400';
                     const arrow = values.change >= 0 ? '▲' : '▼';
-                    const displayName = symbol.replace('USDTRY', 'DOLAR').replace('EURTRY', 'EURO').replace('GRAM-ALTIN', 'GRAM ALTIN').replace('BIST100', 'BIST 100');
+                    
+                    let displayName = symbol.replace('USDTRY', 'DOLAR').replace('EURTRY', 'EURO').replace('GOLD-USD', 'ONS ALTIN').replace('BIST100', 'BIST 100').replace('BTC-USD', 'BITCOIN');
+                    let priceDisplay = values.price.toFixed(2);
+
+                    if (symbol === 'BTC-USD' || symbol === 'GOLD-USD') {
+                        priceDisplay = '$' + priceDisplay;
+                    } else if (symbol === 'USDTRY' || symbol === 'EURTRY') {
+                        priceDisplay += ' ₺';
+                    }
                     
                     return `
                         <div class="flex items-center gap-2">
                             <span class="text-slate-400">${displayName}</span>
-                            <span class="text-white">${values.price.toFixed(2)}</span>
+                            <span class="text-white">${priceDisplay}</span>
                             <span class="${changeClass} flex items-center gap-0.5">
                                 ${arrow} %${Math.abs(values.change).toFixed(2)}
                             </span>

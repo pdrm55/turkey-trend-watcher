@@ -249,8 +249,8 @@ def init_db():
                 assets = [
                     {"symbol": "USDTRY", "name": "Dolar", "asset_type": "currency"},
                     {"symbol": "EURTRY", "name": "Euro", "asset_type": "currency"},
-                    {"symbol": "GRAM-ALTIN", "name": "Gram Altın", "asset_type": "gold"},
-                    {"symbol": "ONS", "name": "Ons Altın", "asset_type": "gold"},
+                    {"symbol": "GC=F", "name": "Altın (Ounce/USD)", "asset_type": "gold"},
+                    {"symbol": "BTC-USD", "name": "Bitcoin (USD)", "asset_type": "crypto"},
                     {"symbol": "BIST100", "name": "Borsa İstanbul", "asset_type": "stock"}
                 ]
                 for a in assets:
