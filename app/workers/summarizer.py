@@ -222,9 +222,9 @@ def process_pending_trends():
         publish_threshold = float(threshold_setting.value) if threshold_setting else 35.0
 
         # 2. Define Action Conditions
-        # A) Needs Content: High score (>20) but no summary
+        # A) Needs Content: High score (>15) OR it's a Social Trend (X-Watcher), and no summary
         condition_needs_summary = and_(
-            Trend.final_tps >= 15,
+            or_(Trend.final_tps >= 15, Trend.has_social_signal == True),
             or_(Trend.summary == None, Trend.summary == "")
         )
         
