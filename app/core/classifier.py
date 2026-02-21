@@ -1,7 +1,7 @@
 import re
 
 # ==========================================
-# Turkish Categorical Keyword Optimization (Elite Version)
+# Turkish Categorical Keyword Optimization (Elite Version 2.2)
 # ==========================================
 
 SPORTS_KEYWORDS = {
@@ -21,22 +21,23 @@ SPORTS_KEYWORDS = {
         "futbol", "süper lig", "şampiyonlar ligi", "uefa", "avrupa ligi", "konferans ligi",
         "derbi", "transfer", "teknik direktör", "euroleague", "nba", "voleybol", "tenis"
     ],
-    "medium": ["penaltı", "gol", "maç", "skor", "kupa", "madalya", "stadyum", "idman", "fikstür"],
-    "low": ["takım", "oyuncu", "hakem", "antrenman"]
+    "medium": ["penaltı", "gol", "maç", "skor", "kupa", "madalya", "stadyum", "idman", "fikstür", "antrenman"],
+    "low": ["takım", "oyuncu", "hakem", "sporcu", "kulüp"]
 }
 
 ECONOMY_KEYWORDS = {
     "high": [
         "tcmb", "merkez bankası", "fed", "ecb", "faiz kararı", "enflasyon", "tüfe", "üfe",
+        "yatırım", "milyar lira", "milyon lira", "milyar tl", "milyon tl", "ihale", "proje maliyeti",
+        "emekli", "ikramiye", "asgari ücret", "maaş zammı", "bayram ikramiyesi", "refah payı",
         "borsa istanbul", "bist 100", "nasdaq", "dow jones", "s&p 500", "wall street", "nikkei", "dax",
         "dolar/tl", "euro/tl", "döviz kuru", "altın fiyatları", "gram altın", "çeyrek altın", "ons altın",
         "kripto para", "bitcoin", "btc", "ethereum", "eth", "binance", "blockchain", "altcoin",
-        "halka arz", "temettü", "kap bildirimi", "asgari ücret", "emekli zammı", "vergi paketi",
-        "cari açık", "gsyh", "büyüme rakamları", "resesyon", "stagflasyon", "konkordato",
-        "moody's", "fitch", "s&p", "msci", "jpmorgan", "goldman sachs"
+        "halka arz", "temettü", "kap bildirimi", "vergi paketi", "cari açık", "gsyh", "büyüme rakamları", 
+        "resesyon", "stagflasyon", "konkordato", "moody's", "fitch", "s&p", "msci", "jpmorgan"
     ],
-    "medium": ["ihracat", "ithalat", "mevduat", "swap", "kredi notu", "bütçe açığı", "alım gücü", "maliyet", "tüketici"],
-    "low": ["fiyat", "artış", "borç", "şirket", "piyasa", "kar", "zarar", "zam"]
+    "medium": ["ihracat", "ithalat", "mevduat", "swap", "kredi notu", "bütçe açığı", "alım gücü", "maliyet", "tüketici", "ekonomi", "finans"],
+    "low": ["fiyat", "artış", "borç", "şirket", "piyasa", "kar", "zarar", "zam", "endeks"]
 }
 
 TECHNOLOGY_KEYWORDS = {
@@ -54,20 +55,26 @@ TECHNOLOGY_KEYWORDS = {
 }
 
 POLITICS_KEYWORDS = {
-    "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "mansur yavaş", "ak parti", "chp", "mhp", "dem partisi", "iyi parti", "zafer partisi", "tbmm", "meclis", "kabine", "ysk", "anayasa", "beyaz saray", "kremlin", "pentagon"],
-    "medium": ["seçim anketi", "erken seçim", "ittifak", "yasa", "kanun", "zirve", "diplomasi", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge", "koalisyon", "gensoru", "torba yasa"],
-    "low": ["açıklama", "toplantı", "karar", "bakanlık", "lider", "tepki", "eleştiri", "ziyaret", "gündem"]
+    "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "mansur yavaş", "ak parti", "chp", "mhp", "dem partisi", "iyi parti", "zafer partisi", "tbmm", "meclis", "kabine", "ysk", "anayasa", "beyاز saray", "kremlin", "pentagon", "diplomasi", "dışişleri"],
+    "medium": ["seçim anketi", "erken seçim", "ittifak", "yasa", "kanun", "zirve", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge", "koalisyon", "gensoru", "torba yasa", "belediye başkanı"],
+    "low": ["açıklama", "toplantı", "karar", "bakanlık", "lider", "tepki", "eleştiri", "ziyaret", "gündem", "diplomatik"]
 }
 
 ART_KEYWORDS = {
-    "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "oyuncuları", "başrol", "televizyon", "ekranlarda", "vizyon", "albüm", "tarkan", "sezen aksu", "cem yılmaz", "oscar", "altın portakal", "cannes", "bienal", "netflix", "disney+", "bluetv"],
-    "medium": ["gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "influencer", "gişe rekoru", "tiyatro", "prömiyer", "senaryo", "yapımcı", "karakter", "izleyici", "beyaz perde"],
-    "low": ["izle", "dinle", "eğlence", "magazin", "ünlü", "moda", "tarz", "viral", "ödül töreni"]
+    "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "oyuncuları", "başrol", "televizyon", "ekranlarda", "vizyon", "albüm", "tarkan", "sezen aksu", "cem yılmaz", "oscar", "altın portakal", "cannes", "bienal", "netflix", "disney+", "bluetv", "sanatçı", "müzik", "şarkıcı", "sahne performansı", "kültür sanat", "edebiyat", "roman", "şiir", "ressam", "heykeltıraş", "müze", "galeri", "orkestra", "opera", "bale", "tiyatro oyunu", "stand-up", "belgesel", "kısa film", "altın küre", "grammy", "emmy", "tony ödülleri", "eurovision", "spotify", "youtube music", "apple music", "exxen", "gain", "amazon prime video", "mubi"],
+    "medium": ["gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "influencer", "gişe rekoru", "tiyatro", "prömiyer", "senaryo", "yapımcı", "karakter", "izleyici", "beyaz perde", "turne", "imza günü", "söyleşi", "eleştirmen", "küratör", "koleksiyoner", "müzayede", "beste", "güfte", "aranjman", "klip", "single", "plak", "kaset", "dijital platform", "yayın akışı", "sezon finali", "yeni sezon", "oyuncu kadrosu", "kırmızı halı", "magazin gündemi", "paparazzi", "ünlüler dünyası", "sosyal medya fenomeni", "youtuber", "tiktoker", "instagrammer", "podcast"],
+    "low": ["izle", "dinle", "eğlence", "magazin", "ünlü", "moda", "tarz", "viral", "ödül töreni", "paylaşım", "takipçi", "beğeni", "yorum", "trend", "stil", "kombin", "makyaj", "estetik", "dedikodu", "skandal", "itiraf", "samimi açıklamalar"]
 }
 
 GUNDEM_KEYWORDS = {
-    "high": ["deprem", "yangın", "sel", "cinayet", "kaza", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına", "son dakika", "flaş haber", "acil durum"],
-    "medium": ["vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "sağanak", "ağır ceza", "müebbet", "dolandırıcılık", "gasp", "hırsızlık"],
+    "high": [
+        "deprem", "yangın", "sel", "cinayet", "kaza", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına", "son dakika", "flaş haber", "acil durum", 
+        "dsi", "vgm", "mgm", "toki", "karayolları", "meteoroloji", "belediyesi", "valiliği"
+    ],
+    "medium": [
+        "vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "sağanak", "ağır ceza", "müebbet", 
+        "inşa etti", "hizmete açıldı", "baraj", "tesis", "altyapı", "üstyapı"
+    ],
     "low": ["haber", "olay", "hava durumu", "sıcaklık", "belediye", "valilik", "hizmet", "duyuru", "trafik yoğunluğu"]
 }
 
@@ -88,7 +95,7 @@ NEGATIVE_KEYWORDS = {
     },
     "political_vs_accident": {
         "dominant_category": "Gündem",
-        "keywords": ["deprem", "yangın", "sel", "kaza", "can kaybı", "patlama"],
+        "keywords": ["deprem", "yangın", "sel", "kaza", "can kaybı", "patlama", "hastane", "doktor"],
         "penalty": -80, "affects": ["Siyaset", "Ekonomi"]
     },
     "politics_exclusive": {
@@ -99,9 +106,8 @@ NEGATIVE_KEYWORDS = {
     },
     "economy_exclusive": {
         "dominant_category": "Ekonomi",
-        "keywords": ["borsa istanbul", "bist 100", "döviz kuru", "faiz kararı", "enflasyon rakamları", "temettü", "kap bildirimi"],
-        "penalty": -40, "affects": ["Spor", "Sanat", "Teknoloji"],
-        "soft_penalty": -15, "soft_affects": ["Siyaset", "Gündem"]
+        "keywords": ["borsa istanbul", "bist 100", "döviz kuru", "faiz kararı", "enflasyon rakamları", "temettü", "kap bildirimi", "milyar lira", "emekli", "ikramiye"],
+        "penalty": -60, "affects": ["Spor", "Sanat", "Teknoloji", "Gündem"]
     }
 }
 
@@ -136,8 +142,8 @@ def apply_negative_logic(scores: dict, text: str) -> dict:
 
 def fast_classify(text: str) -> str:
     """
-    Layer 0: Instant categorization based on keyword density.
-    Used by collectors to avoid the "Gündem Lag".
+    Layer 0: Instant categorization.
+    Logic: Winner must have at least 60 points (1 High Match) AND beat Gündem by 1.8x.
     """
     text_norm = normalize_text(text)
     
@@ -145,14 +151,19 @@ def fast_classify(text: str) -> str:
     for cat_name, keywords in CAT_MAP.items():
         scores[cat_name] = calculate_keyword_score(text_norm, keywords)
 
-    # Logic: Pick highest score, must beat Gündem by 1.8x if not Gündem
+    if max(scores.values()) == 0:
+        return "Gündem"
+
     top_cat = max(scores, key=scores.get)
+    
+    # --- Strict Winner Rules ---
     if top_cat != "Gündem":
-        if scores[top_cat] < (1.8 * scores["Gündem"]):
+        # Rule 1: A specific category must have at least ONE high match (60 pts) to trigger
+        if scores[top_cat] < 60:
             return "Gündem"
-        # Minimum matches rule
-        high_matches = sum(1 for w in CAT_MAP[top_cat]["high"] if w in text_norm)
-        if high_matches < 1: # Instant check is less strict than AI check
+            
+        # Rule 2: Dominance check
+        if scores[top_cat] < (1.8 * scores["Gündem"]):
             return "Gündem"
             
     return top_cat
@@ -160,7 +171,6 @@ def fast_classify(text: str) -> str:
 def decide_final_category(ai_category: str, text: str) -> tuple:
     """
     Layer 4: Density-Based Categorization & Safety Guard.
-    Calculates Keyword Density (Score / Word Count) to prevent noise-based misclassification.
     """
     text_norm = normalize_text(text)
     words = text_norm.split()
@@ -172,17 +182,17 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
         score = calculate_keyword_score(text_norm, keywords)
         
         matches = 0
-        for word in keywords["high"]:
-            if word in text_norm: matches += 1
-        for word in keywords["medium"]:
-            if word in text_norm: matches += 1
-        for word in keywords["low"]:
-            if word in text_norm: matches += 1
+        for level in ["high", "medium", "low"]:
+            for word in keywords[level]:
+                if word in text_norm: matches += 1
             
         scores[cat_name] = score
         match_counts[cat_name] = matches
 
     scores = apply_negative_logic(scores, text_norm)
+
+    if max(scores.values()) == 0:
+        return "Gündem", False
 
     densities = {k: v / word_count for k, v in scores.items()}
     top_cat = max(densities, key=densities.get)
@@ -194,9 +204,6 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
             top_cat = "Gündem"
 
     if ai_category == top_cat: return top_cat, False
-    
-    # If AI disagrees, check if AI's choice has reasonable density
-    # Thresholds adjusted for density (score/word_count)
     if densities.get(top_cat, 0) > 0.8 and match_counts[top_cat] >= 3:
         return top_cat, True
     
