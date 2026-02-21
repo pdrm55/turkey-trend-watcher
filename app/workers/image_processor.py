@@ -5,6 +5,7 @@ import logging
 import uuid
 import requests
 import io
+import re
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont, ImageStat
@@ -34,7 +35,7 @@ class ImageProcessor:
     def __init__(self):
         # مقداردهی کلاینت تلگرام (فقط یک بار متصل می‌شود)
         self.client = TelegramClient(
-            'ttw_image', 
+            '/app/ttw_image', 
             Config.TELEGRAM_API_ID, 
             Config.TELEGRAM_API_HASH
         )
@@ -143,7 +144,12 @@ class ImageProcessor:
                 return None
                 
             buffer = io.BytesIO()
-            await self.client.download_media(message, file=buffer)
+            
+            if getattr(message, 'video', None) or getattr(message, 'document', None):
+                # Download the largest thumbnail instead of the full video file
+                await self.client.download_media(message, file=buffer, thumb=-1)
+            else:
+                await self.client.download_media(message, file=buffer)
             return buffer.getvalue()
             
         except FloodWaitError as e:
@@ -154,20 +160,33 @@ class ImageProcessor:
             logger.error(f"Telegram Download Error ({external_id}): {e}")
             return None
 
-    def download_from_rss(self, external_id):
-        """استخراج og:image از لینک خبرگزاری"""
+    def download_from_rss(self, external_id, pre_extracted_media_url=None):
+        """استخراج تصویر از لینک خبرگزاری (اولویت با لینک مستقیم RSS)"""
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-            resp = requests.get(external_id, headers=headers, timeout=10)
-            if resp.status_code != 200: return None, None
             
-            soup = BeautifulSoup(resp.content, 'html.parser')
-            og_image = soup.find("meta", property="og:image")
+            img_url = pre_extracted_media_url
             
-            if not og_image or not og_image.get("content"):
-                return None, None
+            # اگر لینک مستقیم نداشتیم، صفحه را اسکرپ می‌کنیم
+            if not img_url:
+                resp = requests.get(external_id, headers=headers, timeout=10)
+                if resp.status_code != 200: return None, None
                 
-            img_url = og_image["content"]
+                soup = BeautifulSoup(resp.content, 'html.parser')
+                og_image = soup.find("meta", property="og:image") or \
+                           soup.find("meta", attrs={"name": "og:image"}) or \
+                           soup.find("meta", property="twitter:image")
+                
+                if not og_image or not og_image.get("content"):
+                    return None, None
+                    
+                img_url = og_image["content"]
+                
+                # مدیریت لینک‌های نسبی
+                if img_url.startswith('/'):
+                    from urllib.parse import urljoin
+                    img_url = urljoin(external_id, img_url)
+
             img_resp = requests.get(img_url, headers=headers, timeout=10)
             if img_resp.status_code == 200:
                 return img_resp.content, img_url
@@ -227,9 +246,21 @@ class ImageProcessor:
                         if news.source_type == 'telegram':
                             image_data = await self.download_from_telegram(news.external_id)
                             source_url = news.external_id
+                            
+                            # SMART FALLBACK: If no media in Telegram, check text for links (e.g., AA.com.tr)
+                            if not image_data and news.content:
+                                urls = re.findall(r'(https?://[^\s]+)', news.content)
+                                if urls:
+                                    # Strip trailing punctuation (.,!?"') that might get caught by the regex
+                                    fallback_url = urls[0].rstrip('.,!?\'"')
+                                    loop = asyncio.get_event_loop()
+                                    image_data, _ = await loop.run_in_executor(None, self.download_from_rss, fallback_url, None)
+                                    if image_data:
+                                        source_url = fallback_url
+                                        logger.info(f"🔗 Fallback successful: Extracted image from link {source_url}")
                         elif news.source_type == 'rss':
                             loop = asyncio.get_event_loop()
-                            image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id)
+                            image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id, news.media_url)
                         
                         if not image_data:
                             news.media_status = -1 

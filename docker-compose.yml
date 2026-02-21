@@ -125,7 +125,6 @@ services:
     volumes:
       - ".:/app"
       - "./app/static/media:/app/app/static/media"
-      - "./ttw_image.session:/app/ttw_image.session"
     env_file: [".env"]
     networks: ["ttw_network"]
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]

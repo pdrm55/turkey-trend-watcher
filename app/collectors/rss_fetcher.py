@@ -93,6 +93,15 @@ def fetch_and_process_rss():
                 else:
                     actual_pub_time = current_time_utc
 
+                # Extract Media from RSS (Two-Stage Image Extraction)
+                media_url = None
+                if 'media_content' in entry and len(entry.media_content) > 0:
+                    media_url = entry.media_content[0].get('url')
+                elif 'links' in entry:
+                    for link_item in entry.links:
+                        if link_item.get('type', '').startswith('image/'):
+                            media_url = link_item.get('href')
+                            break
                 
                 full_text = f"{title}. {summary}"
                 if len(full_text) < 30:
@@ -142,7 +151,9 @@ def fetch_and_process_rss():
                     external_id=link,
                     content=full_text,
                     published_at=actual_pub_time,
-                    trend_id=trend.id
+                    trend_id=trend.id,
+                    media_url=media_url,
+                    media_status=0
                 )
                 db.add(news_item)
                 db.flush()
