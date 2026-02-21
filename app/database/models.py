@@ -75,6 +75,9 @@ class Trend(Base):
     needs_scoring = Column(Boolean, default=True, index=True)
     is_published = Column(Boolean, default=False)
 
+    # --- فاز ۲.۲: فلگ سیگنال شبکه اجتماعی (X-Watcher) ---
+    has_social_signal = Column(Boolean, default=False, index=True)
+
     first_seen = Column(DateTime, default=utc_now)
     last_updated = Column(DateTime, default=utc_now)
     is_active = Column(Boolean, default=True)
@@ -207,6 +210,12 @@ def init_db():
             if 'last_summary_msg_count' not in trend_columns:
                 print("📊 Adding 'last_summary_msg_count' column to 'trends'...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN last_summary_msg_count INTEGER DEFAULT 0"))
+            
+            # ز) اضافه کردن فلگ شبکه‌های اجتماعی (فاز ۲.۲)
+            if 'has_social_signal' not in trend_columns:
+                print("𝕏 Adding 'has_social_signal' column to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN has_social_signal BOOLEAN DEFAULT FALSE"))
+                conn.execute(text("CREATE INDEX idx_trends_social ON trends (has_social_signal)"))
             
             conn.commit()
 
