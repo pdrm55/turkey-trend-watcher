@@ -68,32 +68,52 @@ class SocialWorker:
             counter += 1
 
     def fetch_trends(self):
-        """Fetches top trends for Turkey using stable aggregator sites (Trends24)."""
+        """Fetches top trends for Turkey using multiple fallback aggregators."""
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
         }
         valid_trends = []
+        
         try:
-            # Scrape Trends24 (Turkey)
-            resp = requests.get("https://trends24.in/turkey/", headers=headers, timeout=15)
-            if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, 'html.parser')
-
-                # Extract trends from the first/most recent time block
-                trend_elements = soup.select('.trend-card:nth-of-type(1) li a')
-
+            # --- Attempt 1: GetDayTrends (Often has lower Cloudflare protection) ---
+            logger.info("📡 Attempt 1: Fetching from GetDayTrends...")
+            resp1 = requests.get("https://getdaytrends.com/turkey/", headers=headers, timeout=15)
+            if resp1.status_code == 200:
+                soup = BeautifulSoup(resp1.text, 'html.parser')
+                # Primary selector for getdaytrends
+                trend_elements = soup.select('table tbody tr td.main a') or soup.select('a.string')
+                
                 for el in trend_elements:
                     name = el.text.strip()
-                    # Filter junk
                     if len(name) > 2 and not any(junk in name.lower() for junk in JUNK_KEYWORDS):
-                        valid_trends.append({
-                            'name': name, 
-                            'url': f"https://x.com/search?q={name.replace('#', '%23')}"
-                        })
+                        valid_trends.append({'name': name, 'url': f"https://x.com/search?q={name.replace('#', '%23')}"})
+            else:
+                logger.warning(f"⚠️ GetDayTrends failed with status code: {resp1.status_code}")
 
+            # --- Attempt 2: Trends24 (Fallback) ---
+            if not valid_trends:
+                logger.info("📡 Attempt 2: Falling back to Trends24...")
+                resp2 = requests.get("https://trends24.in/turkey/", headers=headers, timeout=15)
+                if resp2.status_code == 200:
+                    soup = BeautifulSoup(resp2.text, 'html.parser')
+                    trend_elements = soup.select('.trend-card:nth-of-type(1) li a') or soup.select('.trend-card__list li a')
+                    
+                    for el in trend_elements:
+                        name = el.text.strip()
+                        if len(name) > 2 and not any(junk in name.lower() for junk in JUNK_KEYWORDS):
+                            valid_trends.append({'name': name, 'url': f"https://x.com/search?q={name.replace('#', '%23')}"})
+                else:
+                    logger.warning(f"⚠️ Trends24 failed with status code: {resp2.status_code}")
+
+            if not valid_trends:
+                logger.error("❌ Both aggregators failed or returned empty lists. Cloudflare block is likely.")
+                
             return valid_trends
+
         except Exception as e:
-            logger.error(f"❌ Error fetching trends from aggregator: {e}")
+            logger.error(f"❌ Error fetching trends from aggregators: {e}")
             return []
 
     def run(self):
