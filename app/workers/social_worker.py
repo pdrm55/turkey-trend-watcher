@@ -54,12 +54,20 @@ class SocialWorker:
             rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=tr&gl=TR&ceid=TR:tr"
             feed = feedparser.parse(rss_url)
             if feed.entries:
-                top = feed.entries[0]
-                desc = BeautifulSoup(top.get('description', ''), 'html.parser').get_text()
-                return f"{keyword}. {top.title} - {desc}"
+                best_title = feed.entries[0].title
+                
+                # Create a clean, bulleted list of the top 3 headlines
+                headlines = [f"𝕏 Sosyal Medya Trendi: {keyword}", "İlgili Haber Başlıkları:"]
+                for entry in feed.entries[:3]:
+                    headlines.append(f"📰 {entry.title}")
+                
+                clean_content = "\n".join(headlines)
+                return best_title, clean_content
         except Exception as e:
             logger.error(f"Google Context Error: {e}")
-        return keyword # Fallback to just the keyword if no news found
+        
+        # Fallback if Google fails
+        return keyword, f"𝕏 Sosyal Medya Trendi: {keyword}"
 
     def generate_initial_slug(self, db, text, trend_id=None):
         """Generates a unique slug for new trends."""
@@ -160,7 +168,7 @@ class SocialWorker:
                             url = item['url']
                             
                             # --- NEW: Fetch Real-World Context ---
-                            enriched_content = self.fetch_google_context(name)
+                            best_title, enriched_content = self.fetch_google_context(name)
 
                             # Check if exists
                             existing = db.query(RawNews).filter(RawNews.external_id == url).first()
@@ -178,12 +186,13 @@ class SocialWorker:
                                 trend.last_updated = max(trend.last_updated, current_time_utc)
                                 trend.needs_scoring = True
                             else:
-                                initial_category = fast_classify(name)
+                                # Use the combined text for better initial classification
+                                initial_category = fast_classify(best_title + " " + enriched_content)
                                 trend = Trend(
                                     cluster_id=cluster_id,
                                     message_count=1,
-                                    title=name,
-                                    slug=self.generate_initial_slug(db, name),
+                                    title=best_title, # <-- CRITICAL FIX: Use real headline, not just the keyword
+                                    slug=self.generate_initial_slug(db, best_title), # Use real headline for SEO
                                     category=initial_category,
                                     first_seen=current_time_utc,
                                     last_updated=current_time_utc,
