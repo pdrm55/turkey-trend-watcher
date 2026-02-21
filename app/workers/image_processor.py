@@ -208,67 +208,64 @@ class ImageProcessor:
             return None, None
 
     def download_from_bing_images(self, query):
-        """جستجوی تیتر خبر در تصاویر بینگ برای دریافت عکس باکیفیت (High-Res Fallback)"""
+        """جستجوی فوق‌پیشرفته در بینگ با جعل مکان (TR) و دور زدن محدودیت‌های دانلود"""
         try:
-            import time
             import json
-            time.sleep(random.uniform(1.0, 2.5))
+            time.sleep(random.uniform(1.5, 3.0))
 
-            # 🧹 Aggressive Query Cleaning
-            clean_query = query.replace('#', ' ').replace('𝕏', '').replace('📰', '').replace('\n', ' ')
-            clean_query = re.sub(r'Sosyal Medya Trendi|İlgili Haber Başlıkları', '', clean_query, flags=re.IGNORECASE)
-            clean_query = re.sub(r'[^\w\s]', ' ', clean_query) # Remove punctuation
-            clean_query = re.sub(r'\s+', ' ', clean_query).strip()
+            # 🧹 Aggressive Query Cleaning: Remove phrases that trigger "Viral Social" results
+            noise = ['Sosyal Medya Trendi', 'İlgili Haber Başlıkları', '𝕏', '📰', '#']
+            clean_query = query
+            for n in noise: clean_query = clean_query.replace(n, ' ')
+            clean_query = re.sub(r'[^\w\s]', ' ', clean_query)
+            clean_query = " ".join(clean_query.split()[:6]).strip()
 
-            # ✂️ Truncate to max 6 words! Long sentences confuse Bing into returning random viral memes.
-            words = clean_query.split()
-            if len(words) > 6:
-                clean_query = " ".join(words[:6])
+            if not clean_query: return None, None
 
-            if not clean_query:
-                return None, None
-
+            # 📍 Force Turkey Geolocation + 🖼️ Wide Photos Only
             encoded_query = urllib.parse.quote_plus(clean_query + " haber")
-            # 🌟 SECRET WEAPON 1 & 2: Force Turkish region (cc=TR) regardless of VPS IP, and require horizontal photos
             url = f"https://www.bing.com/images/search?q={encoded_query}&cc=TR&setmkt=tr-TR&setlang=tr&qft=+filterui:photo-photo+filterui:aspect-wide"
 
+            # 🕵️ Stealth Headers to look like a local user
             headers = {
                 "User-Agent": random.choice(USER_AGENTS),
-                "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
+                "Accept-Language": "tr-TR,tr;q=0.9",
+                "Referer": "https://www.bing.com/",
+                "Cookie": "SRCHHPGUSR=ADLT=OFF&NRSLT=-1&CW=1366&CH=768&DPR=1&UTC=180&WLS=2&SRCHLANG=tr" # Force TR region cookie
             }
 
             resp = requests.get(url, headers=headers, timeout=10)
-
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.content, 'html.parser')
-                # Bing stores high-res image links inside the 'm' attribute (JSON) of 'a.iusc'
                 elements = soup.find_all('a', class_='iusc')
                 
-                for el in elements:
+                for i, el in enumerate(elements[:8]): # Check top 8 results
                     try:
                         m_data = json.loads(el.get('m', '{}'))
                         img_url = m_data.get('murl')
                         
                         if img_url and img_url.startswith('http'):
-                            # 🌟 SECRET WEAPON 3: Blacklist social media, memes, and icons
-                            bad_keywords = [
-                                'logo', 'favicon', 'gif', 'svg', 'tiktok', 'pinterest', 
-                                'instagram', 'facebook', 'twimg', 'fbsbx', 'meme', 'emoji'
-                            ]
-                            if any(x in img_url.lower() for x in bad_keywords):
+                            # 🛡️ Blacklist low-quality/viral domains
+                            bad_domains = ['tiktok', 'instagram', 'pinterest', 'facebook', 'meme', 'emoji', 'tenor', 'giphy']
+                            if any(x in img_url.lower() for x in bad_domains):
+                                logger.info(f"⏭️ Skipping result #{i+1} (Blacklisted Domain): {img_url[:40]}...")
                                 continue
                                 
-                            img_resp = requests.get(img_url, headers=headers, timeout=7)
+                            # 📥 Download with Bing as Referer (Crucial for bypassing Hotlink Protection)
+                            img_resp = requests.get(img_url, headers={"User-Agent": headers["User-Agent"], "Referer": "https://www.bing.com/"}, timeout=7)
+                            
                             if img_resp.status_code == 200:
-                                # Ensure it's actually an image
                                 content_type = img_resp.headers.get('Content-Type', '')
                                 if 'image' in content_type:
+                                    logger.info(f"🎯 Success! Downloaded Result #{i+1} from {img_url[:40]}...")
                                     return img_resp.content, img_url
+                            else:
+                                logger.warning(f"⚠️ Failed to download Result #{i+1} (HTTP {img_resp.status_code})")
                     except:
-                        continue # Try the next image if this one fails
+                        continue
             return None, None
         except Exception as e:
-            logger.error(f"Bing Image Search Error: {e}")
+            logger.error(f"Bing Extraction Error: {e}")
             return None, None
 
     def save_file(self, image_data, news_id):
@@ -394,7 +391,9 @@ class ImageProcessor:
                                     search_query = news.content[:100]
 
                             if search_query:
-                                logger.info(f"🔍 Ultimate Fallback: Searching Bing Images for '{search_query[:40]}...'")
+                                # Final sanitation before Bing
+                                search_query = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
+                                logger.info(f"🔍 Ultimate Fallback: Searching Bing (TR) for '{search_query[:40]}...'")
                                 loop = asyncio.get_event_loop()
                                 image_data, fallback_url = await loop.run_in_executor(None, self.download_from_bing_images, search_query)
                                 if image_data:
