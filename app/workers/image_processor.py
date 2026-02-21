@@ -214,9 +214,19 @@ class ImageProcessor:
             import json
             time.sleep(random.uniform(1.0, 2.5))
 
-            # Clean emojis and limit length to avoid confusing Bing
-            clean_query = query.replace('#', ' ').replace('𝕏', '').replace('📰', '').replace('\n', ' ').strip()
-            if len(clean_query) > 100: clean_query = clean_query[:100]
+            # 🧹 Aggressive Query Cleaning
+            clean_query = query.replace('#', ' ').replace('𝕏', '').replace('📰', '').replace('\n', ' ')
+            clean_query = re.sub(r'Sosyal Medya Trendi|İlgili Haber Başlıkları', '', clean_query, flags=re.IGNORECASE)
+            clean_query = re.sub(r'[^\w\s]', ' ', clean_query) # Remove punctuation
+            clean_query = re.sub(r'\s+', ' ', clean_query).strip()
+
+            # ✂️ Truncate to max 6 words! Long sentences confuse Bing into returning random viral memes.
+            words = clean_query.split()
+            if len(words) > 6:
+                clean_query = " ".join(words[:6])
+
+            if not clean_query:
+                return None, None
 
             encoded_query = urllib.parse.quote_plus(clean_query + " haber")
             # 🌟 SECRET WEAPON: Force Bing to return horizontal photographs only (No memes/TikToks)
@@ -354,15 +364,30 @@ class ImageProcessor:
                             search_query = None
                             if news.trend_id:
                                 trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
-                                # 💡 FIX: Only use title if it's a real sentence (> 15 chars). 
-                                # Otherwise (like raw "Uğurcan"), fall back to the rich news content!
-                                if trend and trend.title and len(trend.title) > 15:
-                                    search_query = trend.title
+                                if trend:
+                                    # 💡 NEW: Try to use AI extracted Entities for laser-accurate image search!
+                                    if trend.entities and isinstance(trend.entities, dict):
+                                        people = trend.entities.get('people', [])
+                                        orgs = trend.entities.get('organizations', [])
+                                        if people or orgs:
+                                            # Combine first person and first organization (e.g., "Uğurcan Çakır Trabzonspor")
+                                            search_query = " ".join(people[:1] + orgs[:1])
+
+                                    # Fallback to Title if no entities yet
+                                    if not search_query and trend.title and len(trend.title) > 15:
+                                        search_query = trend.title
 
                             if not search_query and news.content:
-                                # Use the rich Google News content we fetched
-                                clean_content = news.content.replace('📰', '').replace('𝕏', '').strip()
-                                search_query = clean_content[:100]
+                                # Fallback: Extract the FIRST real headline, ignore "Sosyal Medya Trendi" garbage
+                                if '📰' in news.content:
+                                    parts = news.content.split('📰')
+                                    if len(parts) > 1:
+                                        first_headline = parts[1].split('\n')[0]
+                                        # Remove source name (e.g., " - Hürriyet")
+                                        search_query = re.sub(r'\s+[-|]\s+[^-|]+$', '', first_headline).strip()
+
+                                if not search_query:
+                                    search_query = news.content[:100]
 
                             if search_query:
                                 logger.info(f"🔍 Ultimate Fallback: Searching Bing Images for '{search_query[:40]}...'")
