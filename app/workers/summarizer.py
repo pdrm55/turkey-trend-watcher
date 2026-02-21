@@ -148,6 +148,7 @@ def generate_summary_with_gemini(text_cluster):
     6. CATEGORY AUDIT:
        - Analyze the core news event. Compare it strictly against [Siyaset, Ekonomi, Spor, Teknoloji, Sanat, Gündem].
        - Provide the final category AND a new field "category_reasoning" explaining your choice.
+       - Special focus on TRAPS: If the news is about government budget, retirement, or state infrastructure (DSİ/TOKİ), it is NOT Spor. justify this in 'category_reasoning'.
 
     ### EVOLUTIONARY CONTEXT:
     The provided text may contain updates to an older story. If the new data contains a definitive outcome, final score, or major update that makes the previous context obsolete, overwrite the previous headline and summary with the most recent and important 'Core Event'.

@@ -69,11 +69,12 @@ ART_KEYWORDS = {
 GUNDEM_KEYWORDS = {
     "high": [
         "deprem", "yangın", "sel", "cinayet", "kaza", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına", "son dakika", "flaş haber", "acil durum", 
-        "dsi", "vgm", "mgm", "toki", "karayolları", "meteoroloji", "belediyesi", "valiliği"
+        "dsi", "vgm", "mgm", "toki", "karayolları", "meteoroloji", "belediyesi", "valiliği",
+        "doktor", "hastane", "tedavi", "iyileşti", "ses teli", "felç"
     ],
     "medium": [
         "vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "sağanak", "ağır ceza", "müebbet", 
-        "inşa etti", "hizmete açıldı", "baraj", "tesis", "altyapı", "üstyapı"
+        "inşa etti", "hizmete açıldı", "baraj", "tesis", "altyapı", "üstyapı", "dolandırıcılık", "gasp", "hırsızlık"
     ],
     "low": ["haber", "olay", "hava durumu", "sıcaklık", "belediye", "valilik", "hizmet", "duyuru", "trafik yoğunluğu"]
 }
@@ -107,7 +108,7 @@ NEGATIVE_KEYWORDS = {
     "economy_exclusive": {
         "dominant_category": "Ekonomi",
         "keywords": ["borsa istanbul", "bist 100", "döviz kuru", "faiz kararı", "enflasyon rakamları", "temettü", "kap bildirimi", "milyar lira", "emekli", "ikramiye"],
-        "penalty": -60, "affects": ["Spor", "Sanat", "Teknoloji", "Gündem"]
+        "penalty": -80, "affects": ["Spor", "Sanat", "Teknoloji", "Gündem"]
     }
 }
 
@@ -150,6 +151,9 @@ def fast_classify(text: str) -> str:
     scores = {}
     for cat_name, keywords in CAT_MAP.items():
         scores[cat_name] = calculate_keyword_score(text_norm, keywords)
+
+    # CRITICAL FIX: Apply negative logic BEFORE determining winner
+    scores = apply_negative_logic(scores, text_norm)
 
     if max(scores.values()) == 0:
         return "Gündem"
