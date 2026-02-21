@@ -214,8 +214,13 @@ class ImageProcessor:
             import json
             time.sleep(random.uniform(1.0, 2.5))
 
-            encoded_query = urllib.parse.quote_plus(query + " haber")
-            url = f"https://www.bing.com/images/search?q={encoded_query}"
+            # Clean emojis and limit length to avoid confusing Bing
+            clean_query = query.replace('#', ' ').replace('𝕏', '').replace('📰', '').replace('\n', ' ').strip()
+            if len(clean_query) > 100: clean_query = clean_query[:100]
+
+            encoded_query = urllib.parse.quote_plus(clean_query + " haber")
+            # 🌟 SECRET WEAPON: Force Bing to return horizontal photographs only (No memes/TikToks)
+            url = f"https://www.bing.com/images/search?q={encoded_query}&qft=+filterui:photo-photo+filterui:aspect-wide"
 
             headers = {
                 "User-Agent": random.choice(USER_AGENTS),
@@ -348,13 +353,16 @@ class ImageProcessor:
                         if not image_data:
                             search_query = None
                             if news.trend_id:
-                                # Fixed SQLAlchemy Deprecation Warning
                                 trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
-                                if trend and trend.title:
+                                # 💡 FIX: Only use title if it's a real sentence (> 15 chars). 
+                                # Otherwise (like raw "Uğurcan"), fall back to the rich news content!
+                                if trend and trend.title and len(trend.title) > 15:
                                     search_query = trend.title
 
                             if not search_query and news.content:
-                                search_query = news.content[:60]
+                                # Use the rich Google News content we fetched
+                                clean_content = news.content.replace('📰', '').replace('𝕏', '').strip()
+                                search_query = clean_content[:100]
 
                             if search_query:
                                 logger.info(f"🔍 Ultimate Fallback: Searching Bing Images for '{search_query[:40]}...'")
