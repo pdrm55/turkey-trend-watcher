@@ -5,6 +5,7 @@ import logging
 import requests
 import urllib.parse
 import feedparser
+import re
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
@@ -54,12 +55,15 @@ class SocialWorker:
             rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=tr&gl=TR&ceid=TR:tr"
             feed = feedparser.parse(rss_url)
             if feed.entries:
-                best_title = feed.entries[0].title
+                # Regex to remove trailing " - Source" or " | Source" from Google News titles
+                clean_title = lambda t: re.sub(r'\s+[-|]\s+[^-|]+$', '', t).strip()
+                
+                best_title = clean_title(feed.entries[0].title)
                 
                 # Create a clean, bulleted list of the top 3 headlines
                 headlines = [f"𝕏 Sosyal Medya Trendi: {keyword}", "İlgili Haber Başlıkları:"]
                 for entry in feed.entries[:3]:
-                    headlines.append(f"📰 {entry.title}")
+                    headlines.append(f"📰 {clean_title(entry.title)}")
                 
                 clean_content = "\n".join(headlines)
                 return best_title, clean_content

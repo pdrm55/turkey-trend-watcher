@@ -393,22 +393,22 @@
             activeCategory = cat;
             timelineOffset = 0;
             
-            // Update Dynamic Titles
-            const hotTitle = document.getElementById('dynamic-hot-title');
-            const headerSubtitle = document.getElementById('header-subtitle');
-            
-            if (cat === "Hepsi") {
-                if (hotTitle) hotTitle.innerText = "";
-                if (headerSubtitle) headerSubtitle.innerText = "Yapay Zeka Destekli Gerçek Zamanlı Analiz";
-            } else {
-                if (hotTitle) hotTitle.innerText = cat + " ";
-                if (headerSubtitle) headerSubtitle.innerText = `${cat} Dünyasından Gerçek Zamanlı Analizler`;
-            }
-
             // SEO History update
             const url = cat === "Hepsi" ? "/" : `/category/${cat.toLowerCase()}`;
             window.history.pushState(null, '', url);
-            
+
+            // Fix Dynamic Title
+            const dynamicTitle = document.getElementById('dynamic-hot-title');
+            if (dynamicTitle) {
+                dynamicTitle.innerText = cat === "Hepsi" ? "" : cat + " ";
+            }
+
+            // Fix Header Subtitle
+            const headerSubtitle = document.getElementById('header-subtitle');
+            if (headerSubtitle) {
+                headerSubtitle.innerText = cat === "Hepsi" ? "Yapay Zeka Destekli Gerçek Zamanlı Analiz" : `${cat} Dünyasından Gerçek Zamanlı Analizler`;
+            }
+
             // Visual feedback
             document.querySelectorAll('.category-btn').forEach(btn => {
                 const isMatch = btn.innerText.trim() === cat;
