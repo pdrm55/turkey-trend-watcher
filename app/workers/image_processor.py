@@ -340,6 +340,27 @@ class ImageProcessor:
                             loop = asyncio.get_event_loop()
                             image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id, news.media_url)
                         
+                        # --- 🌟 THE ULTIMATE GOOGLE IMAGES FALLBACK 🌟 ---
+                        # This will trigger for X-Trends (source='x') or if Telegram/RSS failed to get an image
+                        if not image_data:
+                            search_query = None
+                            if news.trend_id:
+                                trend = db.query(Trend).get(news.trend_id)
+                                if trend and trend.title:
+                                    search_query = trend.title
+
+                            if not search_query and news.content:
+                                search_query = news.content[:60]
+
+                            if search_query:
+                                logger.info(f"🔍 Ultimate Fallback: Searching Google Images for '{search_query[:40]}...'")
+                                loop = asyncio.get_event_loop()
+                                image_data, fallback_url = await loop.run_in_executor(None, self.download_from_google_images, search_query)
+                                if image_data:
+                                    source_url = fallback_url
+                                    logger.info("✅ Fallback image successfully downloaded from Google Images.")
+
+                        # If it STILL fails after Google Images Fallback, mark as error
                         if not image_data:
                             news.media_status = -1 
                             db.commit()
