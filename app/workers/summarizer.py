@@ -223,13 +223,13 @@ def process_pending_trends():
         # 2. Define Action Conditions
         # A) Needs Content: High score (>20) but no summary
         condition_needs_summary = and_(
-            Trend.final_tps >= 20,
+            Trend.final_tps >= 15,
             or_(Trend.summary == None, Trend.summary == "")
         )
         
         # B) Needs Update: Significant new messages since last summary (Event Evolution)
         condition_needs_update = and_(
-            Trend.final_tps >= 20,
+            Trend.final_tps >= 15,
             Trend.summary != None,
             (Trend.message_count - func.coalesce(Trend.last_summary_msg_count, 0)) >= 5
         )
