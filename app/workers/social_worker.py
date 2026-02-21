@@ -4,7 +4,7 @@ import time
 import logging
 import requests
 from datetime import datetime, timezone
-from ntscraper import Nitter
+from bs4 import BeautifulSoup
 
 # Add project root to sys path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -24,7 +24,6 @@ logger = logging.getLogger("SocialWorker")
 
 class SocialWorker:
     def __init__(self):
-        self.scraper = Nitter(log_level=1, skip_instance_check=False)
         self.error_count = 0
         self.admin_chat_id = getattr(Config, 'ADMIN_CHAT_ID', None)
         self.bot_token = getattr(Config, 'TELEGRAM_BOT_TOKEN', None)
@@ -69,30 +68,33 @@ class SocialWorker:
             counter += 1
 
     def fetch_trends(self):
-        """Fetches top trends for Turkey using Nitter."""
+        """Fetches top trends for Turkey using stable aggregator sites (Trends24)."""
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        valid_trends = []
         try:
-            trends_data = self.scraper.get_trends("Turkey")
-            
-            if not trends_data or 'trends' not in trends_data:
-                logger.warning("⚠️ No trends returned from Nitter.")
-                return []
+            # Scrape Trends24 (Turkey)
+            resp = requests.get("https://trends24.in/turkey/", headers=headers, timeout=15)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
 
-            valid_trends = []
-            for trend in trends_data['trends']:
-                name = trend['name']
-                
-                # Filter junk
-                if len(name) < 2: continue
-                if any(junk in name.lower() for junk in JUNK_KEYWORDS):
-                    continue
-                
-                valid_trends.append(trend)
-            
+                # Extract trends from the first/most recent time block
+                trend_elements = soup.select('.trend-card:nth-of-type(1) li a')
+
+                for el in trend_elements:
+                    name = el.text.strip()
+                    # Filter junk
+                    if len(name) > 2 and not any(junk in name.lower() for junk in JUNK_KEYWORDS):
+                        valid_trends.append({
+                            'name': name, 
+                            'url': f"https://x.com/search?q={name.replace('#', '%23')}"
+                        })
+
             return valid_trends
-
         except Exception as e:
-            logger.error(f"❌ Error fetching trends: {e}")
-            return None
+            logger.error(f"❌ Error fetching trends from aggregator: {e}")
+            return []
 
     def run(self):
         logger.info("🚀 X-Watcher (Social Worker) Started")
