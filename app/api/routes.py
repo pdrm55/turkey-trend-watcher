@@ -377,6 +377,8 @@ def get_trend_details(identifier):
             "tps_score": round(trend.final_tps, 1),
             "summary": trend.summary or "Generating summary...",
             "image": trend.cover_image,
+            "tags": trend.tags or [],
+            "entities": trend.entities or {},
             "news_list": formatted_news,
             "related_trends": [{
                 "title": r.title,

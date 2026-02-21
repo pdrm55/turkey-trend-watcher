@@ -212,6 +212,7 @@
                 <div class="mb-8 bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
                     <div class="text-[10px] text-blue-600 font-black uppercase mb-3 tracking-widest">Yapay Zeka Analizi</div>
                     <p id="modal-summary" class="text-sm text-slate-700 leading-relaxed font-medium"></p>
+                    <div id="modal-seo-tags" class="mt-4"></div>
                 </div>
                 
                 <div class="mb-4 flex items-center justify-between">
@@ -475,6 +476,7 @@
             document.getElementById('modal-title').innerText = "Yükleniyor...";
             document.getElementById('modal-summary').innerText = "";
             document.getElementById('modal-news-list').innerHTML = "";
+            document.getElementById('modal-seo-tags').innerHTML = "";
             document.getElementById('modal-tps-badge').innerText = "";
             
             try {
@@ -485,6 +487,29 @@
                 document.getElementById('modal-summary').innerText = data.summary;
                 document.getElementById('modal-category').innerText = data.category || 'Gündem';
                 document.getElementById('modal-tps-badge').innerText = `${data.tps_score} TPS`;
+                
+                let seoHtml = '';
+
+                // Build Tags
+                if (data.tags && data.tags.length > 0) {
+                    seoHtml += `<div class="flex flex-wrap gap-1.5 mb-2">` + 
+                        data.tags.map(t => `<span onclick="document.getElementById('searchInput').value='${t}'; handleSearch(); closeModal();" class="cursor-pointer px-2 py-1 bg-white border border-slate-200 hover:border-slate-400 text-slate-600 text-[9px] font-bold rounded-md transition-colors">#${t}</span>`).join('') +
+                        `</div>`;
+                }
+
+                // Build Entities
+                if (data.entities) {
+                    let entList = [];
+                    if (data.entities.people) data.entities.people.forEach(p => entList.push(`<span class="px-2 py-1 bg-purple-50 text-purple-600 text-[9px] font-bold rounded-md">👤 ${p}</span>`));
+                    if (data.entities.locations) data.entities.locations.forEach(l => entList.push(`<span class="px-2 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-md">📍 ${l}</span>`));
+                    if (data.entities.organizations) data.entities.organizations.forEach(o => entList.push(`<span class="px-2 py-1 bg-blue-50 text-blue-600 text-[9px] font-bold rounded-md">🏢 ${o}</span>`));
+
+                    if (entList.length > 0) {
+                        seoHtml += `<div class="flex flex-wrap gap-1.5 pt-2 border-t border-blue-100/50">${entList.join('')}</div>`;
+                    }
+                }
+
+                document.getElementById('modal-seo-tags').innerHTML = seoHtml;
                 
                 document.getElementById('modal-news-list').innerHTML = data.news_list.map(news => `
                     <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -528,6 +553,14 @@
         }
 
         // Init routine
+        // Parse URL parameters for direct search links (e.g. /?q=tag)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('q')) {
+            currentSearchQuery = urlParams.get('q');
+            document.getElementById('searchInput').value = currentSearchQuery;
+            document.getElementById('clearSearchBtn').classList.remove('hidden');
+        }
+
         fetchHot();
         fetchTimeline();
         fetchMarketData();

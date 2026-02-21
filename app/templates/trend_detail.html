@@ -8,6 +8,9 @@
     <title>{{ trend.title }} | TrendiaTR Haber Analizi</title>
     <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapای زکا haber analizi.' }}">
     <link rel="canonical" href="https://trendiatr.com/trend/{{ trend.slug }}">
+    {% if trend.tags %}
+    <meta name="keywords" content="{{ trend.tags | join(', ') }}">
+    {% endif %}
     
     <!-- Open Graph -->
     <meta property="og:type" content="article">
@@ -165,6 +168,39 @@
                     <p class="text-lg text-slate-700 leading-relaxed font-medium">
                         {{ trend.summary }}
                     </p>
+                    
+                    <!-- SEO Tags & Entities -->
+                    {% if trend.tags or trend.entities %}
+                    <div class="mt-6 pt-6 border-t border-slate-100/50">
+                        <div class="flex flex-wrap gap-2 mb-3">
+                            {% if trend.tags %}
+                                {% for tag in trend.tags %}
+                                <a href="/?q={{ tag }}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold rounded-lg transition-colors cursor-pointer">#{{ tag }}</a>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+
+                        {% if trend.entities %}
+                        <div class="flex flex-wrap gap-2">
+                            {% if trend.entities.people %}
+                                {% for person in trend.entities.people %}
+                                <span class="px-2.5 py-1 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-bold rounded-lg flex items-center gap-1">👤 {{ person }}</span>
+                                {% endfor %}
+                            {% endif %}
+                            {% if trend.entities.locations %}
+                                {% for loc in trend.entities.locations %}
+                                <span class="px-2.5 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-bold rounded-lg flex items-center gap-1">📍 {{ loc }}</span>
+                                {% endfor %}
+                            {% endif %}
+                            {% if trend.entities.organizations %}
+                                {% for org in trend.entities.organizations %}
+                                <span class="px-2.5 py-1 bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold rounded-lg flex items-center gap-1">🏢 {{ org }}</span>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 
