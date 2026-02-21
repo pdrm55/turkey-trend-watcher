@@ -6,6 +6,9 @@ import uuid
 import requests
 import io
 import re
+import random
+import urllib.parse
+import time
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont, ImageStat
@@ -30,6 +33,14 @@ logger = logging.getLogger("ImageWorker")
 MEDIA_ROOT = "/app/app/static/media"
 WATERMARK_TEXT = "TrendiaTR"
 TARGET_WIDTH = 800
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1"
+]
 
 class ImageProcessor:
     def __init__(self):
@@ -196,6 +207,52 @@ class ImageProcessor:
             logger.error(f"RSS Download Error ({external_id}): {e}")
             return None, None
 
+    def download_from_google_images(self, query):
+        """جستجوی تیتر خبر در تصاویر گوگل با رفتار انسانی (Anti-Bot)"""
+        try:
+            # 1. Random Human Delay (Jitter) to prevent CAPTCHA
+            import time
+            time.sleep(random.uniform(1.5, 3.5))
+
+            encoded_query = urllib.parse.quote_plus(query + " haber")
+            url = f"https://www.google.com/search?q={encoded_query}&tbm=isch"
+
+            # 2. User-Agent Rotation
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+            }
+
+            resp = requests.get(url, headers=headers, timeout=10)
+
+            if resp.status_code == 429:
+                logger.warning("⚠️ Google Rate Limit (429) hit. Pausing searches.")
+                return None, None
+
+            if resp.status_code == 200:
+                # Check if Google returned a CAPTCHA page
+                if "detected unusual traffic" in resp.text.lower() or "captcha" in resp.text.lower():
+                    logger.warning("⚠️ Google CAPTCHA triggered. IP might be temporarily flagged.")
+                    return None, None
+
+                soup = BeautifulSoup(resp.content, 'html.parser')
+                images = soup.find_all('img')
+
+                for img in images:
+                    src = img.get('src') or img.get('data-src')
+                    if src and src.startswith('http'):
+                        if 'logo' in src.lower() or 'favicon' in src.lower() or 'gif' in src.lower():
+                            continue
+
+                        img_resp = requests.get(src, headers=headers, timeout=5)
+                        if img_resp.status_code == 200:
+                            return img_resp.content, src
+            return None, None
+        except Exception as e:
+            logger.error(f"Google Image Search Error: {e}")
+            return None, None
+
     def save_file(self, image_data, news_id):
         """ذخیره فایل در ساختار پوشه‌بندی تاریخ‌محور"""
         now = datetime.now()
@@ -218,9 +275,30 @@ class ImageProcessor:
         await self.start()
         logger.info("🚀 Image Worker Loop Started (Time Limit: 48h active)")
         
+        last_retry_time = time.time()
+        
         while True:
             db = SessionLocal()
             try:
+                # --- Periodic Retry for Missing Images (Self-Healing) ---
+                current_time = time.time()
+                # Run this check every 15 minutes (900 seconds)
+                if current_time - last_retry_time > 900:
+                    logger.info("🔄 Checking last 100 news for missing images (Self-Healing)...")
+                    recent_news = db.query(RawNews).order_by(desc(RawNews.created_at)).limit(100).all()
+                    requeued_count = 0
+                    
+                    for n in recent_news:
+                        if n.media_status == -1:
+                            n.media_status = 0  # Put back in the processing queue
+                            requeued_count += 1
+                    
+                    if requeued_count > 0:
+                        db.commit()
+                        logger.info(f"♻️ Re-queued {requeued_count} recent news items for image retry.")
+                    
+                    last_retry_time = current_time
+                
                 # محاسبه زمان قطع ۴۸ ساعت اخیر
                 cutoff_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)
                 
