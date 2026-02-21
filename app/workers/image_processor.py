@@ -274,7 +274,7 @@ class ImageProcessor:
         await self.start()
         logger.info("🚀 Image Worker Loop Started (Time Limit: 48h active)")
         
-        last_retry_time = time.time()
+        last_retry_time = 0
         
         while True:
             db = SessionLocal()
@@ -283,18 +283,22 @@ class ImageProcessor:
                 current_time = time.time()
                 # Run this check every 15 minutes (900 seconds)
                 if current_time - last_retry_time > 900:
-                    logger.info("🔄 Checking last 100 news for missing images (Self-Healing)...")
-                    recent_news = db.query(RawNews).order_by(desc(RawNews.created_at)).limit(100).all()
-                    requeued_count = 0
+                    logger.info("🔄 Checking for missing images (Self-Healing)...")
                     
-                    for n in recent_news:
-                        if n.media_status == -1:
-                            n.media_status = 0  # Put back in the processing queue
-                            requeued_count += 1
+                    heal_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)
+                    recent_failed = db.query(RawNews).filter(
+                        RawNews.media_status == -1,
+                        RawNews.created_at >= heal_cutoff
+                    ).order_by(desc(RawNews.created_at)).limit(50).all()
+                    
+                    requeued_count = 0
+                    for n in recent_failed:
+                        n.media_status = 0  # Put back in the processing queue
+                        requeued_count += 1
                     
                     if requeued_count > 0:
                         db.commit()
-                        logger.info(f"♻️ Re-queued {requeued_count} recent news items for image retry.")
+                        logger.info(f"♻️ Re-queued {requeued_count} failed news items for image retry.")
                     
                     last_retry_time = current_time
                 
