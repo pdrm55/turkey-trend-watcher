@@ -218,6 +218,11 @@ class TPSCalculator:
         if source_count == 1:
             final_conf = min(0.75, final_conf)
         
+        # Social Only Guard: If the trend relies strictly on X sources, cap the confidence to prevent fake news spikes.
+        all_sources = [n.source_type for n in news_items]
+        if all(s == 'x' for s in all_sources):
+            final_conf = min(0.4, final_conf) # Strictly limit confidence until a real news agency reports it
+
         # محدودسازی سقف ضریب اطمینان برای جلوگیری از نمایش ۱۵۰٪ در فرانت‌اند
         return min(1.0, final_conf)
 
@@ -275,6 +280,14 @@ class TPSCalculator:
         # Formula: Signal = (0.35V + 0.25E + 0.25S + 0.15N) * Boost
         signal_score = ((0.35 * v) + (0.25 * e) + (0.25 * s) + (0.15 * n)) * c_boost
         
+        # --- Phase 2.2: Social Pulse Synergy ---
+        has_x_signal = self.db.query(RawNews).filter(RawNews.trend_id == trend.id, RawNews.source_type == 'x').first() is not None
+        if has_x_signal:
+            trend.has_social_signal = True
+            signal_score *= 1.5  # Apply 50% viral boost for social media trends
+        else:
+            trend.has_social_signal = False
+
         # ۳. محاسبه ضریب اعتماد منابع بر اساس Tiers فاز ۶
         confidence = self.get_confidence_score(trend_id) # بازگردانده شده
         
