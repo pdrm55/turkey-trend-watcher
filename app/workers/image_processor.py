@@ -229,8 +229,8 @@ class ImageProcessor:
                 return None, None
 
             encoded_query = urllib.parse.quote_plus(clean_query + " haber")
-            # 🌟 SECRET WEAPON: Force Bing to return horizontal photographs only (No memes/TikToks)
-            url = f"https://www.bing.com/images/search?q={encoded_query}&qft=+filterui:photo-photo+filterui:aspect-wide"
+            # 🌟 SECRET WEAPON 1 & 2: Force Turkish region (cc=TR) regardless of VPS IP, and require horizontal photos
+            url = f"https://www.bing.com/images/search?q={encoded_query}&cc=TR&setmkt=tr-TR&setlang=tr&qft=+filterui:photo-photo+filterui:aspect-wide"
 
             headers = {
                 "User-Agent": random.choice(USER_AGENTS),
@@ -250,8 +250,12 @@ class ImageProcessor:
                         img_url = m_data.get('murl')
                         
                         if img_url and img_url.startswith('http'):
-                            # Filter out suspicious/icon URLs
-                            if any(x in img_url.lower() for x in ['logo', 'favicon', 'gif', 'svg']):
+                            # 🌟 SECRET WEAPON 3: Blacklist social media, memes, and icons
+                            bad_keywords = [
+                                'logo', 'favicon', 'gif', 'svg', 'tiktok', 'pinterest', 
+                                'instagram', 'facebook', 'twimg', 'fbsbx', 'meme', 'emoji'
+                            ]
+                            if any(x in img_url.lower() for x in bad_keywords):
                                 continue
                                 
                             img_resp = requests.get(img_url, headers=headers, timeout=7)
