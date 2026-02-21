@@ -207,50 +207,49 @@ class ImageProcessor:
             logger.error(f"RSS Download Error ({external_id}): {e}")
             return None, None
 
-    def download_from_google_images(self, query):
-        """جستجوی تیتر خبر در تصاویر گوگل با رفتار انسانی (Anti-Bot)"""
+    def download_from_bing_images(self, query):
+        """جستجوی تیتر خبر در تصاویر بینگ برای دریافت عکس باکیفیت (High-Res Fallback)"""
         try:
-            # 1. Random Human Delay (Jitter) to prevent CAPTCHA
             import time
-            time.sleep(random.uniform(1.5, 3.5))
+            import json
+            time.sleep(random.uniform(1.0, 2.5))
 
             encoded_query = urllib.parse.quote_plus(query + " haber")
-            url = f"https://www.google.com/search?q={encoded_query}&tbm=isch"
+            url = f"https://www.bing.com/images/search?q={encoded_query}"
 
-            # 2. User-Agent Rotation
             headers = {
                 "User-Agent": random.choice(USER_AGENTS),
-                "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+                "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7"
             }
 
             resp = requests.get(url, headers=headers, timeout=10)
 
-            if resp.status_code == 429:
-                logger.warning("⚠️ Google Rate Limit (429) hit. Pausing searches.")
-                return None, None
-
             if resp.status_code == 200:
-                # Check if Google returned a CAPTCHA page
-                if "detected unusual traffic" in resp.text.lower() or "captcha" in resp.text.lower():
-                    logger.warning("⚠️ Google CAPTCHA triggered. IP might be temporarily flagged.")
-                    return None, None
-
                 soup = BeautifulSoup(resp.content, 'html.parser')
-                images = soup.find_all('img')
-
-                for img in images:
-                    src = img.get('src') or img.get('data-src')
-                    if src and src.startswith('http'):
-                        if 'logo' in src.lower() or 'favicon' in src.lower() or 'gif' in src.lower():
-                            continue
-
-                        img_resp = requests.get(src, headers=headers, timeout=5)
-                        if img_resp.status_code == 200:
-                            return img_resp.content, src
+                # Bing stores high-res image links inside the 'm' attribute (JSON) of 'a.iusc'
+                elements = soup.find_all('a', class_='iusc')
+                
+                for el in elements:
+                    try:
+                        m_data = json.loads(el.get('m', '{}'))
+                        img_url = m_data.get('murl')
+                        
+                        if img_url and img_url.startswith('http'):
+                            # Filter out suspicious/icon URLs
+                            if any(x in img_url.lower() for x in ['logo', 'favicon', 'gif', 'svg']):
+                                continue
+                                
+                            img_resp = requests.get(img_url, headers=headers, timeout=7)
+                            if img_resp.status_code == 200:
+                                # Ensure it's actually an image
+                                content_type = img_resp.headers.get('Content-Type', '')
+                                if 'image' in content_type:
+                                    return img_resp.content, img_url
+                    except:
+                        continue # Try the next image if this one fails
             return None, None
         except Exception as e:
-            logger.error(f"Google Image Search Error: {e}")
+            logger.error(f"Bing Image Search Error: {e}")
             return None, None
 
     def save_file(self, image_data, news_id):
@@ -340,12 +339,13 @@ class ImageProcessor:
                             loop = asyncio.get_event_loop()
                             image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id, news.media_url)
                         
-                        # --- 🌟 THE ULTIMATE GOOGLE IMAGES FALLBACK 🌟 ---
+                        # --- 🌟 THE ULTIMATE BING IMAGES FALLBACK 🌟 ---
                         # This will trigger for X-Trends (source='x') or if Telegram/RSS failed to get an image
                         if not image_data:
                             search_query = None
                             if news.trend_id:
-                                trend = db.query(Trend).get(news.trend_id)
+                                # Fixed SQLAlchemy Deprecation Warning
+                                trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
                                 if trend and trend.title:
                                     search_query = trend.title
 
@@ -353,12 +353,12 @@ class ImageProcessor:
                                 search_query = news.content[:60]
 
                             if search_query:
-                                logger.info(f"🔍 Ultimate Fallback: Searching Google Images for '{search_query[:40]}...'")
+                                logger.info(f"🔍 Ultimate Fallback: Searching Bing Images for '{search_query[:40]}...'")
                                 loop = asyncio.get_event_loop()
-                                image_data, fallback_url = await loop.run_in_executor(None, self.download_from_google_images, search_query)
+                                image_data, fallback_url = await loop.run_in_executor(None, self.download_from_bing_images, search_query)
                                 if image_data:
                                     source_url = fallback_url
-                                    logger.info("✅ Fallback image successfully downloaded from Google Images.")
+                                    logger.info("✅ Fallback image successfully downloaded from Bing Images.")
 
                         # If it STILL fails after Google Images Fallback, mark as error
                         if not image_data:
