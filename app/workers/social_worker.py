@@ -3,6 +3,8 @@ import os
 import time
 import logging
 import requests
+import urllib.parse
+import feedparser
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
@@ -44,6 +46,20 @@ class SocialWorker:
             requests.post(url, json=payload, timeout=10)
         except Exception as e:
             logger.error(f"❌ Failed to send admin alert: {e}")
+
+    def fetch_google_context(self, keyword):
+        """Fetches background news context for a Twitter trend using Google News."""
+        try:
+            encoded_query = urllib.parse.quote_plus(keyword)
+            rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=tr&gl=TR&ceid=TR:tr"
+            feed = feedparser.parse(rss_url)
+            if feed.entries:
+                top = feed.entries[0]
+                desc = BeautifulSoup(top.get('description', ''), 'html.parser').get_text()
+                return f"{keyword}. {top.title} - {desc}"
+        except Exception as e:
+            logger.error(f"Google Context Error: {e}")
+        return keyword # Fallback to just the keyword if no news found
 
     def generate_initial_slug(self, db, text, trend_id=None):
         """Generates a unique slug for new trends."""
@@ -143,12 +159,15 @@ class SocialWorker:
                             name = item['name']
                             url = item['url']
                             
+                            # --- NEW: Fetch Real-World Context ---
+                            enriched_content = self.fetch_google_context(name)
+
                             # Check if exists
                             existing = db.query(RawNews).filter(RawNews.external_id == url).first()
                             if existing: continue
 
                             # AI Clustering
-                            cluster_id, _ = ai_engine.process_news(name, "X-Trend", url)
+                            cluster_id, _ = ai_engine.process_news(enriched_content, "X-Trend", url)
                             if not cluster_id: continue
 
                             # Trend Management
@@ -180,7 +199,7 @@ class SocialWorker:
                                 source_name="X-Trend",
                                 source_tier=3,
                                 external_id=url,
-                                content=name,
+                                content=enriched_content,
                                 published_at=current_time_utc,
                                 trend_id=trend.id,
                                 media_status=0

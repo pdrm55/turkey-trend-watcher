@@ -305,7 +305,13 @@ def process_pending_trends():
                     
                     # Update Trend Record
                     trend.title = ai_result.get("headline", trend.title)
-                    trend.summary = ai_result.get("summary", "")
+                    
+                    # Handle cases where AI returns None or empty string
+                    extracted_summary = ai_result.get("summary")
+                    if not extracted_summary or extracted_summary.lower() == "none":
+                        extracted_summary = f"{trend.title} konusu şu an sosyal medyada ve haber kaynaklarında gündem oluşturuyor. Detaylar analiz ediliyor."
+
+                    trend.summary = extracted_summary
                     trend.category = final_category 
                     trend.tags = ai_result.get("tags")
                     trend.entities = ai_result.get("entities")
