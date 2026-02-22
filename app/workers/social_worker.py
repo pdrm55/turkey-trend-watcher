@@ -60,18 +60,29 @@ class SocialWorker:
                 
                 best_title = clean_title(feed.entries[0].title)
                 
-                # Create a clean, bulleted list of the top 3 headlines
-                headlines = [f"𝕏 Sosyal Medya Trendi: {keyword}", "İlgili Haber Başlıkları:"]
+                # 1. For UI (RawNews content saved in DB)
+                headlines_ui = [f"𝕏 Sosyal Medya Trendi: {keyword}", "İlgili Haber Başlıkları:"]
+
+                # 2. For AI (ChromaDB Vectorization - PURE NEWS ONLY)
+                ai_text_parts = [best_title]
+
                 for entry in feed.entries[:3]:
-                    headlines.append(f"📰 {clean_title(entry.title)}")
+                    ct = clean_title(entry.title)
+                    headlines_ui.append(f"📰 {ct}")
+                    if ct != best_title:
+                        ai_text_parts.append(ct)
                 
-                clean_content = "\n".join(headlines)
-                return best_title, clean_content
+                ui_content = "\n".join(headlines_ui)
+                ai_content = " ".join(ai_text_parts) # Pure text ensures exact matching with RSS
+
+                return best_title, ui_content, ai_content
         except Exception as e:
             logger.error(f"Google Context Error: {e}")
         
         # Fallback if Google fails
-        return keyword, f"𝕏 Sosyal Medya Trendi: {keyword}"
+        fallback_ui = f"𝕏 Sosyal Medya Trendi: {keyword}"
+        fallback_ai = f"{keyword} hakkında güncel gelişmeler ve paylaşımlar"
+        return keyword, fallback_ui, fallback_ai
 
     def generate_initial_slug(self, db, text, trend_id=None):
         """Generates a unique slug for new trends."""
@@ -172,14 +183,14 @@ class SocialWorker:
                             url = item['url']
                             
                             # --- NEW: Fetch Real-World Context ---
-                            best_title, enriched_content = self.fetch_google_context(name)
+                            best_title, enriched_content, ai_clustering_text = self.fetch_google_context(name)
 
                             # Check if exists
                             existing = db.query(RawNews).filter(RawNews.external_id == url).first()
                             if existing: continue
 
-                            # AI Clustering
-                            cluster_id, _ = ai_engine.process_news(enriched_content, "X-Trend", url)
+                            # 🧠 CRITICAL FIX: Send pure AI text to ChromaDB for perfect matching
+                            cluster_id, _ = ai_engine.process_news(ai_clustering_text, "X-Trend", url)
                             if not cluster_id: continue
 
                             # Trend Management
@@ -190,8 +201,8 @@ class SocialWorker:
                                 trend.last_updated = max(trend.last_updated, current_time_utc)
                                 trend.needs_scoring = True
                             else:
-                                # Use the combined text for better initial classification
-                                initial_category = fast_classify(best_title + " " + enriched_content)
+                                # Use the pure AI text for initial classification to avoid bias
+                                initial_category = fast_classify(ai_clustering_text)
                                 trend = Trend(
                                     cluster_id=cluster_id,
                                     message_count=1,
@@ -212,7 +223,7 @@ class SocialWorker:
                                 source_name="X-Trend",
                                 source_tier=3,
                                 external_id=url,
-                                content=enriched_content,
+                                content=enriched_content, # 🎨 UI gets the pretty formatted text
                                 published_at=current_time_utc,
                                 trend_id=trend.id,
                                 media_status=0
