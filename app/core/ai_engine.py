@@ -74,18 +74,19 @@ class AIEngine:
             raise e
 
     def ask_local_llm(self, reference_news, candidate_news):
-        """Final semantic verification using local Qwen model"""
+        """Final semantic verification using local Qwen model with robust JSON parsing"""
         prompt = f"""
         Act as a news editor. Compare these two Turkish news texts.
         Do these two texts refer to the **same news story, event chain, or ongoing topic**?
         
-        Answer **true** if they discuss the same subject (e.g., an accident and its death toll update, or a match and its post-game analysis).
-        Answer **false** ONLY if they describe completely different events involving different people/places.
+        Answer **true** if they discuss the same subject (e.g., an accident, a match result, or Bitcoin dropping).
+        Answer **false** ONLY if they describe completely different events.
         
         Ref News: "{reference_news[:700]}"
         New News: "{candidate_news[:700]}"
         
-        Answer ONLY JSON: {{"match": true}} or {{"match": false}}
+        OUTPUT FORMAT: Return ONLY a raw JSON object. Do NOT use markdown formatting.
+        Example: {{"match": true}}
         """
         payload = {
             "model": LOCAL_MODEL_NAME, "prompt": prompt, "stream": False, "format": "json",
@@ -94,7 +95,14 @@ class AIEngine:
         try:
             response = requests.post(OLLAMA_API_URL, json=payload, timeout=10)
             result = response.json()
-            return json.loads(result['response']).get("match", False)
+            raw_text = result.get('response', '{}').strip()
+            
+            # 🧹 Clean Markdown formatting safely without complex regex
+            raw_text = raw_text.strip("` \n")
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:].strip()
+                
+            return json.loads(raw_text).get("match", False)
         except Exception as e:
             logger.error(f"Local LLM Verification Failed: {e}")
             return False 
@@ -156,7 +164,7 @@ class AIEngine:
         if results['distances'] and results['distances'][0]:
             for i, distance in enumerate(results['distances'][0]):
                 # Cosine distance threshold (0.0 is exact match, 1.0 is opposite)
-                if distance > 0.42: continue
+                if distance > 0.46: continue
                 
                 metadata = results['metadatas'][0][i]
                 candidate_cluster_id = metadata['cluster_id']
@@ -167,7 +175,7 @@ class AIEngine:
                 target_text = self.get_cluster_reference_doc(candidate_cluster_id) or results['documents'][0][i]
                 
                 # Case 1: High similarity (Auto-Merge Zone)
-                if distance < 0.20:
+                if distance < 0.28:
                     cluster_id = candidate_cluster_id
                     is_duplicate = True
                     break
