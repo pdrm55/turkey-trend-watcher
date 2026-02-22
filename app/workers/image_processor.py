@@ -69,6 +69,15 @@ class ImageProcessor:
         try:
             img = Image.open(io.BytesIO(image_data))
             
+            if img.mode != 'RGB':
+                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                    # Create a white background for transparent images before converting to RGB
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    background.paste(img, mask=img.convert('RGBA').split()[3])
+                    img = background
+                else:
+                    img = img.convert('RGB')
+            
             # ۱. حذف ۵۰ پیکسل پایین (برای پاک‌سازی واترمارک‌های منبع اصلی)
             w, h = img.size
             if h > 100: 
