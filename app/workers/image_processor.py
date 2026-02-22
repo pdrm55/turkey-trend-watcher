@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
+from rapidfuzz import fuzz
 from sqlalchemy import desc, and_
 
 # اضافه کردن ریشه پروژه به مسیر برای ایمپورت‌های داخلی
@@ -239,30 +240,52 @@ class ImageProcessor:
                 soup = BeautifulSoup(resp.content, 'html.parser')
                 elements = soup.find_all('a', class_='iusc')
                 
+                candidates = []
                 for i, el in enumerate(elements[:8]): # Check top 8 results
                     try:
                         m_data = json.loads(el.get('m', '{}'))
                         img_url = m_data.get('murl')
+                        title = m_data.get('t', '')
+                        desc = m_data.get('desc', '')
                         
-                        if img_url and img_url.startswith('http'):
-                            # 🛡️ Blacklist low-quality/viral domains
-                            bad_domains = ['tiktok', 'instagram', 'pinterest', 'facebook', 'meme', 'emoji', 'tenor', 'giphy']
-                            if any(x in img_url.lower() for x in bad_domains):
-                                logger.info(f"⏭️ Skipping result #{i+1} (Blacklisted Domain): {img_url[:40]}...")
-                                continue
-                                
-                            # 📥 Download with Bing as Referer (Crucial for bypassing Hotlink Protection)
-                            img_resp = requests.get(img_url, headers={"User-Agent": headers["User-Agent"], "Referer": "https://www.bing.com/"}, timeout=7)
-                            
-                            if img_resp.status_code == 200:
-                                content_type = img_resp.headers.get('Content-Type', '')
-                                if 'image' in content_type:
-                                    logger.info(f"🎯 Success! Downloaded Result #{i+1} from {img_url[:40]}...")
-                                    return img_resp.content, img_url
-                            else:
-                                logger.warning(f"⚠️ Failed to download Result #{i+1} (HTTP {img_resp.status_code})")
+                        if not img_url or not img_url.startswith('http'):
+                            continue
+
+                        # 🛡️ Blacklist low-quality/viral domains
+                        bad_domains = ['tiktok', 'instagram', 'pinterest', 'facebook', 'meme', 'emoji', 'tenor', 'giphy']
+                        if any(x in img_url.lower() for x in bad_domains):
+                            continue
+                        
+                        combined_text = f"{title} {desc}".strip()
+                        score = fuzz.token_set_ratio(clean_query.lower(), combined_text.lower())
+                        candidates.append({"url": img_url, "score": score})
                     except:
                         continue
+                
+                # Sort by score descending
+                candidates.sort(key=lambda x: x["score"], reverse=True)
+
+                for rank, candidate in enumerate(candidates[:3]):
+                    if candidate["score"] < 60:
+                        logger.warning(f"⚠️ Best match score ({candidate['score']}) below threshold (60). Aborting.")
+                        break
+                    
+                    try:
+                        img_url = candidate["url"]
+                        # 📥 Download with Bing as Referer (Crucial for bypassing Hotlink Protection)
+                        img_resp = requests.get(img_url, headers={"User-Agent": headers["User-Agent"], "Referer": "https://www.bing.com/"}, timeout=7)
+                        
+                        if img_resp.status_code == 200:
+                            content_type = img_resp.headers.get('Content-Type', '')
+                            if 'image' in content_type:
+                                logger.info(f"🎯 Success! Downloaded Rank #{rank+1} (Score: {candidate['score']}) from {img_url[:40]}...")
+                                return img_resp.content, img_url
+                        else:
+                            logger.warning(f"⚠️ Failed to download Rank #{rank+1} (HTTP {img_resp.status_code})")
+                    except Exception as e:
+                        logger.error(f"Download error for candidate: {e}")
+                        continue
+
             return None, None
         except Exception as e:
             logger.error(f"Bing Extraction Error: {e}")
