@@ -55,7 +55,7 @@ TECHNOLOGY_KEYWORDS = {
 }
 
 POLITICS_KEYWORDS = {
-    "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "mansur yavaş", "ak parti", "chp", "mhp", "dem partisi", "iyi parti", "zafer partisi", "tbmm", "meclis", "kabine", "ysk", "anayasa", "beyاز saray", "kremlin", "pentagon", "diplomasi", "dışişleri"],
+    "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "mansur yavaş", "ak parti", "chp", "mhp", "dem partisi", "iyi parti", "zafer partisi", "tbmm", "meclis", "kabine", "ysk", "anayasa", "beyاز saray", "kremlin", "pentagon", "diplomasi", "dışişleri", "israil", "filistin", "gazze", "lübnan", "suriye", "abd", "rusya", "ukrayna", "netanyahu", "putin", "biden"],
     "medium": ["seçim anketi", "erken seçim", "ittifak", "yasa", "kanun", "zirve", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge", "koalisyon", "gensoru", "torba yasa", "belediye başkanı"],
     "low": ["açıklama", "toplantı", "karar", "bakanlık", "lider", "tepki", "eleştiri", "ziyaret", "gündem", "diplomatik"]
 }
@@ -68,13 +68,15 @@ ART_KEYWORDS = {
 
 GUNDEM_KEYWORDS = {
     "high": [
-        "deprem", "yangın", "sel", "cinayet", "kaza", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına", "son dakika", "flaş haber", "acil durum", 
+        "deprem", "yangın", "sel", "cinayet", "kaza", "patlama", "afad", "polis", "jandarma", "meteoroloji", "şiddetli fırtına", "son dakika", "flaş haber", "acil durum",
         "dsi", "vgm", "mgm", "toki", "karayolları", "meteoroloji", "belediyesi", "valiliği",
-        "doktor", "hastane", "tedavi", "iyileşti", "ses teli", "felç"
+        "doktor", "hastane", "tedavi", "iyileşti", "ses teli", "felç",
+        "saldırı", "hava saldırısı", "savaş", "çatışma", "şehit", "bombalı", "füze", "katliam", "can kaybı", "operasyon"
     ],
     "medium": [
         "vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "sağanak", "ağır ceza", "müebbet", 
-        "inşa etti", "hizmete açıldı", "baraj", "tesis", "altyapı", "üstyapı", "dolandırıcılık", "gasp", "hırsızlık"
+        "inşa etti", "hizmete açıldı", "baraj", "tesis", "altyapı", "üstyapı", "dolandırıcılık", "gasp", "hırsızlık",
+        "hayatını kaybetti", "yaralandı", "kurban"
     ],
     "low": ["haber", "olay", "hava durumu", "sıcaklık", "belediye", "valilik", "hizmet", "duyuru", "trafik yoğunluğu"]
 }
@@ -119,20 +121,26 @@ def normalize_text(text: str) -> str:
     return text.lower()
 
 def calculate_keyword_score(text: str, keywords_dict: dict) -> int:
-    """Calculates weighting for a specific category based on text frequency"""
+    """Calculates weighting using strict word boundaries to prevent substring traps."""
     score = 0
-    for word in keywords_dict["high"]:
-        if word in text: score += 60 
-    for word in keywords_dict["medium"]:
-        if word in text: score += 20
-    for word in keywords_dict["low"]:
-        if word in text: score += 5
+    for level, weight in [("high", 60), ("medium", 20), ("low", 5)]:
+        for word in keywords_dict[level]:
+            # (?<!\w) and (?!\w) act as boundary checks that support Turkish characters better than \b
+            pattern = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
+            if re.search(pattern, text): 
+                score += weight
     return score
 
 def apply_negative_logic(scores: dict, text: str) -> dict:
-    """Applies cross-categorical penalties to avoid classification bias"""
+    """Applies cross-categorical penalties safely."""
     for rule_name, config in NEGATIVE_KEYWORDS.items():
-        found = any(word in text for word in config["keywords"])
+        found = False
+        for word in config["keywords"]:
+            pattern = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
+            if re.search(pattern, text):
+                found = True
+                break
+                
         if found:
             for target in config["affects"]:
                 if target in scores: scores[target] = max(0, scores[target] + config["penalty"])
@@ -188,7 +196,9 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
         matches = 0
         for level in ["high", "medium", "low"]:
             for word in keywords[level]:
-                if word in text_norm: matches += 1
+                pattern = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
+                if re.search(pattern, text_norm): 
+                    matches += 1
             
         scores[cat_name] = score
         match_counts[cat_name] = matches
