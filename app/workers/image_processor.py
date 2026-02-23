@@ -167,8 +167,9 @@ class ImageProcessor:
             buffer = io.BytesIO()
             
             if getattr(message, 'video', None) or getattr(message, 'document', None):
-                # Download the largest thumbnail instead of the full video file
-                await self.client.download_media(message, file=buffer, thumb=-1)
+                # Intentionally skip video thumbnails to force the Intelligent Bing Fallback
+                logger.info(f"📹 Video detected in Telegram message. Skipping thumbnail to force high-quality Bing fallback.")
+                return None
             else:
                 await self.client.download_media(message, file=buffer)
             return buffer.getvalue()
