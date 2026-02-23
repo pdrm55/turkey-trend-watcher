@@ -138,6 +138,7 @@ def generate_summary_with_gemini(text_cluster):
     4. SEO EXTRACTION:
        - Extract relevant tags (keywords) for search indexing.
        - Identify structured entities (People, Locations, Organizations).
+       - Generate a 2 to 3 word 'image_search_query' representing the main visual subject of the news, highly optimized for Bing/Google Image search (e.g., 'Ali Yerlikaya', 'Galatasaray transfer').
 
     5. CONFLICT RESOLUTION (Layer 6):
        - Compare numerical data (dates, death tolls, prices, percentages) across all input sources.
@@ -167,6 +168,7 @@ def generate_summary_with_gemini(text_cluster):
         "category": "...",
         "category_reasoning": "...",
         "fact_check": "Brief validation of logic...",
+        "image_search_query": "...",
         "tags": ["tag1", "tag2"],
         "entities": {{"people": [], "locations": [], "organizations": []}},
         "has_conflicting_data": false,
@@ -314,7 +316,11 @@ def process_pending_trends():
                     trend.summary = extracted_summary
                     trend.category = final_category 
                     trend.tags = ai_result.get("tags")
-                    trend.entities = ai_result.get("entities")
+                    
+                    entities_dict = ai_result.get("entities", {})
+                    if isinstance(entities_dict, dict):
+                        entities_dict["image_search_query"] = ai_result.get("image_search_query")
+                    trend.entities = entities_dict
                     
                     # Handle Conflict Data (Layer 6)
                     if ai_result.get("has_conflicting_data"):

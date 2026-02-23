@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageStat
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from rapidfuzz import fuzz
-from sqlalchemy import desc, and_
+from sqlalchemy import desc, and_, or_
 
 # اضافه کردن ریشه پروژه به مسیر برای ایمپورت‌های داخلی
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -80,7 +80,7 @@ class ImageProcessor:
             
             # ۱. حذف ۵۰ پیکسل پایین (برای پاک‌سازی واترمارک‌های منبع اصلی)
             w, h = img.size
-            if h > 100: 
+            if h > 400: 
                 img = img.crop((0, 0, w, h - 50))
             
             # ۲. تغییر سایز با حفظ نسبت ابعاد (عرض ثابت ۸۰۰)
@@ -354,9 +354,12 @@ class ImageProcessor:
                 cutoff_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)
                 
                 # دریافت موارد در انتظار با فیلتر زمانی ۴۸ ساعت
-                pending_news = db.query(RawNews).filter(
-                    RawNews.media_status == 0,
-                    RawNews.created_at >= cutoff_time
+                pending_news = db.query(RawNews).outerjoin(Trend, RawNews.trend_id == Trend.id).filter(
+                    RawNews.created_at >= cutoff_time,
+                    or_(
+                        RawNews.media_status == 0,
+                        and_(RawNews.media_status == -2, Trend.entities.is_not(None))
+                    )
                 ).order_by(desc(RawNews.created_at)).limit(10).all()
                 
                 if not pending_news:
@@ -396,53 +399,43 @@ class ImageProcessor:
                         # This will trigger for X-Trends (source='x') or if Telegram/RSS failed to get an image
                         if not image_data:
                             search_query = None
+                            active_entity_name = None
                             
                             if news.trend_id:
                                 trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
                                 if trend:
-                                    # 💡 NEW: Try to use AI extracted Entities for laser-accurate image search!
                                     if trend.entities and isinstance(trend.entities, dict):
-                                        people = trend.entities.get('people', [])
-                                        orgs = trend.entities.get('organizations', [])
-                                        if people or orgs:
-                                            # Combine first person and first organization
-                                            active_entity_name = " ".join(people[:1] + orgs[:1])
-                                            search_query = active_entity_name
-                                    
-                                    # CACHE CHECK
-                                    if active_entity_name:
-                                        cached_entity = db.query(EntityImageCache).filter(EntityImageCache.entity_name == active_entity_name).first()
-                                        if cached_entity:
-                                            logger.info(f"⚡ CACHE HIT! Using verified image for entity: {active_entity_name}")
-                                            news.media_path = cached_entity.local_path
-                                            news.media_url = cached_entity.image_url
-                                            news.media_status = 2
-                                            news.media_meta = {"cached": True}
-                                            
-                                            # Apply Promotion Logic (Trend Cover Image)
-                                            if news.trend_id:
+                                        ai_image_query = trend.entities.get('image_search_query')
+                                        if ai_image_query and len(ai_image_query) > 2:
+                                            search_query = ai_image_query
+                                        else:
+                                            people = trend.entities.get('people', [])
+                                            orgs = trend.entities.get('organizations', [])
+                                            if people or orgs:
+                                                search_query = " ".join(people[:1] + orgs[:1])
+                                        
+                                        active_entity_name = search_query
+                                        
+                                        # CACHE CHECK
+                                        if active_entity_name:
+                                            cached_entity = db.query(EntityImageCache).filter(EntityImageCache.entity_name == active_entity_name).first()
+                                            if cached_entity:
+                                                logger.info(f"⚡ CACHE HIT! Using verified image for entity: {active_entity_name}")
+                                                news.media_path = cached_entity.local_path
+                                                news.media_url = cached_entity.image_url
+                                                news.media_status = 2
+                                                news.media_meta = {"cached": True}
                                                 if not trend.cover_image or news.source_tier == 1:
                                                     trend.cover_image = cached_entity.local_path
                                                     logger.info(f"🖼️ Set/Upgraded cover for Trend {trend.id} from Cache")
-                                            
-                                            db.commit()
-                                            continue # Skip Bing download, Image processing, and Saving entirely!
-
-                                    # Fallback to Title if no entities yet
-                                    if not search_query and trend.title and len(trend.title) > 15:
-                                        search_query = trend.title
-
-                            if not search_query and news.content:
-                                # Fallback: Extract the FIRST real headline, ignore "Sosyal Medya Trendi" garbage
-                                if '📰' in news.content:
-                                    parts = news.content.split('📰')
-                                    if len(parts) > 1:
-                                        first_headline = parts[1].split('\n')[0]
-                                        # Remove source name (e.g., " - Hürriyet")
-                                        search_query = re.sub(r'\s+[-|]\s+[^-|]+$', '', first_headline).strip()
-
-                                if not search_query:
-                                    search_query = news.content[:100]
+                                                db.commit()
+                                                continue
+                                    else:
+                                        # ⏳ RACE CONDITION FIX: Gemini has not run yet.
+                                        logger.info(f"⏳ Trend {trend.id} missing AI entities. Deferring Bing search.")
+                                        news.media_status = -2
+                                        db.commit()
+                                        continue
 
                             if search_query:
                                 # Final sanitation before Bing
