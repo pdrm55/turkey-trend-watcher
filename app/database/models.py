@@ -138,6 +138,16 @@ class MarketHistory(Base):
         Index('idx_market_history_asset_ts', 'asset_id', 'timestamp'),
     )
 
+class EntityImageCache(Base):
+    """کش تصاویر موجودیت‌های شناسایی شده برای جلوگیری از دانلود تکراری"""
+    __tablename__ = "entity_image_cache"
+    id = Column(Integer, primary_key=True, index=True)
+    entity_name = Column(String(255), unique=True, index=True)
+    image_url = Column(String(500))
+    local_path = Column(String(255))
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
 def init_db():
     """
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
@@ -270,6 +280,7 @@ def init_db():
                     ))
                 session.commit()
             
+        print("✅ Entity Image Caching system ready.")
         print("✅ Database synchronization successful. All strategic fields are ready.")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")

@@ -21,7 +21,7 @@ from sqlalchemy import desc, and_
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from app.config import Config
-from app.database.models import SessionLocal, RawNews, Trend
+from app.database.models import SessionLocal, RawNews, Trend, EntityImageCache
 
 # تنظیمات لاگر
 logging.basicConfig(
@@ -370,6 +370,7 @@ class ImageProcessor:
                     try:
                         image_data = None
                         source_url = None
+                        active_entity_name = None
                         
                         # ۱. منطق دانلود
                         if news.source_type == 'telegram':
@@ -395,6 +396,7 @@ class ImageProcessor:
                         # This will trigger for X-Trends (source='x') or if Telegram/RSS failed to get an image
                         if not image_data:
                             search_query = None
+                            
                             if news.trend_id:
                                 trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
                                 if trend:
@@ -403,8 +405,28 @@ class ImageProcessor:
                                         people = trend.entities.get('people', [])
                                         orgs = trend.entities.get('organizations', [])
                                         if people or orgs:
-                                            # Combine first person and first organization (e.g., "Uğurcan Çakır Trabzonspor")
-                                            search_query = " ".join(people[:1] + orgs[:1])
+                                            # Combine first person and first organization
+                                            active_entity_name = " ".join(people[:1] + orgs[:1])
+                                            search_query = active_entity_name
+                                    
+                                    # CACHE CHECK
+                                    if active_entity_name:
+                                        cached_entity = db.query(EntityImageCache).filter(EntityImageCache.entity_name == active_entity_name).first()
+                                        if cached_entity:
+                                            logger.info(f"⚡ CACHE HIT! Using verified image for entity: {active_entity_name}")
+                                            news.media_path = cached_entity.local_path
+                                            news.media_url = cached_entity.image_url
+                                            news.media_status = 2
+                                            news.media_meta = {"cached": True}
+                                            
+                                            # Apply Promotion Logic (Trend Cover Image)
+                                            if news.trend_id:
+                                                if not trend.cover_image or news.source_tier == 1:
+                                                    trend.cover_image = cached_entity.local_path
+                                                    logger.info(f"🖼️ Set/Upgraded cover for Trend {trend.id} from Cache")
+                                            
+                                            db.commit()
+                                            continue # Skip Bing download, Image processing, and Saving entirely!
 
                                     # Fallback to Title if no entities yet
                                     if not search_query and trend.title and len(trend.title) > 15:
@@ -455,6 +477,19 @@ class ImageProcessor:
                         news.media_url = source_url
                         news.media_status = 2 # Ready
                         news.media_meta = {"width": w, "height": h, "size": len(processed_data)}
+                        
+                        # CACHE SAVE
+                        if active_entity_name:
+                            # Check if it was added by another thread to avoid duplicate key errors
+                            existing_cache = db.query(EntityImageCache).filter(EntityImageCache.entity_name == active_entity_name).first()
+                            if not existing_cache:
+                                new_cache = EntityImageCache(
+                                    entity_name=active_entity_name,
+                                    image_url=source_url,
+                                    local_path=rel_path
+                                )
+                                db.add(new_cache)
+                                logger.info(f"💾 Cached new verified image for entity: {active_entity_name}")
                         
                         # ۵. منطق انتخاب بهترین تصویر برای ترند (Promotion Logic)
                         if news.trend_id:
