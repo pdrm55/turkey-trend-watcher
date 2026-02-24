@@ -305,21 +305,21 @@ def action_x_draft(draft_id):
         if action == 'mark_sent':
             draft.status = 'sent'
             draft.sent_at = datetime.utcnow()
-                
-                # Delete the physical image file to save space
-                if draft.image_path:
-                    try:
-                        # app/api/routes.py -> app/api -> app/
-                        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                        file_path = os.path.join(base_dir, draft.image_path.lstrip('/'))
-                        
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                            logger.info(f"🗑️ Deleted X Draft image: {file_path}")
-                        else:
-                            logger.warning(f"⚠️ Image file not found for deletion: {file_path}")
-                    except Exception as e:
-                        logger.error(f"❌ Failed to delete image file: {e}")
+            
+            # Delete the physical image file to save space
+            if draft.image_path:
+                try:
+                    # app/api/routes.py -> app/api -> app/
+                    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    file_path = os.path.join(base_dir, draft.image_path.lstrip('/'))
+                    
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.info(f"🗑️ Deleted X Draft image: {file_path}")
+                    else:
+                        logger.warning(f"⚠️ Image file not found for deletion: {file_path}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to delete image file: {e}")
 
         elif action == 'discard':
             draft.status = 'discarded'
