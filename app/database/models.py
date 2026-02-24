@@ -89,6 +89,9 @@ class Trend(Base):
     # روابط دیتابیسی
     news_items = relationship("RawNews", backref="trend")
     arrival_history = relationship("TrendArrivals", backref="trend", cascade="all, delete-orphan")
+    
+    # رابطه با پیش‌نویس X (توییتر)
+    x_draft = relationship("XDraft", backref="trend", uselist=False)
 
 class TrendArrivals(Base):
     """
@@ -148,6 +151,20 @@ class EntityImageCache(Base):
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
+class XDraft(Base):
+    """پیش‌نویس‌های تولید شده برای انتشار در شبکه اجتماعی X (توییتر)"""
+    __tablename__ = "x_drafts"
+    id = Column(Integer, primary_key=True, index=True)
+    trend_id = Column(Integer, ForeignKey('trends.id'), unique=True, nullable=False)
+    hook_text = Column(String(500))
+    long_caption = Column(Text)
+    image_short_text = Column(String(255))
+    tps_score = Column(Float)
+    image_path = Column(String(255))
+    status = Column(String(20), default="draft")
+    created_at = Column(DateTime, default=utc_now)
+    sent_at = Column(DateTime, nullable=True)
+
 def init_db():
     """
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
@@ -157,6 +174,7 @@ def init_db():
     try:
         # ۱. ساخت جداول پایه در صورت عدم وجود
         Base.metadata.create_all(bind=engine)
+        print("✅ XDrafts table initialized (if not exists).")
         
         inspector = inspect(engine)
         

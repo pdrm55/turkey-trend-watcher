@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect
-from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory
+from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft
 from sqlalchemy import desc, func
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
@@ -16,6 +16,8 @@ from functools import wraps
 # این کار باعث می‌شود مدل هوش مصنوعی فقط یک‌بار (زمان روشن شدن سرور) لود شود
 # و نه هر بار که کاربر روی لینک کلیک می‌کند.
 from app.core.ai_engine import ai_engine 
+from app.core.x_ai_service import generate_x_content
+from app.core.x_image_gen import generate_x_image
 
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
@@ -188,6 +190,131 @@ def render_trend_page(identifier):
             date_published=date_published,
             date_modified=date_modified
         )
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/x-drafts/generate', methods=['POST'])
+@requires_auth
+def generate_x_drafts():
+    data = request.json or {}
+    min_tps = float(data.get('min_tps', 50.0))
+    num_drafts = int(data.get('num_drafts', 5))
+    
+    db = SessionLocal()
+    try:
+        # Subquery to find trends that already have drafts
+        existing_drafts = db.query(XDraft.trend_id).subquery()
+        
+        candidates = db.query(Trend).filter(
+            Trend.is_active == True,
+            Trend.final_tps >= min_tps,
+            ~Trend.id.in_(existing_drafts)
+        ).order_by(desc(Trend.final_tps)).limit(num_drafts).all()
+        
+        generated_count = 0
+        
+        for trend in candidates:
+            # 1. Generate Content
+            # Ensure summary exists, fallback to title if needed
+            context_text = trend.summary if trend.summary else trend.title
+            ai_data = generate_x_content(trend.title, context_text, trend.category)
+            
+            if not ai_data:
+                continue
+                
+            # 2. Generate Image
+            tps_val = round(trend.final_tps, 1)
+            image_path = generate_x_image(trend.id, trend.title, ai_data['image_short_text'], tps_val)
+            
+            if not image_path:
+                continue
+                
+            # 3. Construct Caption
+            public_url = get_public_url()
+            slug_part = trend.slug if trend.slug else trend.id
+            full_link = f"{public_url}/trend/{slug_part}"
+            
+            caption = (
+                f"{ai_data['hook_text']}\n\n"
+                f"🤖 Yapay Zeka Özeti:\n{ai_data['long_caption']}\n\n"
+                f"📈 TPS Skoru: {tps_val}\n\n"
+                f"Yapay zeka analizinin tamamı ve detaylar için: 👇 📸 🔗\n"
+                f"{full_link}\n\n"
+                f"#{trend.category} #TrendiaTR"
+            )
+            
+            # 4. Save Draft
+            draft = XDraft(
+                trend_id=trend.id,
+                hook_text=ai_data['hook_text'],
+                long_caption=caption,
+                image_short_text=ai_data['image_short_text'],
+                tps_score=tps_val,
+                image_path=image_path,
+                status='draft'
+            )
+            db.add(draft)
+            generated_count += 1
+            
+        db.commit()
+        return jsonify({"status": "success", "generated": generated_count})
+    except Exception as e:
+        db.rollback()
+        logger.error(f"X Draft Generation Error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/x-drafts', methods=['GET'])
+@requires_auth
+def list_x_drafts():
+    db = SessionLocal()
+    try:
+        drafts = db.query(XDraft, Trend.title).join(Trend, XDraft.trend_id == Trend.id).filter(
+            XDraft.status == 'draft'
+        ).order_by(desc(XDraft.created_at)).all()
+        
+        results = []
+        for d, title in drafts:
+            results.append({
+                "draft_id": d.id,
+                "trend_id": d.trend_id,
+                "trend_title": title,
+                "caption": d.long_caption,
+                "image_path": d.image_path,
+                "tps_score": d.tps_score,
+                "created_at": d.created_at.isoformat()
+            })
+            
+        return jsonify(results)
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/x-drafts/<int:draft_id>/action', methods=['POST'])
+@requires_auth
+def action_x_draft(draft_id):
+    data = request.json or {}
+    action = data.get('action')
+    
+    db = SessionLocal()
+    try:
+        draft = db.query(XDraft).filter(XDraft.id == draft_id).first()
+        if not draft:
+            return jsonify({"error": "Draft not found"}), 404
+            
+        if action == 'mark_sent':
+            draft.status = 'sent'
+            draft.sent_at = datetime.utcnow()
+        elif action == 'discard':
+            draft.status = 'discarded'
+        else:
+            return jsonify({"error": "Invalid action"}), 400
+            
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
     finally:
         db.close()
 
