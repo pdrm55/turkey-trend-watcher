@@ -14,6 +14,15 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-XXXXXXXXXX');
+    </script>
+
     <style>
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; color: #1e293b; }
         .custom-scroll::-webkit-scrollbar { width: 8px; }
@@ -449,6 +458,12 @@
             const url = cat === "Hepsi" ? "/" : `/category/${cat.toLowerCase()}`;
             window.history.pushState(null, '', url);
 
+            // GA4 Event: Select Category
+            if (typeof gtag === 'function') {
+                gtag('event', 'select_category', {'category_name': cat});
+                gtag('config', 'G-XXXXXXXXXX', {'page_path': url});
+            }
+
             // Fix Dynamic Title
             const dynamicTitle = document.getElementById('dynamic-hot-title');
             if (dynamicTitle) {
@@ -518,6 +533,11 @@
             event.preventDefault();
             openModal(identifier);
             window.history.pushState(null, '', `/trend/${identifier}`);
+            
+            // GA4 Virtual Page View for Modal
+            if (typeof gtag === 'function') {
+                gtag('config', 'G-XXXXXXXXXX', {'page_path': `/trend/${identifier}`});
+            }
         }
 
         async function openModal(identifier) {
@@ -602,6 +622,10 @@
             document.body.style.overflow = 'auto';
             const url = activeCategory === "Hepsi" ? "/" : `/category/${activeCategory.toLowerCase()}`;
             window.history.pushState(null, '', url);
+            
+            if (typeof gtag === 'function') {
+                gtag('config', 'G-XXXXXXXXXX', {'page_path': url});
+            }
         }
 
         // Init routine

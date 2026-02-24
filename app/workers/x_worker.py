@@ -82,6 +82,11 @@ def run_worker():
                     slug_part = trend.slug if trend.slug else trend.id
                     full_link = f"{BASE_SITE_URL}/trend/{slug_part}"
                     
+                    # Add UTM parameters for tracking
+                    utm_params = "utm_source=x&utm_medium=post&utm_campaign=x_studio"
+                    separator = "&" if "?" in full_link else "?"
+                    full_link = f"{full_link}{separator}{utm_params}"
+                    
                     caption = (
                         f"{ai_data['hook_text']}\n\n"
                         f"🤖 {ai_data['short_teaser']}\n\n"

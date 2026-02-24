@@ -351,6 +351,11 @@ def process_pending_trends():
             if trend.final_tps >= publish_threshold and not trend.is_published and trend.summary:
                 target_url = f"{BASE_SITE_URL}/trend/{trend.slug}"
                 
+                # Add UTM parameters for tracking
+                utm_params = "utm_source=telegram&utm_medium=channel&utm_campaign=hot_trends"
+                separator = "&" if "?" in target_url else "?"
+                target_url = f"{target_url}{separator}{utm_params}"
+                
                 # Call the service and check return value
                 success = alert_service.publish_to_channel(
                     title=trend.title,
