@@ -165,6 +165,20 @@ services:
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/social_worker.py
 
+  x_worker:
+    build: .
+    container_name: ttw_x_worker
+    profiles: ["workers"]
+    depends_on:
+      db_init: { condition: service_completed_successfully }
+    volumes:
+      - ".:/app"
+      - "./app/static/media:/app/app/static/media"
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 app/workers/x_worker.py
+
   telegram_bot_worker:
     build: .
     container_name: ttw_interactive_bot
