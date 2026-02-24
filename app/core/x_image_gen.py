@@ -27,6 +27,9 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
         static_dir = os.path.join(app_dir, 'static')
         assets_dir = os.path.join(static_dir, 'assets')
         output_dir = os.path.join(static_dir, 'media', 'x_drafts')
+        # Use absolute paths for Docker environment consistency
+        assets_dir = "/app/app/static/assets"
+        output_dir = "/app/app/static/media/x_drafts"
         
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
