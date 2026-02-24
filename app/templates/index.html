@@ -62,6 +62,24 @@
         .ticker-content { animation: ticker-scroll 30s linear infinite; }
         .ticker-container:hover .ticker-content { animation-play-state: paused; }
         @media (max-width: 768px) { .ticker-content { animation-duration: 20s; } }
+
+        /* Skeleton Loading Animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: #f1f5f9;
+            background-image: linear-gradient(to right, #f1f5f9 0%, #e2e8f0 20%, #f1f5f9 40%, #f1f5f9 100%);
+            background-repeat: no-repeat;
+            background-size: 200% 100%; 
+            animation: shimmer 1.5s infinite linear;
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
+            50% { opacity: 0.5; box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 pb-20">
@@ -318,7 +336,30 @@
             </a>`;
         }
 
-        async function fetchHot() {
+        const SKELETON_CARD = `
+            <div class="rounded-2xl bg-white border border-slate-200 overflow-hidden flex flex-col h-full">
+                <div class="h-48 w-full skeleton"></div>
+                <div class="p-6 flex flex-col flex-1">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="h-5 w-16 rounded-lg skeleton"></div>
+                        <div class="h-5 w-12 rounded skeleton"></div>
+                    </div>
+                    <div class="space-y-3 mb-4">
+                        <div class="h-4 w-full rounded skeleton"></div>
+                        <div class="h-4 w-5/6 rounded skeleton"></div>
+                        <div class="h-4 w-4/6 rounded skeleton"></div>
+                    </div>
+                    <div class="mt-auto pt-4 border-t border-slate-50 flex justify-between items-center">
+                        <div class="h-3 w-24 rounded skeleton"></div>
+                        <div class="h-3 w-12 rounded skeleton"></div>
+                    </div>
+                </div>
+            </div>`;
+
+        async function fetchHot(showLoading = true) {
+            if (showLoading) {
+                document.getElementById('hot-container').innerHTML = Array(4).fill(SKELETON_CARD).join('');
+            }
             try {
                 const apiCat = activeCategory === "Hepsi" ? "All" : activeCategory;
                 let url = `/api/trends?type=hot&category=${apiCat}`;
@@ -335,6 +376,10 @@
         }
 
         async function fetchTimeline(append = false) {
+            const container = document.getElementById('timeline-container');
+            if (!append) {
+                container.innerHTML = Array(8).fill(SKELETON_CARD).join('');
+            }
             try {
                 const limit = 32;
                 const apiCat = activeCategory === "Hepsi" ? "All" : activeCategory;
@@ -344,7 +389,6 @@
 
                 const res = await fetch(url);
                 const trends = await res.json();
-                const container = document.getElementById('timeline-container');
                 if (!append) container.innerHTML = '';
                 container.insertAdjacentHTML('beforeend', trends.map(t => renderCard(t, false)).join(''));
                 document.getElementById('load-more-btn').classList.toggle('hidden', trends.length < limit);
@@ -359,7 +403,13 @@
                 
                 if (Object.keys(data).length === 0) return;
 
-                container.innerHTML = Object.entries(data).map(([symbol, values]) => {
+                const liveIndicator = `
+                    <div class="flex items-center gap-2 mr-6">
+                        <div class="w-2 h-2 bg-green-400 rounded-full" style="animation: pulse-green 2s infinite;"></div>
+                        <span class="text-green-400 text-[10px] font-black tracking-widest">CANLI</span>
+                    </div>`;
+
+                const tickerItems = Object.entries(data).map(([symbol, values]) => {
                     const changeClass = values.change >= 0 ? 'text-emerald-400' : 'text-rose-400';
                     const arrow = values.change >= 0 ? '▲' : '▼';
                     
@@ -383,6 +433,8 @@
                         <div class="w-px h-3 bg-slate-700 mx-2"></div>
                     `;
                 }).join('').slice(0, -42); // Remove last separator div
+
+                container.innerHTML = liveIndicator + tickerItems;
             } catch (e) {}
         }
 
@@ -568,7 +620,7 @@
         
         // Auto-refresh hot trends every 2 mins
         setInterval(() => {
-            fetchHot();
+            fetchHot(false);
         }, 120000);
         
         // Refresh market data every 60s
