@@ -19,6 +19,7 @@ from functools import wraps
 from app.core.ai_engine import ai_engine 
 from app.core.x_ai_service import generate_x_content
 from app.core.x_image_gen import generate_x_image
+from app.core.tg_notifier import notify_admin_x_draft
 
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
@@ -257,6 +258,8 @@ def generate_x_drafts():
             generated_count += 1
             
         db.commit()
+        if generated_count > 0:
+            notify_admin_x_draft(f"{generated_count} adet yeni draft oluşturuldu.", min_tps, "Batch Panel")
         return jsonify({"status": "success", "generated": generated_count})
     except Exception as e:
         db.rollback()
@@ -442,6 +445,8 @@ def generate_x_draft_by_id():
         )
         db.add(draft)
         db.commit()
+        
+        notify_admin_x_draft(trend.title, tps_val, "Manual ID")
         
         return jsonify({"status": "success", "draft_id": draft.id})
     except Exception as e:

@@ -10,6 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 from app.database.models import SessionLocal, Trend, XDraft, SystemSettings
 from app.core.x_ai_service import generate_x_content
 from app.core.x_image_gen import generate_x_image
+from app.core.tg_notifier import notify_admin_x_draft
 
 # Configure logging
 logging.basicConfig(
@@ -102,6 +103,7 @@ def run_worker():
                     db.add(draft)
                     db.commit()
                     logger.info(f"✅ Created X Draft for Trend {trend.id}")
+                    notify_admin_x_draft(trend.title, tps_val, "Auto-Pilot")
                     
                     # Rate limit between generations
                     time.sleep(5)
