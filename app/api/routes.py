@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect
+import os
 from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft
 from sqlalchemy import desc, func
 from datetime import datetime, timedelta
@@ -304,6 +305,22 @@ def action_x_draft(draft_id):
         if action == 'mark_sent':
             draft.status = 'sent'
             draft.sent_at = datetime.utcnow()
+                
+                # Delete the physical image file to save space
+                if draft.image_path:
+                    try:
+                        # app/api/routes.py -> app/api -> app/
+                        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        file_path = os.path.join(base_dir, draft.image_path.lstrip('/'))
+                        
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                            logger.info(f"🗑️ Deleted X Draft image: {file_path}")
+                        else:
+                            logger.warning(f"⚠️ Image file not found for deletion: {file_path}")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to delete image file: {e}")
+
         elif action == 'discard':
             draft.status = 'discarded'
         else:
@@ -313,6 +330,123 @@ def action_x_draft(draft_id):
         return jsonify({"status": "success"})
     except Exception as e:
         db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@api_bp.route('/admin/x-studio')
+@requires_auth
+def x_studio_dashboard():
+    db = SessionLocal()
+    try:
+        auto_pilot = db.query(SystemSettings).filter_by(key="x_auto_pilot_status").first()
+        threshold = db.query(SystemSettings).filter_by(key="x_publish_threshold").first()
+        
+        return render_template(
+            'x_studio.html',
+            auto_pilot=auto_pilot.value if auto_pilot else "False",
+            threshold=threshold.value if threshold else "70.0"
+        )
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/x-settings', methods=['POST'])
+@requires_auth
+def update_x_settings():
+    data = request.json or {}
+    auto_pilot = str(data.get('auto_pilot', False)) # "True" or "False"
+    threshold = str(data.get('threshold', 70.0))
+    
+    db = SessionLocal()
+    try:
+        # Update Auto-Pilot Status
+        ap_setting = db.query(SystemSettings).filter_by(key="x_auto_pilot_status").first()
+        if not ap_setting:
+            ap_setting = SystemSettings(key="x_auto_pilot_status", value=auto_pilot)
+            db.add(ap_setting)
+        else:
+            ap_setting.value = auto_pilot
+            
+        # Update Threshold
+        th_setting = db.query(SystemSettings).filter_by(key="x_publish_threshold").first()
+        if not th_setting:
+            th_setting = SystemSettings(key="x_publish_threshold", value=threshold)
+            db.add(th_setting)
+        else:
+            th_setting.value = threshold
+            
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/x-drafts/generate-by-id', methods=['POST'])
+@requires_auth
+def generate_x_draft_by_id():
+    data = request.json or {}
+    trend_id = data.get('trend_id')
+    
+    if not trend_id:
+        return jsonify({"error": "trend_id is required"}), 400
+        
+    db = SessionLocal()
+    try:
+        trend = db.query(Trend).filter(Trend.id == trend_id).first()
+        if not trend:
+            return jsonify({"error": "Trend not found"}), 404
+            
+        # Check if draft exists
+        existing = db.query(XDraft).filter(XDraft.trend_id == trend.id).first()
+        if existing:
+            return jsonify({"error": "Draft already exists for this trend"}), 400
+            
+        # Generate Content
+        context_text = trend.summary if trend.summary else trend.title
+        ai_data = generate_x_content(trend.title, context_text, trend.category)
+        
+        if not ai_data:
+            return jsonify({"error": "AI content generation failed"}), 500
+            
+        # Generate Image
+        tps_val = round(trend.final_tps, 1)
+        image_path = generate_x_image(trend.id, trend.title, ai_data['image_short_text'], tps_val)
+        
+        if not image_path:
+            return jsonify({"error": "Image generation failed"}), 500
+            
+        # Construct Caption
+        public_url = get_public_url()
+        slug_part = trend.slug if trend.slug else trend.id
+        full_link = f"{public_url}/trend/{slug_part}"
+        
+        caption = (
+            f"{ai_data['hook_text']}\n\n"
+            f"🤖 {ai_data['short_teaser']}\n\n"
+            f"Detaylar: 👇 🔗\n"
+            f"{full_link}\n\n"
+            f"#{trend.category} #TrendiaTR"
+        )
+        
+        # Save Draft
+        draft = XDraft(
+            trend_id=trend.id,
+            hook_text=ai_data['hook_text'],
+            long_caption=caption, # Storing full caption in long_caption column
+            image_short_text=ai_data['image_short_text'],
+            tps_score=tps_val,
+            image_path=image_path,
+            status='draft'
+        )
+        db.add(draft)
+        db.commit()
+        
+        return jsonify({"status": "success", "draft_id": draft.id})
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Manual X Draft Generation Error: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         db.close()

@@ -71,7 +71,7 @@ def generate_x_content(trend_title, cluster_text, category):
         category (str): The category of the news.
         
     Returns:
-        dict: A dictionary with 'hook_text', 'long_caption', and 'image_short_text', or None if failed.
+        dict: A dictionary with 'hook_text', 'short_teaser', and 'image_short_text', or None if failed.
     """
     if not client:
         logger.error("Gemini client is not initialized.")
@@ -95,11 +95,10 @@ def generate_x_content(trend_title, cluster_text, category):
        - Must include 1 or 2 emojis.
        - Aim to stop the scroll.
 
-    2. "long_caption":
-       - A detailed, multi-line analytical summary of the news.
-       - Since this is for X Premium, THERE IS NO CHARACTER LIMIT.
-       - Use 3-4 bullet points to make it readable and professional.
-       - Tone: Journalistic but engaging.
+    2. "short_teaser":
+       - A highly engaging, curiosity-inducing hook strictly around 20 words.
+       - Do NOT tell the whole story. The goal is to make the user click the link to read the details on the website.
+       - Tone: Journalistic but viral.
 
     3. "image_short_text":
        - A heavily compressed, single-sentence summary of the news.
@@ -110,7 +109,7 @@ def generate_x_content(trend_title, cluster_text, category):
     ### OUTPUT FORMAT (JSON ONLY)
     {{
         "hook_text": "...",
-        "long_caption": "...",
+        "short_teaser": "...",
         "image_short_text": "..."
     }}
     """
@@ -134,7 +133,7 @@ def generate_x_content(trend_title, cluster_text, category):
             return None
         
         # Basic validation
-        required_keys = ["hook_text", "long_caption", "image_short_text"]
+        required_keys = ["hook_text", "short_teaser", "image_short_text"]
         if not all(k in result for k in required_keys):
             logger.error(f"AI response missing required keys. Got: {list(result.keys())}")
             return None

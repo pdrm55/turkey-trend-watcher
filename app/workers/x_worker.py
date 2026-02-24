@@ -83,9 +83,8 @@ def run_worker():
                     
                     caption = (
                         f"{ai_data['hook_text']}\n\n"
-                        f"🤖 Yapay Zeka Özeti:\n{ai_data['long_caption']}\n\n"
-                        f"📈 TPS Skoru: {tps_val}\n\n"
-                        f"Yapay zeka analizinin tamamı ve detaylar için: 👇 📸 🔗\n"
+                        f"🤖 {ai_data['short_teaser']}\n\n"
+                        f"Detaylar: 👇 🔗\n"
                         f"{full_link}\n\n"
                         f"#{trend.category} #TrendiaTR"
                     )

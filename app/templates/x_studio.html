@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X (Twitter) Studio | TrendiaTR</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-10">
+            <div class="flex items-center gap-4">
+                <a href="/admin" class="text-slate-400 hover:text-white transition-colors flex items-center gap-2 font-semibold">
+                    ⬅️ Back to Admin
+                </a>
+                <h1 class="text-3xl font-black tracking-tight text-white">𝕏 Studio</h1>
+            </div>
+        </header>
+
+        <!-- Auto-Pilot Configuration -->
+        <section class="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 shadow-lg">
+            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                ⚙️ Auto-Pilot Configuration
+            </h2>
+            <div class="flex flex-wrap items-end gap-4">
+                <div class="flex-1 max-w-xs">
+                    <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Auto-Pilot Status</label>
+                    <select id="xAutoPilot" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:outline-none">
+                        <option value="True">Enabled (Active)</option>
+                        <option value="False">Disabled (Paused)</option>
+                    </select>
+                </div>
+                <div class="flex-1 max-w-xs">
+                    <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Min TPS Threshold</label>
+                    <input type="number" id="xThreshold" step="0.1" 
+                           class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+                <button onclick="saveXSettings()" id="btnSaveSettings" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md">
+                    💾 Save X Settings
+                </button>
+            </div>
+        </section>
+
+        <!-- Manual Generation -->
+        <section class="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 shadow-lg">
+            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                ⚡ Manual Generation
+            </h2>
+            <div class="flex items-end gap-4">
+                <div class="flex-1 max-w-xs">
+                    <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Trend ID</label>
+                    <input type="number" id="manualTrendId" placeholder="e.g. 12345"
+                           class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+                <button onclick="generateById()" id="btnGenerateId" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md">
+                    ⚡ Generate by ID
+                </button>
+            </div>
+        </section>
+
+        <!-- Drafts Table -->
+        <section class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-lg">
+            <div class="p-6 border-b border-slate-700">
+                <h2 class="text-xl font-bold">Pending Drafts</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-900/50 text-slate-400 uppercase text-xs">
+                        <tr>
+                            <th class="p-4 w-48">Preview</th>
+                            <th class="p-4">Content</th>
+                            <th class="p-4 text-right w-64">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="xDraftsTableBody" class="divide-y divide-slate-700">
+                        <tr><td colspan="3" class="p-8 text-center text-slate-500">Loading drafts...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Initialize values from server-side template variables
+        document.addEventListener('DOMContentLoaded', () => {
+            const autoPilotVal = "{{ auto_pilot }}"; // "True" or "False"
+            const thresholdVal = "{{ threshold }}";
+            
+            const apSelect = document.getElementById('xAutoPilot');
+            if(apSelect) apSelect.value = autoPilotVal;
+            
+            const thInput = document.getElementById('xThreshold');
+            if(thInput) thInput.value = thresholdVal;
+            
+            loadXDrafts();
+        });
+
+        async function saveXSettings() {
+            const autoPilot = document.getElementById('xAutoPilot').value;
+            const threshold = document.getElementById('xThreshold').value;
+            const btn = document.getElementById('btnSaveSettings');
+            
+            btn.disabled = true;
+            btn.innerText = 'Saving...';
+            
+            try {
+                const res = await fetch('/api/admin/x-settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ auto_pilot: autoPilot, threshold: threshold })
+                });
+                const data = await res.json();
+                if(data.status === 'success') {
+                    alert('✅ Settings Saved!');
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) {
+                console.error(e);
+                alert('Failed to save settings.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '💾 Save X Settings';
+            }
+        }
+
+        async function generateById() {
+            const id = document.getElementById('manualTrendId').value;
+            if(!id) return alert('Please enter a Trend ID');
+            
+            const btn = document.getElementById('btnGenerateId');
+            btn.disabled = true;
+            btn.innerText = 'Generating...';
+            
+            try {
+                const res = await fetch('/api/admin/x-drafts/generate-by-id', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ trend_id: id })
+                });
+                const data = await res.json();
+                if(data.status === 'success') {
+                    alert('✅ Draft Generated!');
+                    document.getElementById('manualTrendId').value = '';
+                    loadXDrafts();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) {
+                console.error(e);
+                alert('Failed to generate draft.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '⚡ Generate by ID';
+            }
+        }
+
+        async function loadXDrafts() {
+            const tbody = document.getElementById('xDraftsTableBody');
+            tbody.innerHTML = '<tr><td colspan="3" class="p-8 text-center text-slate-500">Loading drafts...</td></tr>';
+            
+            try {
+                const res = await fetch('/api/admin/x-drafts');
+                const drafts = await res.json();
+                
+                if (drafts.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" class="p-8 text-center text-slate-500">No pending drafts found.</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = '';
+                drafts.forEach(d => {
+                    // Escape single quotes for JS strings in onclick handlers
+                    const encodedCaption = encodeURIComponent(d.caption).replace(/'/g, "%27");
+                    
+                    const row = `
+                        <tr class="hover:bg-slate-700/50 transition-colors">
+                            <td class="p-4 align-top">
+                                <a href="${d.image_path}" target="_blank">
+                                    <img src="${d.image_path}" class="w-full h-auto rounded border border-slate-600 hover:opacity-80 transition-opacity shadow-sm">
+                                </a>
+                            </td>
+                            <td class="p-4 align-top">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <span class="font-bold text-white text-lg">${d.trend_title}</span>
+                                    <span class="bg-slate-700 text-green-400 px-2 py-0.5 rounded text-xs font-mono border border-slate-600">TPS: ${d.tps_score}</span>
+                                </div>
+                                <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 text-slate-300 text-sm font-mono whitespace-pre-wrap max-h-64 overflow-y-auto shadow-inner">${d.caption}</div>
+                            </td>
+                            <td class="p-4 align-top text-right space-y-2">
+                                <button onclick="copyCaption(this, '${encodedCaption}')" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                    📋 Copy Caption
+                                </button>
+                                <button onclick="openXIntent('${encodedCaption}')" class="w-full bg-black hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                    𝕏 Open Intent
+                                </button>
+                                <button onclick="downloadImage('${d.image_path}')" class="w-full bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-2 rounded border border-slate-600 transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                    ⬇️ Download Image
+                                </button>
+                                <button onclick="markDraftSent(${d.draft_id})" class="w-full bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm mt-4">
+                                    ✅ Mark Sent & Delete
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.insertAdjacentHTML('beforeend', row);
+                });
+            } catch(e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-red-400">Failed to load drafts</td></tr>';
+            }
+        }
+
+        function copyCaption(btn, encodedText) {
+            const text = decodeURIComponent(encodedText);
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '✅ Copied!';
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-500');
+                btn.classList.add('bg-green-600', 'hover:bg-green-500');
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                    btn.classList.remove('bg-green-600', 'hover:bg-green-500');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                alert('Failed to copy caption.');
+            });
+        }
+
+        function openXIntent(encodedText) {
+            const url = `https://twitter.com/intent/tweet?text=${encodedText}`;
+            window.open(url, '_blank');
+        }
+
+        function downloadImage(path) {
+            const link = document.createElement('a');
+            link.href = path;
+            link.download = path.split('/').pop();
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        async function markDraftSent(id) {
+            if(!confirm('Are you sure? This will mark the draft as sent and PERMANENTLY DELETE the image file from the server to save space.')) return;
+            
+            try {
+                const res = await fetch(`/api/admin/x-drafts/${id}/action`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ action: 'mark_sent' })
+                });
+                const data = await res.json();
+                if(data.status === 'success') {
+                    loadXDrafts();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) { 
+                console.error(e);
+                alert('Error updating status'); 
+            }
+        }
+    </script>
+</body>
+</html>
