@@ -203,12 +203,11 @@ def generate_x_drafts():
     db = SessionLocal()
     try:
         # Subquery to find trends that already have drafts
-        existing_drafts = db.query(XDraft.trend_id).subquery()
         
         candidates = db.query(Trend).filter(
             Trend.is_active == True,
             Trend.final_tps >= min_tps,
-            ~Trend.id.in_(existing_drafts)
+            ~Trend.id.in_(db.query(XDraft.trend_id))
         ).order_by(desc(Trend.final_tps)).limit(num_drafts).all()
         
         generated_count = 0

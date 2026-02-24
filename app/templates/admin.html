@@ -347,7 +347,7 @@
                 
                 tbody.innerHTML = '';
                 drafts.forEach(d => {
-                    const encodedCaption = encodeURIComponent(d.caption);
+                    const encodedCaption = encodeURIComponent(d.caption).replace(/'/g, "%27");
                     const row = `
                         <tr class="hover:bg-slate-700/50 transition-colors">
                             <td class="p-4 align-top">
@@ -363,10 +363,10 @@
                                 <div class="bg-slate-900 p-3 rounded border border-slate-700 text-slate-300 text-xs font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">${d.caption}</div>
                             </td>
                             <td class="p-4 align-top text-right space-y-2">
-                                <button onclick="copyCaption(this, decodeURIComponent('${encodedCaption}'))" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2">
+                                <button onclick="copyCaption(this, '${encodedCaption}')" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2">
                                     📋 Copy Caption
                                 </button>
-                                <button onclick="openXIntent(decodeURIComponent('${encodedCaption}'))" class="w-full bg-black hover:bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2">
+                                <button onclick="openXIntent('${encodedCaption}')" class="w-full bg-black hover:bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2">
                                     𝕏 Open Intent
                                 </button>
                                 <button onclick="markDraftSent(${d.draft_id})" class="w-full bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2">
@@ -383,7 +383,8 @@
             }
         }
 
-        function copyCaption(btn, text) {
+        function copyCaption(btn, encodedText) {
+            const text = decodeURIComponent(encodedText);
             navigator.clipboard.writeText(text).then(() => {
                 const originalText = btn.innerHTML;
                 btn.innerHTML = '✅ Copied!';
@@ -394,11 +395,14 @@
                     btn.classList.add('bg-blue-600', 'hover:bg-blue-500');
                     btn.classList.remove('bg-green-600', 'hover:bg-green-500');
                 }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                alert('Failed to copy caption.');
             });
         }
 
-        function openXIntent(text) {
-            const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+        function openXIntent(encodedText) {
+            const url = `https://twitter.com/intent/tweet?text=${encodedText}`;
             window.open(url, '_blank');
         }
 

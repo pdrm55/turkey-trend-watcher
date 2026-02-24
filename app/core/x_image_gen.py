@@ -21,12 +21,6 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
     """
     try:
         # --- 1. Path Configuration ---
-        # Determine base paths dynamically relative to this file
-        current_dir = os.path.dirname(os.path.abspath(__file__)) # app/core/
-        app_dir = os.path.dirname(current_dir)                   # app/
-        static_dir = os.path.join(app_dir, 'static')
-        assets_dir = os.path.join(static_dir, 'assets')
-        output_dir = os.path.join(static_dir, 'media', 'x_drafts')
         # Use absolute paths for Docker environment consistency
         assets_dir = "/app/app/static/assets"
         output_dir = "/app/app/static/media/x_drafts"
