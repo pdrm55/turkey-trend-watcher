@@ -73,27 +73,31 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
         text_x_end = fire_x_start - 20
         text_area_width = text_x_end - text_x_start
 
-        # Draw Headline
-        headline_lines = textwrap.wrap(headline, width=48)
-        y_cursor = 90
-        for line in headline_lines:
-            w = draw.textlength(line, font=font_headline)
-            draw.text(((total_width - w) / 2, y_cursor), line, font=font_headline, fill="white")
-            y_cursor += 82 # Line height
-        
         # Box Vertical Positioning
-        box_y_start = y_cursor + 100 
+        box_y_start = 470
 
         # Calculate Box Height
-        body_wrapper = textwrap.TextWrapper(width=int(text_area_width / 18.5)) 
+        body_wrapper = textwrap.TextWrapper(width=int(text_area_width / 18)) 
         body_lines = body_wrapper.wrap(text=short_summary)
         line_height = 50 
         text_block_height = len(body_lines) * line_height
         
         min_box_height = 220 
-        calculated_height = text_block_height + 120 
+        calculated_height = text_block_height + 100 
         box_height = max(min_box_height, calculated_height)
         box_y_end = box_y_start + box_height
+
+        # Draw Headline (Centered in available top space)
+        headline_lines = textwrap.wrap(headline, width=40)
+        line_height_headline = 82
+        available_top_space = box_y_start - 30
+        total_headline_height = len(headline_lines) * line_height_headline
+        y_cursor = max(50, (available_top_space - total_headline_height) / 2)
+
+        for line in headline_lines:
+            w = draw.textlength(line, font=font_headline)
+            draw.text(((total_width - w) / 2, y_cursor), line, font=font_headline, fill="white")
+            y_cursor += line_height_headline
 
         # Draw Glass Overlay
         overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
@@ -113,7 +117,7 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
         base.paste(ai_icon, (int(ai_x_pos), int(center_y - (ai_icon_size / 2))), ai_icon)
 
         # B) Body Text
-        text_y_cursor = center_y - (text_block_height / 2) + 5
+        text_y_cursor = center_y - (text_block_height / 2) - 5
         for line in body_lines:
             draw.text((text_x_start, text_y_cursor), line, font=font_body, fill="white")
             text_y_cursor += line_height
@@ -125,8 +129,8 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
         text_tps_x = fire_x_start + fire_icon_width + 15
         text_tps_y = center_y - 25 
         
-        draw.text((text_tps_x, text_tps_y), "TPS : ", font=font_tps, fill="white")
-        val_x_offset = draw.textlength("TPS : ", font=font_tps)
+        draw.text((text_tps_x, text_tps_y), "TPS: ", font=font_tps, fill="white")
+        val_x_offset = draw.textlength("TPS: ", font=font_tps)
         draw.text((text_tps_x + val_x_offset, text_tps_y), str(tps_value), font=font_tps, fill=FIRE_GREEN)
 
         # --- 5. Save and Return ---
