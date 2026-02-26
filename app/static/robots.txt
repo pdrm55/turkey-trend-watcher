@@ -1,0 +1,25 @@
+# ==========================================
+# TrendiaTR - Automated AI News Platform
+# ==========================================
+
+User-agent: *
+# اجازه خزش به تمام ربات‌ها
+Allow: /
+
+# جلوگیری از خزش در صفحات مدیریت و پنل‌های ادمین
+Disallow: /admin/
+Disallow: /api/admin/
+
+# جلوگیری از خزش در مسیرهای جستجوی داخلی (جلوگیری از تولید صفحات بی‌نهایت)
+Disallow: /?q=*
+Disallow: /api/trends?q=*
+
+# قوانین خاص برای ربات‌های هوش مصنوعی (اختیاری - اگر می‌خواهید محتوایتان را کپی نکنند)
+User-agent: GPTBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+# آدرس نقشه سایت (بسیار مهم)
+Sitemap: https://trendiatr.com/sitemap.xml

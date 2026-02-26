@@ -87,7 +87,7 @@
         {% if trend.cover_image %}
         <div class="w-full h-64 md:h-96 relative mb-6">
             <img src="/static/{{ trend.cover_image }}" 
-                 alt="{{ trend.title }}" 
+                 alt="{{ trend.entities.image_search_query if trend.entities and trend.entities.image_search_query else trend.title }}" 
                  class="w-full h-full object-cover rounded-t-3xl md:rounded-3xl shadow-sm">
             <div class="absolute inset-0 rounded-t-3xl md:rounded-3xl bg-gradient-to-t from-black/30 to-transparent"></div>
         </div>

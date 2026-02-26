@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect
+from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect, send_from_directory, current_app
 import os
 from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft
 from sqlalchemy import desc, func
@@ -85,6 +85,11 @@ def resolve_trend_smart(db, identifier):
     
     return db.query(Trend).filter((Trend.slug == identifier) | (Trend.cluster_id == identifier)).first()
 
+@api_bp.route('/robots.txt')
+def robots_txt():
+    """Serve robots.txt for SEO crawlers"""
+    return send_from_directory(current_app.static_folder, 'robots.txt')
+
 @api_bp.route('/')
 def dashboard():
     """رندر کردن داشبورد اصلی (Home)"""
@@ -123,6 +128,14 @@ def category_page(name):
 @api_bp.route('/trend/<identifier>')
 def render_trend_page(identifier):
     """رندر سمت سرور (SSR) برای صفحات جزئیات ترند"""
+    
+    # 1. Check Redis Cache for SSR HTML
+    cache_key = f"ssr_trend_{identifier}"
+    if redis_client:
+        cached_html = redis_client.get(cache_key)
+        if cached_html:
+            return cached_html
+
     db = SessionLocal()
     # ایمپورت ai_engine از اینجا حذف شد و به بالا منتقل گردید
     try:
@@ -182,7 +195,7 @@ def render_trend_page(identifier):
         date_published = trend.first_seen.isoformat() + "+00:00" if trend.first_seen else None
         date_modified = trend.last_updated.isoformat() + "+00:00" if trend.last_updated else date_published
         
-        return render_template(
+        html_content = render_template(
             'trend_detail.html', 
             trend=trend, 
             news_list=formatted_news,
@@ -192,6 +205,12 @@ def render_trend_page(identifier):
             date_published=date_published,
             date_modified=date_modified
         )
+        
+        # 2. Save to Redis Cache (10 minutes TTL)
+        if redis_client:
+            redis_client.setex(cache_key, 600, html_content)
+            
+        return html_content
     finally:
         db.close()
 

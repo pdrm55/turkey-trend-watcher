@@ -109,9 +109,9 @@
                 </svg>
             </a>
             <div>
-                <h1 class="text-4xl font-extrabold flex items-center tracking-tight">
+                <div class="text-4xl font-extrabold flex items-center tracking-tight">
                     <span class="text-black">Trendia</span><span class="text-red-600">TR</span>
-                </h1>
+                </div>
                 <p id="header-subtitle" class="text-slate-500 mt-1 text-sm font-medium">
                     {% if active_category and active_category != 'Hepsi' %}
                         {{ active_category }} Dünyasından Gerçek Zamanlı Analizler
@@ -182,9 +182,9 @@
     <section class="max-w-7xl mx-auto mb-12">
         <div class="flex items-center gap-2 mb-6">
             <span class="text-2xl">🔥</span>
-            <h2 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">
+            <h1 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">
                 <span id="dynamic-hot-title">{{ active_category if active_category and active_category != 'Hepsi' else '' }}</span> SIÇRAMA YAPANLAR
-            </h2>
+            </h1>
             <span class="text-[10px] font-bold text-red-500 ml-2 animate-pulse bg-red-50 px-2 py-0.5 rounded-full border border-red-100">CANLI TPS</span>
         </div>
         <div id="hot-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
