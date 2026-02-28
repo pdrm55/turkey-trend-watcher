@@ -76,12 +76,16 @@ class AIEngine:
     def ask_local_llm(self, reference_news, candidate_news):
         """Final semantic verification using local Qwen model with robust JSON parsing"""
         prompt = f"""
-        Act as a news editor. Compare these two Turkish news texts.
-        Do these two texts refer to the **same news story, event chain, or ongoing topic**?
-        
-        Answer **true** if they discuss the same subject (e.g., an accident, a match result, or Bitcoin dropping).
-        Answer **false** ONLY if they describe completely different events.
-        
+        Act as a strict news editor. Compare these two Turkish news texts.
+        Do these two texts refer to the **EXACT SAME specific event**?
+
+        - Same broad topic (e.g. "Earthquake") is NOT enough. It must be the SAME location and time.
+        - Same sports team is NOT enough. It must be the SAME match or transfer.
+        - Same politician is NOT enough. It must be the SAME speech or decree.
+
+        Answer **true** ONLY if they describe the exact same specific event.
+        Answer **false** if they are different events, even if related.
+
         Ref News: "{reference_news[:700]}"
         New News: "{candidate_news[:700]}"
         
@@ -164,7 +168,7 @@ class AIEngine:
         if results['distances'] and results['distances'][0]:
             for i, distance in enumerate(results['distances'][0]):
                 # Cosine distance threshold (0.0 is exact match, 1.0 is opposite)
-                if distance > 0.46: continue
+                if distance > 0.35: continue
                 
                 metadata = results['metadatas'][0][i]
                 candidate_cluster_id = metadata['cluster_id']
@@ -175,7 +179,7 @@ class AIEngine:
                 target_text = self.get_cluster_reference_doc(candidate_cluster_id) or results['documents'][0][i]
                 
                 # Case 1: High similarity (Auto-Merge Zone)
-                if distance < 0.28:
+                if distance < 0.18:
                     cluster_id = candidate_cluster_id
                     is_duplicate = True
                     break
