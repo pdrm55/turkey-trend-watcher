@@ -11,6 +11,7 @@ import redis
 import json
 import logging
 import time
+import requests
 from functools import wraps
 
 # --- اصلاح حیاتی: انتقال ایمپورت به سطح ماژول ---
@@ -764,6 +765,39 @@ def get_live_market_data():
         return jsonify({})
     finally:
         db.close()
+
+@api_bp.route('/api/contact', methods=['POST'])
+def submit_contact_form():
+    """Handle contact form submissions via Telegram"""
+    data = request.json or {}
+    name = data.get('name')
+    email = data.get('email')
+    message = data.get('message')
+    
+    if not all([name, email, message]):
+        return jsonify({'error': 'Lütfen tüm alanları doldurun.'}), 400
+        
+    try:
+        text = f"📩 <b>Yeni İletişim Mesajı (TrendiaTR)</b>\n\n👤 <b>İsim:</b> {name}\n📧 <b>E-posta:</b> {email}\n\n📝 <b>Mesaj:</b>\n{message}"
+        
+        telegram_url = f"https://api.telegram.org/bot{Config.TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            'chat_id': Config.ADMIN_CHAT_ID,
+            'text': text,
+            'parse_mode': 'HTML'
+        }
+        
+        response = requests.post(telegram_url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            return jsonify({'status': 'success', 'message': 'Mesajınız başarıyla gönderildi.'})
+        else:
+            logger.error(f"Telegram API Error: {response.text}")
+            return jsonify({'error': 'Mesaj gönderilemedi.'}), 500
+            
+    except Exception as e:
+        logger.error(f"Contact Form Error: {e}")
+        return jsonify({'error': 'Internal Server Error'}), 500
 
 # --- Admin Panel Routes ---
 
