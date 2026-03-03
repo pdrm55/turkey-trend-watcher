@@ -16,15 +16,24 @@
     <meta property="og:type" content="article">
     <meta property="og:title" content="{{ trend.title }}">
     <meta property="og:description" content="{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}">
-    <meta property="og:url" content="https://trendiatr.com/trend/{{ trend.slug }}">
+    <meta property="og:url" content="{{ canonical_url }}">
     <meta property="og:site_name" content="TrendiaTR">
-    <meta property="og:image" content="https://trendiatr.com/static/og-image.png">
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@TrendiaTR">
     <meta name="twitter:title" content="{{ trend.title }}">
     <meta name="twitter:description" content="{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}">
-    <meta name="twitter:image" content="https://trendiatr.com/static/og-image.png">
+
+    <!-- Dynamic Cover Image Logic -->
+    {% if trend.cover_image %}
+        <meta property="og:image" content="{{ trend.cover_image if trend.cover_image.startswith('http') else base_url ~ '/' ~ trend.cover_image.lstrip('/') }}">
+        <meta name="twitter:image" content="{{ trend.cover_image if trend.cover_image.startswith('http') else base_url ~ '/' ~ trend.cover_image.lstrip('/') }}">
+    {% else %}
+        <!-- Fallback Banner -->
+        <meta property="og:image" content="{{ base_url }}/static/assets/BackGround.png">
+        <meta name="twitter:image" content="{{ base_url }}/static/assets/BackGround.png">
+    {% endif %}
 
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23ef4444'/%3E%3Ctext x='50%25' y='53%25' dominant-baseline='middle' text-anchor='middle' font-family='Inter, sans-serif' font-weight='800' font-size='60' fill='white'%3ETT%3C/text%3E%3C/svg%3E">
 
