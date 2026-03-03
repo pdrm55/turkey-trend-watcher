@@ -174,8 +174,14 @@
                 
                 tbody.innerHTML = '';
                 drafts.forEach(d => {
-                    // Escape single quotes for JS strings in onclick handlers
-                    const encodedCaption = encodeURIComponent(d.caption).replace(/'/g, "%27");
+                    // Split caption into Main Tweet and Reply Tweet
+                    const parts = d.caption.split('====REPLY====');
+                    const mainTweet = parts[0] ? parts[0].trim() : d.caption;
+                    const replyTweet = parts[1] ? parts[1].trim() : '';
+
+                    // Encode both parts for JS strings in onclick handlers
+                    const encodedMain = encodeURIComponent(mainTweet).replace(/'/g, "%27");
+                    const encodedReply = encodeURIComponent(replyTweet).replace(/'/g, "%27");
                     
                     const row = `
                         <tr class="hover:bg-slate-700/50 transition-colors">
@@ -189,13 +195,31 @@
                                     <span class="font-bold text-white text-lg">${d.trend_title}</span>
                                     <span class="bg-slate-700 text-green-400 px-2 py-0.5 rounded text-xs font-mono border border-slate-600">TPS: ${d.tps_score}</span>
                                 </div>
-                                <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 text-slate-300 text-sm font-mono whitespace-pre-wrap max-h-64 overflow-y-auto shadow-inner">${d.caption}</div>
+                                
+                                <!-- Main Tweet Box -->
+                                <div class="mb-4">
+                                    <span class="text-xs text-slate-400 uppercase tracking-wider block mb-1">Main Tweet</span>
+                                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 text-slate-300 text-sm font-mono whitespace-pre-wrap shadow-inner">${mainTweet}</div>
+                                </div>
+
+                                <!-- Reply Tweet Box (if exists) -->
+                                ${replyTweet ? `
+                                <div>
+                                    <span class="text-xs text-slate-400 uppercase tracking-wider block mb-1">Reply Tweet (Link)</span>
+                                    <div class="bg-slate-800 p-4 rounded-lg border-l-4 border-blue-500 text-slate-300 text-sm font-mono whitespace-pre-wrap shadow-inner">${replyTweet}</div>
+                                </div>` : ''}
                             </td>
                             <td class="p-4 align-top text-right space-y-2">
-                                <button onclick="copyCaption(this, '${encodedCaption}')" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm">
-                                    📋 Copy Caption
+                                <button onclick="copyCaption(this, '${encodedMain}')" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                    📋 Copy Main Post
                                 </button>
-                                <button onclick="openXIntent('${encodedCaption}')" class="w-full bg-black hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                
+                                ${replyTweet ? `
+                                <button onclick="copyCaption(this, '${encodedReply}')" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                    🔗 Copy Reply (Link)
+                                </button>` : ''}
+
+                                <button onclick="openXIntent('${encodedMain}')" class="w-full bg-black hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2 shadow-sm">
                                     𝕏 Open Intent
                                 </button>
                                 <button onclick="downloadImage('${d.image_path}')" class="w-full bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-2 rounded border border-slate-600 transition-colors flex items-center justify-center gap-2 shadow-sm">

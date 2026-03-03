@@ -71,7 +71,7 @@ def generate_x_content(trend_title, cluster_text, category):
         category (str): The category of the news.
         
     Returns:
-        dict: A dictionary with 'hook_text', 'short_teaser', and 'image_short_text', or None if failed.
+        dict: A dictionary with 'ai_summary', 'interaction_question', 'hashtags', and 'image_short_text', or None if failed.
     """
     if not client:
         logger.error("Gemini client is not initialized.")
@@ -80,7 +80,7 @@ def generate_x_content(trend_title, cluster_text, category):
     prompt = f"""
     ### SYSTEM ROLE
     You are an "Expert Turkish Social Media Editor" for the news platform 'TrendiaTR'. 
-    Your goal is to create highly engaging, professional, and viral content for X (Twitter) Premium.
+    Your goal is to create highly engaging, professional, and viral content for X (Twitter) based on a "Zero-Click" strategy, where the user gets all the key info directly in the tweet.
 
     ### INPUT DATA
     - Headline: {trend_title}
@@ -88,19 +88,19 @@ def generate_x_content(trend_title, cluster_text, category):
     - Context: {cluster_text}
 
     ### TASK
-    Analyze the context and generate a JSON response with exactly these 3 keys:
+    Analyze the context and generate a JSON response with exactly these 4 keys:
 
-    1. "hook_text": 
-       - A very catchy, one-line hook sentence relevant to the category.
-       - Must include 1 or 2 emojis.
-       - Aim to stop the scroll.
+    1. "ai_summary": 
+       - A 1-line highly engaging summary of the news.
+       - Must include 1 or 2 relevant emojis.
 
-    2. "short_teaser":
-       - A highly engaging, curiosity-inducing hook strictly around 20 words.
-       - Do NOT tell the whole story. The goal is to make the user click the link to read the details on the website.
-       - Tone: Journalistic but viral.
+    2. "interaction_question":
+       - An open-ended, thought-provoking question related to the news to encourage user comments and interaction.
 
-    3. "image_short_text":
+    3. "hashtags":
+       - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
+
+    4. "image_short_text":
        - A heavily compressed, single-sentence summary of the news.
        - STRICTLY UNDER 130 CHARACTERS.
        - This text will be printed physically on an image, so it must be concise.
@@ -108,8 +108,9 @@ def generate_x_content(trend_title, cluster_text, category):
 
     ### OUTPUT FORMAT (JSON ONLY)
     {{
-        "hook_text": "...",
-        "short_teaser": "...",
+        "ai_summary": "...",
+        "interaction_question": "...",
+        "hashtags": ["tag1", "tag2"],
         "image_short_text": "..."
     }}
     """
@@ -133,7 +134,7 @@ def generate_x_content(trend_title, cluster_text, category):
             return None
         
         # Basic validation
-        required_keys = ["hook_text", "short_teaser", "image_short_text"]
+        required_keys = ["ai_summary", "interaction_question", "hashtags", "image_short_text"]
         if not all(k in result for k in required_keys):
             logger.error(f"AI response missing required keys. Got: {list(result.keys())}")
             return None

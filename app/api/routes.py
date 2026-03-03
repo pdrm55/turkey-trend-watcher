@@ -255,19 +255,26 @@ def generate_x_drafts():
             slug_part = trend.slug if trend.slug else trend.id
             full_link = f"{public_url}/trend/{slug_part}"
             
-            caption = (
-                f"{ai_data['hook_text']}\n\n"
-                f"🤖 Yapay Zeka Özeti:\n{ai_data['long_caption']}\n\n"
-                f"📈 TPS Skoru: {tps_val}\n\n"
-                f"Yapay zeka analizinin tamamı ve detaylar için: 👇 📸 🔗\n"
-                f"{full_link}\n\n"
-                f"#{trend.category} #TrendiaTR"
+            spread_speed = round(tps_val / 7.5, 1)
+            hashtags = ai_data.get('hashtags', [])
+            hash1 = hashtags[0] if len(hashtags) > 0 else trend.category
+            hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
+
+            main_tweet = (
+                f"🤖 AI Özeti: {ai_data['ai_summary']}\n\n"
+                f"📊 TPS: {tps_val} | Yayılım Hızı: {spread_speed}x\n\n"
+                f"💬 {ai_data['interaction_question']}\n\n"
+                f"#{hash1} #{hash2} #TrendiaTR"
             )
+            
+            reply_tweet = f"Olayın tüm detayları, resmi açıklamalar ve güncel gelişmeler için: 👇 🔗\n{full_link}"
+            
+            caption = f"{main_tweet}\n\n====REPLY====\n\n{reply_tweet}"
             
             # 4. Save Draft
             draft = XDraft(
                 trend_id=trend.id,
-                hook_text=ai_data['hook_text'],
+                hook_text=ai_data['ai_summary'][:50],
                 long_caption=caption,
                 image_short_text=ai_data['image_short_text'],
                 tps_score=tps_val,
@@ -445,18 +452,26 @@ def generate_x_draft_by_id():
         slug_part = trend.slug if trend.slug else trend.id
         full_link = f"{public_url}/trend/{slug_part}"
         
-        caption = (
-            f"{ai_data['hook_text']}\n\n"
-            f"🤖 {ai_data['short_teaser']}\n\n"
-            f"Detaylar: 👇 🔗\n"
-            f"{full_link}\n\n"
-            f"#{trend.category} #TrendiaTR"
+        spread_speed = round(tps_val / 7.5, 1)
+        hashtags = ai_data.get('hashtags', [])
+        hash1 = hashtags[0] if len(hashtags) > 0 else trend.category
+        hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
+
+        main_tweet = (
+            f"🤖 AI Özeti: {ai_data['ai_summary']}\n\n"
+            f"📊 TPS: {tps_val} | Yayılım Hızı: {spread_speed}x\n\n"
+            f"💬 {ai_data['interaction_question']}\n\n"
+            f"#{hash1} #{hash2} #TrendiaTR"
         )
+        
+        reply_tweet = f"Olayın tüm detayları, resmi açıklamalar ve güncel gelişmeler için: 👇 🔗\n{full_link}"
+        
+        caption = f"{main_tweet}\n\n====REPLY====\n\n{reply_tweet}"
         
         # Save Draft
         draft = XDraft(
             trend_id=trend.id,
-            hook_text=ai_data['hook_text'],
+            hook_text=ai_data['ai_summary'][:50],
             long_caption=caption, # Storing full caption in long_caption column
             image_short_text=ai_data['image_short_text'],
             tps_score=tps_val,
