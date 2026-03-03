@@ -887,6 +887,7 @@ def admin_get_trends():
             results.append({
                 "id": t.id,
                 "title": t.title or "No Title",
+                "summary": t.summary or "",
                 "tps": round(t.final_tps, 1),
                 "is_active": t.is_active,
                 "category": t.category,
@@ -925,6 +926,7 @@ def admin_update_trend(trend_id):
     data = request.json
     new_title = data.get('title')
     new_category = data.get('category')
+    new_summary = data.get('summary')
     
     db = SessionLocal()
     try:
@@ -936,6 +938,8 @@ def admin_update_trend(trend_id):
             trend.title = new_title
         if new_category:
             trend.category = new_category
+        if new_summary is not None:
+            trend.summary = new_summary.strip()
             
         trend.last_updated = datetime.utcnow()
         db.commit()

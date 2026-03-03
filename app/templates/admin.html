@@ -116,6 +116,11 @@
                 </select>
             </div>
             
+            <div class="mb-6">
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Summary</label>
+                <textarea id="editSummary" rows="5" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none whitespace-pre-wrap"></textarea>
+            </div>
+            
             <div class="flex justify-end gap-3">
                 <button onclick="closeEditModal()" class="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
                 <button onclick="saveEdit()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2 rounded-lg transition-colors">Save Changes</button>
@@ -125,6 +130,7 @@
 
     <script>
         let currentEditId = null;
+        let currentTrendsData = [];
         let currentOffset = 0;
         const limit = 50;
 
@@ -152,11 +158,15 @@
             } catch(e) { console.error(e); }
         }
 
-        function openEditModal(id, title, category) {
+        function openEditModal(id) {
             currentEditId = id;
-            document.getElementById('editTitle').value = title;
-            document.getElementById('editCategory').value = category;
-            document.getElementById('editModal').classList.remove('hidden');
+            const trend = currentTrendsData.find(t => t.id === id);
+            if (trend) {
+                document.getElementById('editTitle').value = trend.title;
+                document.getElementById('editCategory').value = trend.category;
+                document.getElementById('editSummary').value = trend.summary || '';
+                document.getElementById('editModal').classList.remove('hidden');
+            }
         }
 
         function closeEditModal() {
@@ -168,12 +178,13 @@
             if (!currentEditId) return;
             const title = document.getElementById('editTitle').value;
             const category = document.getElementById('editCategory').value;
+            const summary = document.getElementById('editSummary').value.trim();
             
             try {
                 const res = await fetch(`/api/admin/trends/${currentEditId}/update`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ title, category })
+                    body: JSON.stringify({ title, category, summary })
                 });
                 const data = await res.json();
                 if(data.status === 'success') {
@@ -214,13 +225,17 @@
                 const res = await fetch(url);
                 const trends = await res.json();
                 
-                if (!append) tbody.innerHTML = '';
+                if (!append) {
+                    currentTrendsData = trends;
+                    tbody.innerHTML = '';
+                } else {
+                    currentTrendsData.push(...trends);
+                }
                 
                 if (trends.length === 0 && !append) {
                     tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-slate-500">No trends found.</td></tr>';
                 } else {
                 trends.forEach(t => {
-                    const safeTitle = t.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     const row = `
                         <tr class="hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 last:border-0">
                             <td class="p-4 font-mono text-xs text-slate-500">#${t.id}</td>
@@ -234,7 +249,7 @@
                                 </span>
                             </td>
                             <td class="p-4 text-right space-x-2">
-                                <button onclick="openEditModal(${t.id}, '${safeTitle}', '${t.category}')" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded border border-blue-500">
+                                <button onclick="openEditModal(${t.id})" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded border border-blue-500">
                                     Edit
                                 </button>
                                 <button onclick="toggleTrend(${t.id})" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded border border-slate-600">
