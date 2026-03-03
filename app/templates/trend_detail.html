@@ -27,8 +27,8 @@
 
     <!-- Dynamic Cover Image Logic -->
     {% if trend.cover_image %}
-        <meta property="og:image" content="{{ trend.cover_image if trend.cover_image.startswith('http') else base_url ~ '/' ~ trend.cover_image.lstrip('/') }}">
-        <meta name="twitter:image" content="{{ trend.cover_image if trend.cover_image.startswith('http') else base_url ~ '/' ~ trend.cover_image.lstrip('/') }}">
+        <meta property="og:image" content="{{ trend.cover_image if trend.cover_image.startswith('http') else base_url ~ '/static/' ~ trend.cover_image.lstrip('/') }}">
+        <meta name="twitter:image" content="{{ trend.cover_image if trend.cover_image.startswith('http') else base_url ~ '/static/' ~ trend.cover_image.lstrip('/') }}">
     {% else %}
         <!-- Fallback Banner -->
         <meta property="og:image" content="{{ base_url }}/static/assets/BackGround.png">
