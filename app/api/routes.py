@@ -175,9 +175,12 @@ def render_trend_page(identifier):
                 logger.error(f"Error cleaning HTML: {e}")
                 clean_content = n.content
 
-            link = n.external_id or ""
-            if link and not link.startswith('http'):
-                link = f"https://{link}"
+            if n.source_type == 'editorial':
+                link = get_public_url()
+            else:
+                link = n.external_id or ""
+                if link and not link.startswith('http'):
+                    link = f"https://{link}"
             
             formatted_news.append({
                 "source": n.source_name,
@@ -846,9 +849,12 @@ def get_trend_details(identifier):
 
         formatted_news = []
         for n in news_items:
-            link = n.external_id or ""
-            if link and not link.startswith('http'):
-                link = f"https://{link}"
+            if n.source_type == 'editorial':
+                link = get_public_url()
+            else:
+                link = n.external_id or ""
+                if link and not link.startswith('http'):
+                    link = f"https://{link}"
             formatted_news.append({
                 "source": n.source_name, 
                 "time": n.published_at.isoformat() + 'Z', 
