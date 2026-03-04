@@ -123,7 +123,8 @@
             const title = document.getElementById('edTitle').value.trim();
             const summary = document.getElementById('edSummary').value.trim();
             const category = document.getElementById('edCategory').value;
-            const imageFile = document.getElementById('edImage').files[0];
+            const imageInput = document.getElementById('edImage');
+            const imageFile = imageInput.files.length > 0 ? imageInput.files[0] : null;
             
             const btn = document.getElementById('btnPublishEditorial');
 
@@ -151,6 +152,24 @@
                     body: formData
                 });
                 
+                // ERROR HANDLING: Catch HTML error pages from Nginx/Gunicorn before parsing JSON
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    console.error("Server Error HTML/Text:", errorText);
+                    
+                    if (res.status === 413) {
+                        alert("Hata 413: Seçtiğiniz fotoğraf boyutu çok büyük! Sunucu limiti aşıldı (Genellikle maks 1MB). Lütfen daha küçük bir fotoğraf yükleyin.");
+                    } else if (res.status === 502 || res.status === 504) {
+                        alert(`Hata ${res.status}: Sunucu zaman aşımına uğradı veya çöktü.`);
+                    } else {
+                        alert(`Sunucu Hatası (${res.status}). Lütfen F12 -> Console sekmesini kontrol edin.`);
+                    }
+                    
+                    btn.disabled = false;
+                    btn.innerHTML = "🚀 Publish as Hot Trend";
+                    return;
+                }
+
                 const data = await res.json();
                 
                 if (data.status === 'success') {
@@ -168,7 +187,8 @@
                     btn.innerHTML = "🚀 Publish as Hot Trend";
                 }
             } catch (e) {
-                alert("Could not connect to the server.");
+                console.error("Fetch/Network Error:", e);
+                alert("Bağlantı koptu veya beklenmeyen bir hata oluştu. Lütfen konsolu (F12) kontrol edin.");
                 btn.disabled = false;
                 btn.innerHTML = "🚀 Publish as Hot Trend";
             }
