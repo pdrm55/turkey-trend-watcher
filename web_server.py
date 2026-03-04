@@ -27,6 +27,9 @@ def create_app():
                 static_folder=STATIC_DIR,
                 static_url_path='/static')
 
+    # افزایش محدودیت حجم آپلود به 50 مگابایت برای رفع ارور 413
+    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
     # ثبت بلوپرینت اصلی API و مسیرهای مسیریابی (Routing)
     app.register_blueprint(api_bp)
 
