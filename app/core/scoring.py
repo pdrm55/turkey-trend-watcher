@@ -75,6 +75,10 @@ class TPSCalculator:
         """
         arrivals = self.db.query(TrendArrivals).filter(TrendArrivals.trend_id == trend_id).order_by(TrendArrivals.timestamp).all()
         if not arrivals: return 0.0
+
+        has_editorial = self.db.query(RawNews).filter(RawNews.trend_id == trend_id, RawNews.source_type == 'editorial').first() is not None
+        if has_editorial:
+            return 100.0  # Instant max velocity for editorial news
         
         source_count = len(arrivals)
         if source_count <= 1: return 15.0 # امتیاز پایه برای اولین حضور
@@ -193,6 +197,10 @@ class TPSCalculator:
         """
         news_items = self.db.query(RawNews).filter(RawNews.trend_id == trend_id).all()
         if not news_items: return 0.5
+
+        has_editorial = self.db.query(RawNews).filter(RawNews.trend_id == trend_id, RawNews.source_type == 'editorial').first() is not None
+        if has_editorial:
+            return 1.0  # 100% confidence for editorial tier 1 news
         
         # ۱. تعیین بهترین سطح منبع در کلاستر بر اساس تنظیمات فاز ۶
         best_tier = min([n.source_tier for n in news_items])

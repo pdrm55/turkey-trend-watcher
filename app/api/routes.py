@@ -305,32 +305,65 @@ def publish_manual_news():
             
     db = SessionLocal()
     try:
+        from app.core.text_utils import slugify_turkish
+        
         threshold_setting = db.query(SystemSettings).filter_by(key="x_publish_threshold").first()
         base_tps = float(threshold_setting.value) if threshold_setting else 60.0
         
         external_id = f"trendiatr_ed_{uuid.uuid4().hex[:8]}"
+        target_trend_id = request.form.get('target_trend_id')
         
-        cluster_id, is_duplicate = ai_engine.process_news(content, "TrendiaTR", external_id)
-        
-        if not cluster_id:
-            return jsonify({"error": "Vector database processing error"}), 500
-
         trend = None
-        if is_duplicate:
-            trend = db.query(Trend).filter(Trend.cluster_id == cluster_id).first()
+        
+        # 1. Handle Forced Merging or AI Clustering
+        if target_trend_id and target_trend_id.strip().isdigit():
+            trend = db.query(Trend).filter(Trend.id == int(target_trend_id)).first()
+            if not trend:
+                return jsonify({"error": "Belirtilen Trend ID bulunamadı."}), 404
+            cluster_id = trend.cluster_id
             
+            # Inject into ChromaDB silently to train the cluster
+            try:
+                vector = ai_engine.get_embedding(content)
+                ai_engine.collection.add(
+                    documents=[content],
+                    embeddings=[vector],
+                    metadatas=[{"source": "TrendiaTR", "cluster_id": cluster_id, "external_id": external_id, "timestamp": datetime.utcnow().timestamp(), "is_reference": False}],
+                    ids=[str(uuid.uuid4())]
+                )
+            except: pass
+        else:
+            cluster_id, is_duplicate = ai_engine.process_news(content, "TrendiaTR", external_id)
+            if not cluster_id:
+                return jsonify({"error": "Vector database processing error"}), 500
+            if is_duplicate:
+                trend = db.query(Trend).filter(Trend.cluster_id == cluster_id).first()
+                
+        # 2. Create new Trend if it doesn't exist
         if not trend:
             trend = Trend(cluster_id=cluster_id, first_seen=datetime.utcnow())
             db.add(trend)
             db.flush() 
             
+        # 3. Apply Editorial Updates
         trend.title = title
         trend.summary = summary
         trend.category = category
         if image_url:
             trend.cover_image = image_url
             
-        trend.final_tps = max(trend.final_tps, base_tps)
+        # 4. Generate SEO Slug if missing
+        if not trend.slug and title:
+            base_slug = slugify_turkish(title)
+            unique_slug = base_slug
+            counter = 1
+            while db.query(Trend).filter(Trend.slug == unique_slug, Trend.id != trend.id).first():
+                unique_slug = f"{base_slug}-{counter}"
+                counter += 1
+            trend.slug = unique_slug
+            
+        # 5. Apply high TPS
+        trend.final_tps = max(trend.final_tps or 0.0, base_tps)
         trend.previous_tps = base_tps
         trend.score = trend.final_tps
         trend.trajectory = "up"
