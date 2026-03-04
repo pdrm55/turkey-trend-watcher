@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Özel Haber (Editorial) | TrendiaTR</title>
+    <title>Editorial Studio | TrendiaTR</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>body { font-family: 'Inter', sans-serif; }</style>
@@ -24,29 +24,29 @@
         <!-- Main Workspace -->
         <section class="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 shadow-lg">
             <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
-                📝 Yapay Zeka ile Özel Haber Oluştur
+                📝 Create Custom News with AI Assistance
             </h2>
             
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <!-- Left Column: Raw Input -->
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Haberin Ana Metni (Raw Text)</label>
-                        <textarea id="edRawText" rows="18" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-emerald-500 focus:outline-none placeholder-slate-600 whitespace-pre-wrap" placeholder="Haberin detaylarını buraya yapıştırın..."></textarea>
+                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Raw Text Input (Source Material)</label>
+                        <textarea id="edRawText" rows="20" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-emerald-500 focus:outline-none placeholder-slate-600 whitespace-pre-wrap" placeholder="Paste the full raw text or details of the news here..."></textarea>
                     </div>
                     <button id="btnAiDraft" onclick="generateEditorialDraft()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-4 rounded-lg transition-colors flex justify-center items-center gap-2 shadow-lg text-lg">
-                        ✨ Yapay Zeka ile Analiz Et
+                        ✨ Generate AI Headline & Summary
                     </button>
                 </div>
 
-                <!-- Right Column: Editable Output -->
+                <!-- Right Column: Editable Output & Upload -->
                 <div class="space-y-5 bg-slate-900/50 p-6 rounded-xl border border-slate-700">
                     <div>
-                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Başlık (Headline)</label>
+                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Headline</label>
                         <input type="text" id="edTitle" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none font-bold text-lg">
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Kategori (Category)</label>
+                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Category</label>
                         <select id="edCategory" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none">
                             <option value="Gündem">Gündem</option>
                             <option value="Siyaset">Siyaset</option>
@@ -57,19 +57,22 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Özet (Summary)</label>
+                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Summary</label>
                         <textarea id="edSummary" rows="6" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none whitespace-pre-wrap leading-relaxed"></textarea>
                     </div>
-                    <div>
-                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Görsel URL (İsteğe Bağlı)</label>
-                        <input type="text" id="edImageUrl" placeholder="https://..." class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none text-sm">
+                    
+                    <!-- File Upload Section -->
+                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Cover Image Upload (Optional)</label>
+                        <input type="file" id="edImage" accept="image/png, image/jpeg, image/webp" class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-500 transition-colors">
+                        <p class="text-xs text-slate-500 mt-2">Image will be automatically resized to 800px width and converted to optimized WebP format.</p>
                     </div>
                     
                     <div class="pt-4 mt-2 border-t border-slate-700">
                         <button id="btnPublishEditorial" onclick="publishEditorialNews()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-8 py-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg text-lg flex justify-center items-center gap-2" disabled>
-                            🚀 Trend Olarak Yayınla
+                            🚀 Publish as Hot Trend
                         </button>
-                        <p class="text-xs text-slate-500 text-center mt-3">Yayınlandığı an sisteme yüksek TPS ile girer ve X-Worker tarafından otomatik işlenir.</p>
+                        <p class="text-xs text-slate-500 text-center mt-3">Once published, it enters the system with a high TPS score and gets processed by the X-Worker automatically.</p>
                     </div>
                 </div>
             </div>
@@ -82,11 +85,11 @@
             const btn = document.getElementById('btnAiDraft');
             
             if (rawText.length < 50) {
-                alert("Lütfen en az 50 karakterlik bir haber metni girin.");
+                alert("Please enter at least 50 characters of raw text.");
                 return;
             }
 
-            btn.innerHTML = "⏳ Analiz Ediliyor...";
+            btn.innerHTML = "⏳ AI is analyzing...";
             btn.disabled = true;
 
             try {
@@ -105,12 +108,12 @@
                     
                     document.getElementById('btnPublishEditorial').disabled = false;
                 } else {
-                    alert("Hata: " + (data.error || "Bilinmeyen bir hata oluştu."));
+                    alert("Error: " + (data.error || "Unknown AI error occurred."));
                 }
             } catch (e) {
-                alert("Sunucuya bağlanılamadı.");
+                alert("Could not connect to the server.");
             } finally {
-                btn.innerHTML = "✨ Yapay Zeka ile Analiz Et";
+                btn.innerHTML = "✨ Generate AI Headline & Summary";
                 btn.disabled = false;
             }
         }
@@ -120,51 +123,54 @@
             const title = document.getElementById('edTitle').value.trim();
             const summary = document.getElementById('edSummary').value.trim();
             const category = document.getElementById('edCategory').value;
-            const imageUrl = document.getElementById('edImageUrl').value.trim();
+            const imageFile = document.getElementById('edImage').files[0];
             
             const btn = document.getElementById('btnPublishEditorial');
 
             if (!title || !summary) {
-                alert("Lütfen başlık ve özet alanlarının dolu olduğundan emin olun.");
+                alert("Please ensure both Headline and Summary are filled.");
                 return;
             }
 
-            btn.innerHTML = "🚀 Yayınlanıyor...";
+            btn.innerHTML = "🚀 Publishing...";
             btn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('content', rawText);
+            formData.append('title', title);
+            formData.append('summary', summary);
+            formData.append('category', category);
+            
+            if (imageFile) {
+                formData.append('image', imageFile);
+            }
 
             try {
                 const res = await fetch('/api/admin/news/publish', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        content: rawText,
-                        title: title,
-                        summary: summary,
-                        category: category,
-                        image_url: imageUrl
-                    })
+                    body: formData
                 });
                 
                 const data = await res.json();
                 
                 if (data.status === 'success') {
-                    alert(`✅ Haber başarıyla yayınlandı!\n\nSistem bu haberi doğrudan trendlere aldı (TPS: ${data.tps}).\nBirkaç saniye içinde X-Worker tarafından işlenecektir.`);
-                    // Reset fields
+                    alert(`✅ Successfully published!\n\nSystem applied high TPS (${data.tps}).\nIt will be picked up by X-Worker shortly.`);
+                    
                     document.getElementById('edRawText').value = '';
                     document.getElementById('edTitle').value = '';
                     document.getElementById('edSummary').value = '';
-                    document.getElementById('edImageUrl').value = '';
+                    document.getElementById('edImage').value = '';
                     btn.disabled = true;
-                    btn.innerHTML = "🚀 Trend Olarak Yayınla";
+                    btn.innerHTML = "🚀 Publish as Hot Trend";
                 } else {
-                    alert("Hata: " + (data.error || "Yayınlama başarısız."));
+                    alert("Error: " + (data.error || "Failed to publish."));
                     btn.disabled = false;
-                    btn.innerHTML = "🚀 Trend Olarak Yayınla";
+                    btn.innerHTML = "🚀 Publish as Hot Trend";
                 }
             } catch (e) {
-                alert("Sunucuya bağlanılamadı.");
+                alert("Could not connect to the server.");
                 btn.disabled = false;
-                btn.innerHTML = "🚀 Trend Olarak Yayınla";
+                btn.innerHTML = "🚀 Publish as Hot Trend";
             }
         }
     </script>
