@@ -13,6 +13,7 @@ import logging
 import time
 import requests
 from functools import wraps
+import uuid
 
 # --- اصلاح حیاتی: انتقال ایمپورت به سطح ماژول ---
 # این کار باعث می‌شود مدل هوش مصنوعی فقط یک‌بار (زمان روشن شدن سرور) لود شود
@@ -21,6 +22,7 @@ from app.core.ai_engine import ai_engine
 from app.core.x_ai_service import generate_x_content
 from app.core.x_image_gen import generate_x_image
 from app.core.tg_notifier import notify_admin_x_draft
+from app.workers.summarizer import generate_summary_with_gemini
 
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
@@ -212,6 +214,109 @@ def render_trend_page(identifier):
             redis_client.setex(cache_key, 600, html_content)
             
         return html_content
+    finally:
+        db.close()
+
+@api_bp.route('/admin/editorial')
+@requires_auth
+def editorial_panel():
+    """Render the dedicated Editorial News creation page"""
+    return render_template('editorial.html')
+
+@api_bp.route('/api/admin/news/draft', methods=['POST'])
+@requires_auth
+def generate_manual_news_draft():
+    """Send raw text to Gemini to generate headline, summary, and category"""
+    data = request.json or {}
+    content = data.get('content')
+    
+    if not content or len(content) < 50:
+        return jsonify({"error": "Metin çok kısa (Requires at least 50 characters)"}), 400
+        
+    try:
+        ai_data, in_tok, out_tok, duration = generate_summary_with_gemini(content)
+        
+        if not ai_data:
+            return jsonify({"error": "Yapay zeka yanıt vermedi (AI Error)"}), 500
+            
+        return jsonify({
+            "status": "success",
+            "title": ai_data.get("headline", ""),
+            "summary": ai_data.get("summary", ""),
+            "category": ai_data.get("category", "Gündem")
+        })
+    except Exception as e:
+        logger.error(f"Manual Draft Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route('/api/admin/news/publish', methods=['POST'])
+@requires_auth
+def publish_manual_news():
+    """Save editorial news, inject into ChromaDB, and apply high TPS"""
+    data = request.json or {}
+    content = data.get('content')
+    title = data.get('title')
+    summary = data.get('summary')
+    category = data.get('category')
+    image_url = data.get('image_url') 
+    
+    db = SessionLocal()
+    try:
+        threshold_setting = db.query(SystemSettings).filter_by(key="x_publish_threshold").first()
+        base_tps = float(threshold_setting.value) if threshold_setting else 60.0
+        
+        external_id = f"trendiatr_{uuid.uuid4().hex[:10]}"
+        
+        cluster_id, is_duplicate = ai_engine.process_news(content, "TrendiaTR", external_id)
+        
+        if not cluster_id:
+            return jsonify({"error": "Vektör veritabanı hatası (Vector processing error)"}), 500
+
+        trend = None
+        if is_duplicate:
+            trend = db.query(Trend).filter(Trend.cluster_id == cluster_id).first()
+            
+        if not trend:
+            trend = Trend(cluster_id=cluster_id, first_seen=datetime.utcnow())
+            db.add(trend)
+            db.flush() 
+            
+        trend.title = title
+        trend.summary = summary
+        trend.category = category
+        if image_url:
+            trend.cover_image = image_url
+            
+        trend.final_tps = max(trend.final_tps, base_tps)
+        trend.previous_tps = base_tps
+        trend.score = trend.final_tps
+        trend.trajectory = "up"
+        trend.is_active = True
+        trend.has_social_signal = True 
+        trend.last_updated = datetime.utcnow()
+
+        raw_news = RawNews(
+            source_type="editorial",
+            source_name="TrendiaTR",
+            source_tier=1, 
+            external_id=external_id,
+            content=content,
+            published_at=datetime.utcnow(),
+            trend_id=trend.id
+        )
+        db.add(raw_news)
+        db.flush()
+
+        arrival = TrendArrivals(trend_id=trend.id, raw_news_id=raw_news.id, timestamp=datetime.utcnow())
+        db.add(arrival)
+        
+        db.commit()
+        return jsonify({"status": "success", "trend_id": trend.id, "tps": trend.final_tps})
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Publish Editorial News Error: {e}")
+        return jsonify({"error": str(e)}), 500
     finally:
         db.close()
 
