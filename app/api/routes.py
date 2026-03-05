@@ -616,11 +616,6 @@ def generate_x_draft_by_id():
         if not trend:
             return jsonify({"error": "Trend not found"}), 404
             
-        # Check if draft exists
-        existing = db.query(XDraft).filter(XDraft.trend_id == trend.id).first()
-        if existing:
-            return jsonify({"error": "Draft already exists for this trend"}), 400
-            
         # Generate Content
         context_text = trend.summary if trend.summary else trend.title
         ai_data = generate_x_content(trend.title, context_text, trend.category)
@@ -693,11 +688,6 @@ def generate_x_thread_by_id():
         trend = db.query(Trend).filter(Trend.id == trend_id).first()
         if not trend:
             return jsonify({"error": "Trend not found"}), 404
-            
-        # Check if draft exists
-        existing = db.query(XDraft).filter(XDraft.trend_id == trend.id).first()
-        if existing:
-            return jsonify({"error": "Draft already exists for this trend"}), 400
             
         # Generate Content
         context_text = trend.summary if trend.summary else trend.title
