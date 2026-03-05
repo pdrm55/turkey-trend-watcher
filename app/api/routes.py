@@ -1217,6 +1217,65 @@ def admin_trend_action(trend_id):
     finally:
         db.close()
 
+@api_bp.route('/api/admin/trends/merge', methods=['POST'])
+@requires_auth
+def admin_merge_trends():
+    """Merges a source trend into a target trend completely"""
+    data = request.json or {}
+    source_id = data.get('source_id')
+    target_id = data.get('target_id')
+    
+    if not source_id or not target_id or int(source_id) == int(target_id):
+        return jsonify({"error": "Geçersiz ID'ler (Aynı haber birleştirilemez)"}), 400
+        
+    db = SessionLocal()
+    try:
+        source_trend = db.query(Trend).filter(Trend.id == int(source_id)).first()
+        target_trend = db.query(Trend).filter(Trend.id == int(target_id)).first()
+        
+        if not source_trend or not target_trend:
+            return jsonify({"error": "Trend bulunamadı"}), 404
+            
+        # 1. Transfer RawNews & Arrivals
+        db.query(RawNews).filter(RawNews.trend_id == source_trend.id).update({"trend_id": target_trend.id})
+        db.query(TrendArrivals).filter(TrendArrivals.trend_id == source_trend.id).update({"trend_id": target_trend.id})
+        
+        # 2. Inherit Image (Fallback to source image if target has none)
+        if not target_trend.cover_image and source_trend.cover_image:
+            target_trend.cover_image = source_trend.cover_image
+            
+        # 3. Update Counts and Trigger AI/Scoring
+        target_trend.message_count += source_trend.message_count
+        target_trend.needs_scoring = True
+        target_trend.last_updated = datetime.utcnow()
+        
+        # 4. Deactivate Source Trend
+        source_trend.is_active = False
+        
+        # 5. Update ChromaDB Vectors
+        ai_engine.merge_clusters(source_trend.cluster_id, target_trend.cluster_id)
+        
+        db.commit()
+        
+        # 6. Clear Redis Cache (Important for UI update)
+        if redis_client:
+            keys = [
+                f"ssr_trend_{source_trend.id}", f"ssr_trend_{source_trend.slug}",
+                f"ssr_trend_{target_trend.id}", f"ssr_trend_{target_trend.slug}",
+                f"detail_v1_{source_trend.id}", f"detail_v1_{source_trend.slug}",
+                f"detail_v1_{target_trend.id}", f"detail_v1_{target_trend.slug}"
+            ]
+            for k in keys:
+                redis_client.delete(k)
+                
+        return jsonify({"status": "success", "target_id": target_trend.id})
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Merge API Error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
 @api_bp.route('/api/admin/trends/<int:trend_id>/update', methods=['POST'])
 @requires_auth
 def admin_update_trend(trend_id):

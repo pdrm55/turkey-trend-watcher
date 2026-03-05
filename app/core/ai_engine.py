@@ -261,5 +261,26 @@ class AIEngine:
             logger.error(f"Related Trends Error: {e}")
             return []
 
+    def merge_clusters(self, source_cluster_id, target_cluster_id):
+        """Moves all vectors from source cluster to target cluster in ChromaDB"""
+        try:
+            results = self.collection.get(where={"cluster_id": source_cluster_id})
+            if not results or not results.get('ids'): 
+                return
+            
+            new_metadatas = []
+            for meta in results['metadatas']:
+                meta['cluster_id'] = target_cluster_id
+                meta['is_reference'] = False # Demote source references
+                new_metadatas.append(meta)
+                
+            self.collection.update(
+                ids=results['ids'],
+                metadatas=new_metadatas
+            )
+            logger.info(f"🔗 ChromaDB: Merged {len(results['ids'])} vectors from {source_cluster_id[:8]} to {target_cluster_id[:8]}")
+        except Exception as e:
+            logger.error(f"❌ ChromaDB Merge Error: {e}")
+
 # Singleton instance
 ai_engine = AIEngine()
