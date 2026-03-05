@@ -875,7 +875,12 @@ def get_trend_details(identifier):
                 "title": r.title,
                 "category": r.category,
                 "slug": r.slug or r.cluster_id,
-                "date": r.last_updated.strftime('%d.%m.%Y') if r.last_updated else ""
+                "date": r.last_updated.strftime('%d.%m.%Y') if r.last_updated else "",
+                "relation_type": (
+                    "Ana Olay" if r.first_seen < trend.first_seen else 
+                    "Yeni Gelişme" if r.first_seen > trend.first_seen else 
+                    "İlgili"
+                )
             } for r in related_data]
         }
 

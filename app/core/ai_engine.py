@@ -117,18 +117,19 @@ class AIEngine:
             # Try to find the document explicitly tagged as reference
             result = self.collection.get(
                 where={"$and": [{"cluster_id": cluster_id}, {"is_reference": True}]},
-                limit=1
+                limit=1,
+                include=["documents", "metadatas"]
             )
             if result['documents'] and len(result['documents']) > 0:
-                return result['documents'][0]
+                return result['documents'][0], result['metadatas'][0]
             
             # Fallback: get the first available document in the cluster
-            fallback = self.collection.get(where={"cluster_id": cluster_id}, limit=1)
+            fallback = self.collection.get(where={"cluster_id": cluster_id}, limit=1, include=["documents", "metadatas"])
             if fallback['documents'] and len(fallback['documents']) > 0:
-                return fallback['documents'][0]
+                return fallback['documents'][0], fallback['metadatas'][0]
         except Exception as e:
             logger.error(f"Reference Doc Fetch Error: {e}")
-        return None
+        return None, None
 
     def process_news(self, raw_text: str, source: str, external_id: str):
         """
@@ -176,16 +177,28 @@ class AIEngine:
                 if candidate_cluster_id in checked_clusters: continue
                 checked_clusters.add(candidate_cluster_id)
 
-                target_text = self.get_cluster_reference_doc(candidate_cluster_id) or results['documents'][0][i]
+                target_text, ref_meta = self.get_cluster_reference_doc(candidate_cluster_id)
+                if not target_text:
+                    target_text = results['documents'][0][i]
+                    ref_meta = results['metadatas'][0][i]
+
+                # Dynamic Thresholds with Time-Decay
+                auto_merge_thresh = 0.18
+                uncertain_thresh = 0.35
+                
+                age_hours = (now_ts - ref_meta['timestamp']) / 3600.0
+                if age_hours > 24.0:
+                    auto_merge_thresh = 0.11
+                    uncertain_thresh = 0.22
                 
                 # Case 1: High similarity (Auto-Merge Zone)
-                if distance < 0.18:
+                if distance < auto_merge_thresh:
                     cluster_id = candidate_cluster_id
                     is_duplicate = True
                     break
 
                 # Case 2: Uncertain Zone -> Ask Local LLM
-                if self.ask_local_llm(target_text, cleaned_text):
+                if distance < uncertain_thresh and self.ask_local_llm(target_text, cleaned_text):
                     cluster_id = candidate_cluster_id
                     is_duplicate = True
                     break

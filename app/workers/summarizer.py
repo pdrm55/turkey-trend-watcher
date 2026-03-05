@@ -115,9 +115,13 @@ def generate_unique_slug(db, base_title, trend_id):
 # Gemini Integration Layer
 # ==========================================
 
-def generate_summary_with_gemini(text_cluster):
+def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None):
     """Executes the summarization call to the Gemini API with structured response"""
     if not client or not MODEL_NAME: return None, 0, 0, 0 
+
+    umbrella_instruction = ""
+    if is_umbrella and old_title:
+        umbrella_instruction = f'### UMBRELLA UPDATE MODE ACTIVATED\nThis is a highly evolving story. The PREVIOUS headline was: "{old_title}". Your task is to create an "Umbrella Title" (تیتر چتری) and comprehensive summary. You MUST combine the core original event WITH the new developments/reactions. Format example: "[Core Event]: [New Developments]".'
 
     prompt = f"""
     ### SYSTEM ROLE
@@ -150,6 +154,8 @@ def generate_summary_with_gemini(text_cluster):
        - Analyze the core news event. Compare it strictly against [Siyaset, Ekonomi, Spor, Teknoloji, Sanat, Gündem].
        - Provide the final category AND a new field "category_reasoning" explaining your choice.
        - Special focus on TRAPS: If the news is about government budget, retirement, or state infrastructure (DSİ/TOKİ), it is NOT Spor. justify this in 'category_reasoning'.
+
+    {umbrella_instruction}
 
     ### EVOLUTIONARY CONTEXT:
     The provided text may contain updates to an older story. If the new data contains a definitive outcome, final score, or major update that makes the previous context obsolete, overwrite the previous headline and summary with the most recent and important 'Core Event'.
@@ -261,11 +267,20 @@ def process_pending_trends():
             elif (trend.message_count - (trend.last_summary_msg_count or 0)) >= 5:
                 needs_content = True
 
+            is_umbrella = False
+            time_alive_hours = 0
+            if trend.first_seen:
+                time_alive_hours = (datetime.now(timezone.utc).replace(tzinfo=None) - trend.first_seen).total_seconds() / 3600.0
+            
+            new_msg_count = trend.message_count - (trend.last_summary_msg_count or 0)
+            if time_alive_hours >= 12.0 and new_msg_count >= 15:
+                is_umbrella = True
+
             if needs_content:
                 print(f"   🧠 Generating/Updating summary for: {trend.title[:30]}...")
                 
-                # Use latest 7 news items for consensus (Layer 2) to prioritize recent updates
-                news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(7).all()
+                # Use latest 10 news items for consensus (Layer 2) to prioritize recent updates
+                news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(10).all()
                 if not news_items: continue
 
                 # --- Layer 2: Semantic Intersection Heuristic ---
@@ -294,7 +309,7 @@ def process_pending_trends():
                 else:
                     cluster_text = "\n".join([f"- {n.content[:500]}" for n in news_items])
 
-                ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text)
+                ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text, is_umbrella=is_umbrella, old_title=trend.title)
                 
                 if ai_result and ai_result.get("is_relevant_to_turkey", True):
                     ai_cat = ai_result.get("category", "Gündem")
