@@ -616,6 +616,23 @@ def generate_x_draft_by_id():
         if not trend:
             return jsonify({"error": "Trend not found"}), 404
             
+        # Check if draft exists and REPLACE it to avoid UniqueConstraint errors
+        existing = db.query(XDraft).filter(XDraft.trend_id == trend.id).first()
+        if existing:
+            # Delete physical image to save space
+            if existing.image_path:
+                try:
+                    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    file_path = os.path.join(base_dir, existing.image_path.lstrip('/'))
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete old image: {e}")
+            
+            # Remove old draft from DB
+            db.delete(existing)
+            db.commit()
+
         # Generate Content
         context_text = trend.summary if trend.summary else trend.title
         ai_data = generate_x_content(trend.title, context_text, trend.category)
@@ -689,6 +706,23 @@ def generate_x_thread_by_id():
         if not trend:
             return jsonify({"error": "Trend not found"}), 404
             
+        # Check if draft exists and REPLACE it to avoid UniqueConstraint errors
+        existing = db.query(XDraft).filter(XDraft.trend_id == trend.id).first()
+        if existing:
+            # Delete physical image to save space
+            if existing.image_path:
+                try:
+                    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    file_path = os.path.join(base_dir, existing.image_path.lstrip('/'))
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete old image: {e}")
+            
+            # Remove old draft from DB
+            db.delete(existing)
+            db.commit()
+
         # Generate Content
         context_text = trend.summary if trend.summary else trend.title
         ai_data = generate_x_thread(trend.title, context_text, trend.category)
