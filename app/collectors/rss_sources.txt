@@ -1,4 +1,4 @@
-Format: source_name,url
+# Format: source_name,url
 
 anadolu_tr,https://www.aa.com.tr/tr/rss/default?cat=guncel
 trthaber,https://www.trthaber.com/sondakika.rss
@@ -20,3 +20,20 @@ euronews_tr,https://tr.euronews.com/rss?format=rss&level=theme&name=news
 bbc_turkce,http://feeds.bbci.co.uk/turkce/rss.xml
 dunya,https://www.dunya.com/rss
 ahaber,https://www.ahaber.com.tr/rss/gundem.xml
+bloomberght,https://www.bloomberght.com/rss
+paratic,https://paratic.com/feed/
+ekonomim,https://www.ekonomim.com/rss
+bigpara,https://bigpara.hurriyet.com.tr/rss/
+webtekno,https://www.webtekno.com/rss.xml
+shiftdelete,https://shiftdelete.net/feed
+egirisim,https://egirisim.com/feed/
+donanimhaber,https://www.donanimhaber.com/rss/tum/
+birgun,https://www.birgun.net/rss
+evrensel,https://www.evrensel.net/rss/haber.xml
+diken,https://www.diken.com.tr/feed/
+indyturk,https://www.indyturk.com/rss
+dw_turkce,https://rss.dw.com/xml/rss-tur-all
+voa_turkce,https://www.voaturkce.com/api/z$gite_tvi
+sputnik_tr,https://tr.sputniknews.com/export/rss2/archive/index.xml
+aspor,https://www.aspor.com.tr/rss/ana-sayfa.xml
+fanatik,https://www.fanatik.com.tr/rss
