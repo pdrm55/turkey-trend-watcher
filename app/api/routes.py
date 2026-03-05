@@ -1220,7 +1220,7 @@ def admin_trend_action(trend_id):
 @api_bp.route('/api/admin/trends/merge', methods=['POST'])
 @requires_auth
 def admin_merge_trends():
-    """Merges a source trend into a target trend completely"""
+    """Merges a source trend into a target trend completely with cache fixes and velocity spikes"""
     data = request.json or {}
     source_id = data.get('source_id')
     target_id = data.get('target_id')
@@ -1236,9 +1236,14 @@ def admin_merge_trends():
         if not source_trend or not target_trend:
             return jsonify({"error": "Trend bulunamadı"}), 404
             
-        # 1. Transfer RawNews & Arrivals
+        # 1. Transfer RawNews
         db.query(RawNews).filter(RawNews.trend_id == source_trend.id).update({"trend_id": target_trend.id})
-        db.query(TrendArrivals).filter(TrendArrivals.trend_id == source_trend.id).update({"trend_id": target_trend.id})
+        
+        # Transfer TrendArrivals AND update timestamp to NOW to trigger a Velocity/Acceleration spike!
+        db.query(TrendArrivals).filter(TrendArrivals.trend_id == source_trend.id).update({
+            "trend_id": target_trend.id,
+            "timestamp": datetime.utcnow()
+        })
         
         # 2. Inherit Image (Fallback to source image if target has none)
         if not target_trend.cover_image and source_trend.cover_image:
@@ -1257,16 +1262,24 @@ def admin_merge_trends():
         
         db.commit()
         
-        # 6. Clear Redis Cache (Important for UI update)
+        # 6. Clear Redis Cache (Aggressive Invalidation)
         if redis_client:
-            keys = [
-                f"ssr_trend_{source_trend.id}", f"ssr_trend_{source_trend.slug}",
-                f"ssr_trend_{target_trend.id}", f"ssr_trend_{target_trend.slug}",
-                f"detail_v1_{source_trend.id}", f"detail_v1_{source_trend.slug}",
-                f"detail_v1_{target_trend.id}", f"detail_v1_{target_trend.slug}"
-            ]
-            for k in keys:
-                redis_client.delete(k)
+            # Clear specific trend pages
+            for t in [source_trend, target_trend]:
+                keys_to_delete = [
+                    f"ssr_trend_{t.id}", 
+                    f"ssr_trend_{t.slug}", 
+                    f"ssr_trend_{t.id}-{t.slug}",
+                    f"detail_v1_{t.id}", 
+                    f"detail_v1_{t.slug}", 
+                    f"detail_v1_{t.id}-{t.slug}"
+                ]
+                for k in keys_to_delete:
+                    redis_client.delete(k)
+            
+            # Clear homepage and category list caches so the UI updates instantly
+            for key in redis_client.scan_iter("trends_v1_*"):
+                redis_client.delete(key)
                 
         return jsonify({"status": "success", "target_id": target_trend.id})
     except Exception as e:
