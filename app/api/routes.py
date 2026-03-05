@@ -21,7 +21,7 @@ from werkzeug.utils import secure_filename
 # این کار باعث می‌شود مدل هوش مصنوعی فقط یک‌بار (زمان روشن شدن سرور) لود شود
 # و نه هر بار که کاربر روی لینک کلیک می‌کند.
 from app.core.ai_engine import ai_engine 
-from app.core.x_ai_service import generate_x_content
+from app.core.x_ai_service import generate_x_content, generate_x_thread
 from app.core.x_image_gen import generate_x_image
 from app.core.tg_notifier import notify_admin_x_draft
 from app.workers.summarizer import generate_summary_with_gemini
@@ -675,6 +675,78 @@ def generate_x_draft_by_id():
     except Exception as e:
         db.rollback()
         logger.error(f"Manual X Draft Generation Error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/x-drafts/generate-thread-by-id', methods=['POST'])
+@requires_auth
+def generate_x_thread_by_id():
+    data = request.json or {}
+    trend_id = data.get('trend_id')
+    
+    if not trend_id:
+        return jsonify({"error": "trend_id is required"}), 400
+        
+    db = SessionLocal()
+    try:
+        trend = db.query(Trend).filter(Trend.id == trend_id).first()
+        if not trend:
+            return jsonify({"error": "Trend not found"}), 404
+            
+        # Check if draft exists
+        existing = db.query(XDraft).filter(XDraft.trend_id == trend.id).first()
+        if existing:
+            return jsonify({"error": "Draft already exists for this trend"}), 400
+            
+        # Generate Content
+        context_text = trend.summary if trend.summary else trend.title
+        ai_data = generate_x_thread(trend.title, context_text, trend.category)
+        
+        if not ai_data:
+            return jsonify({"error": "AI thread generation failed"}), 500
+            
+        # Generate Image
+        tps_val = round(trend.final_tps, 1)
+        image_path = generate_x_image(trend.id, trend.title, ai_data['image_short_text'], tps_val)
+        
+        if not image_path:
+            return jsonify({"error": "Image generation failed"}), 500
+            
+        # Construct Caption
+        public_url = get_public_url()
+        slug_part = trend.slug if trend.slug else trend.id
+        full_link = f"{public_url}/trend/{slug_part}"
+        
+        spread_speed = round(tps_val / 7.5, 1)
+
+        part1 = f"🧵 {ai_data['tweet_1_hook']}\n\n📊 TPS: {tps_val} | Yayılım Hızı: {spread_speed}x"
+        part2 = ai_data['tweet_2_context']
+        part3 = ai_data['tweet_3_data']
+        part4 = f"🤖 AI Analizi: {ai_data['tweet_4_insight']}"
+        part5 = f"{ai_data['tweet_5_cta']}\n\n🔗 Olayın tüm detayları: 👇\n{full_link}"
+        
+        caption = f"{part1}\n\n====THREAD====\n\n{part2}\n\n====THREAD====\n\n{part3}\n\n====THREAD====\n\n{part4}\n\n====THREAD====\n\n{part5}"
+        
+        # Save Draft
+        draft = XDraft(
+            trend_id=trend.id,
+            hook_text=ai_data['tweet_1_hook'][:50],
+            long_caption=caption, # Storing full thread in long_caption column
+            image_short_text=ai_data['image_short_text'],
+            tps_score=tps_val,
+            image_path=image_path,
+            status='draft'
+        )
+        db.add(draft)
+        db.commit()
+        
+        notify_admin_x_draft(trend.title, tps_val, "Thread Mode")
+        
+        return jsonify({"status": "success", "draft_id": draft.id})
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Manual X Thread Generation Error: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         db.close()
