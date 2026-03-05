@@ -136,21 +136,21 @@
     <!-- Merge Modal -->
     <div id="merge-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-            <div class="bg-blue-600 text-white p-4 font-bold">Trend Birleştir (Merge)</div>
+            <div class="bg-blue-600 text-white p-4 font-bold">Merge Trends</div>
             <div class="p-6">
-                <p class="text-xs text-slate-500 mb-4">Bu haber (Kaynak) tamamen aşağıdaki hedefe aktarılacak ve gizlenecektir.</p>
+                <p class="text-xs text-slate-500 mb-4">This source trend will be fully merged into the target trend below and then deactivated.</p>
                 <div class="mb-4">
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Kaynak Trend ID:</label>
-                    <input type="text" id="merge-source-id" readonly class="w-full border-slate-200 rounded bg-slate-100 text-sm px-3 py-2">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Source Trend ID:</label>
+                    <input type="text" id="merge-source-id" readonly class="w-full border-slate-200 rounded bg-slate-100 text-sm px-3 py-2 text-slate-900">
                     <p id="merge-source-title" class="text-xs text-slate-500 mt-1 italic"></p>
                 </div>
                 <div class="mb-4">
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Hedef Trend ID (Ana Haber):</label>
-                    <input type="number" id="merge-target-id" placeholder="Örn: 142" class="w-full border-slate-300 rounded focus:ring-blue-500 focus:border-blue-500 text-sm px-3 py-2" required>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Target Trend ID (Main Story):</label>
+                    <input type="number" id="merge-target-id" placeholder="e.g. 142" class="w-full border-slate-300 rounded focus:ring-blue-500 focus:border-blue-500 text-sm px-3 py-2 text-slate-900" required>
                 </div>
                 <div class="flex justify-end gap-3 mt-6">
-                    <button onclick="closeMergeModal()" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded">İptal</button>
-                    <button onclick="submitMerge()" id="btn-submit-merge" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 font-bold">Birleştir</button>
+                    <button onclick="closeMergeModal()" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
+                    <button onclick="submitMerge()" id="btn-submit-merge" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 font-bold">Merge</button>
                 </div>
             </div>
         </div>
@@ -326,11 +326,11 @@
             const sourceId = document.getElementById('merge-source-id').value;
             const targetId = document.getElementById('merge-target-id').value;
             
-            if (!targetId) return alert('Lütfen hedef Trend ID girin.');
-            if (sourceId === targetId) return alert('Aynı ID girilemez!');
+            if (!targetId) return alert('Please enter a Target Trend ID.');
+            if (sourceId === targetId) return alert('Source and Target IDs cannot be the same!');
 
             const btn = document.getElementById('btn-submit-merge');
-            btn.innerText = "İşleniyor...";
+            btn.innerText = "Processing...";
             btn.disabled = true;
 
             try {
@@ -342,16 +342,16 @@
                 const result = await response.json();
                 
                 if (response.ok) {
-                    alert('Birleştirme Başarılı! Yapay zeka ve TPS motoru ana haberi (ID: ' + targetId + ') yakında güncelleyecektir.');
+                    alert('Merge Successful! The AI and TPS engine will update the main story (ID: ' + targetId + ') shortly.');
                     closeMergeModal();
                     if (typeof loadTrends === 'function') loadTrends(false); // Refresh list
                 } else {
-                    alert('Hata: ' + result.error);
+                    alert('Error: ' + result.error);
                 }
             } catch (error) {
-                alert('Sistem Hatası oluştu.');
+                alert('System Error occurred.');
             } finally {
-                btn.innerText = "Birleştir";
+                btn.innerText = "Merge";
                 btn.disabled = false;
             }
         }
