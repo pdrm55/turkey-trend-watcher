@@ -85,13 +85,25 @@ def fetch_and_process_rss():
                 
                 # Extract actual publication time
                 pub_date_str = entry.get('published') or entry.get('updated')
+                actual_pub_time = current_time_utc
+                
                 if pub_date_str:
                     try:
-                        actual_pub_time = date_parser.parse(pub_date_str).astimezone(timezone.utc).replace(tzinfo=None)
+                        from datetime import timedelta
+                        parsed_date = date_parser.parse(pub_date_str)
+                        
+                        # If naive (no timezone info), assume it's Turkey time (UTC+3)
+                        if parsed_date.tzinfo is None:
+                            tr_tz = timezone(timedelta(hours=3))
+                            parsed_date = parsed_date.replace(tzinfo=tr_tz)
+                            
+                        actual_pub_time = parsed_date.astimezone(timezone.utc).replace(tzinfo=None)
+                        
+                        # SANITY CHECK: Never allow future timestamps from misconfigured RSS feeds
+                        if actual_pub_time > current_time_utc:
+                            actual_pub_time = current_time_utc
                     except:
                         actual_pub_time = current_time_utc
-                else:
-                    actual_pub_time = current_time_utc
 
                 # Extract Media from RSS (Two-Stage Image Extraction)
                 media_url = None

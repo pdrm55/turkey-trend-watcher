@@ -79,8 +79,7 @@ def apply_gravity_decay():
     db = SessionLocal()
     try:
         active_trends = db.query(Trend).filter(
-            Trend.is_active == True,
-            Trend.final_tps > MIN_TPS_THRESHOLD
+            Trend.is_active == True
         ).all()
 
         if not active_trends:
@@ -97,6 +96,12 @@ def apply_gravity_decay():
             hours_passed = time_diff.total_seconds() / 3600.0
 
             if hours_passed >= 1.0:
+                # Fast cleanup for orphaned/noise trends
+                if trend.final_tps < 3.0:
+                    trend.is_active = False
+                    deactivated_count += 1
+                    continue
+
                 category = trend.category if trend.category else "Default"
                 decay_factor = CATEGORY_DECAY_FACTORS.get(category, CATEGORY_DECAY_FACTORS["Default"])
                 

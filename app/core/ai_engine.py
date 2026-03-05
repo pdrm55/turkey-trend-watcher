@@ -230,7 +230,9 @@ class AIEngine:
     def get_related_trends(self, cluster_id, limit=4):
         """Find related trends using vector proximity across the entire archive"""
         try:
-            ref_doc = self.get_cluster_reference_doc(cluster_id)
+            ref_result = self.get_cluster_reference_doc(cluster_id)
+            ref_doc = ref_result[0] if isinstance(ref_result, tuple) else ref_result
+            
             if not ref_doc: return []
 
             query_vector = self.get_embedding(ref_doc)

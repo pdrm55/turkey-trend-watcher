@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect, send_from_directory, current_app
 import os
 from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
 from app.config import Config
@@ -859,6 +859,12 @@ def get_trends():
     db = SessionLocal()
     try:
         query = db.query(Trend).filter(Trend.is_active == True)
+        
+        # Only show trends that have a summary or are highly scored (waiting for summary)
+        query = query.filter(or_(
+            Trend.summary.isnot(None), 
+            Trend.final_tps >= 15.0
+        ))
         
         if category != 'All':
             query = query.filter(Trend.category == category)

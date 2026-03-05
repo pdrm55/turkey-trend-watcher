@@ -267,7 +267,8 @@ class TPSCalculator:
             if best_news: ref_doc = best_news.content
 
         if not ref_doc:
-            ref_doc = ai_engine.get_cluster_reference_doc(trend.cluster_id)
+            ref_result = ai_engine.get_cluster_reference_doc(trend.cluster_id)
+            ref_doc = ref_result[0] if isinstance(ref_result, tuple) else ref_result
             
         if not ref_doc:
             # اگر سند مرجع یافت نشد، از اولین خبر موجود استفاده کن
