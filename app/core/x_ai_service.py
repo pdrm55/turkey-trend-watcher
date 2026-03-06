@@ -162,17 +162,20 @@ def generate_x_thread(trend_title, cluster_text, category):
         return None
 
     prompt = f"""
-    You are an Expert Turkish Social Media Editor. Create a viral 5-part Twitter thread (flood) based on this news:
+    You are an Expert Turkish Social Media Editor. Create a viral 5-part Twitter thread (flood) based on this news.
+
+    CRITICAL RULE: ALL GENERATED TEXT MUST BE STRICTLY IN THE TURKISH LANGUAGE (TÜRKÇE).
+
     Headline: {trend_title}
     Context: {cluster_text}
 
     Generate a JSON response with exactly these 6 keys:
-    - 'tweet_1_hook': A shocking or highly engaging opening line with emojis. No hashtags.
-    - 'tweet_2_context': 2-3 lines explaining the core of the event simply.
-    - 'tweet_3_data': 2 or 3 bullet points with hard facts or data from the context.
-    - 'tweet_4_insight': A short AI prediction or analysis of the consequences.
-    - 'tweet_5_cta': An engaging question to the audience and exactly 2 hashtags.
-    - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis) to be printed on the image.
+    - 'tweet_1_hook': A shocking or highly engaging opening line with emojis (in Turkish). No hashtags.
+    - 'tweet_2_context': 2-3 lines explaining the core of the event simply (in Turkish).
+    - 'tweet_3_data': 2 or 3 bullet points with hard facts or data from the context (in Turkish).
+    - 'tweet_4_insight': A short AI prediction or analysis of the consequences (in Turkish).
+    - 'tweet_5_cta': An engaging question to the audience and exactly 2 hashtags (in Turkish).
+    - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis) to be printed on the image (in Turkish).
     """
 
     try:
