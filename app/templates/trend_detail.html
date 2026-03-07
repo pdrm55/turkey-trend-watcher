@@ -6,7 +6,7 @@
     
     <!-- Dynamic SEO Meta Tags -->
     <title>{{ trend.title }} | TrendiaTR Haber Analizi</title>
-    <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapay zeka haber analizi.' }}">
+    <meta name="description" content="{{ trend.summary[:160] if trend.summary else 'TrendiaTR ile gerçek zamanlı yapay zeka haber analizi.' }}">
     <link rel="canonical" href="https://trendiatr.com/trend/{{ trend.slug }}">
     {% if trend.tags %}
     <meta name="keywords" content="{{ trend.tags | join(', ') }}">
@@ -15,7 +15,7 @@
     <!-- Open Graph -->
     <meta property="og:type" content="article">
     <meta property="og:title" content="{{ trend.title }}">
-    <meta property="og:description" content="{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}">
+    <meta property="og:description" content="{{ trend.summary[:200] if trend.summary else '' }}">
     <meta property="og:url" content="{{ canonical_url }}">
     <meta property="og:site_name" content="TrendiaTR">
 
@@ -23,7 +23,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@TrendiaTR">
     <meta name="twitter:title" content="{{ trend.title }}">
-    <meta name="twitter:description" content="{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}">
+    <meta name="twitter:description" content="{{ trend.summary[:200] if trend.summary else '' }}">
 
     <!-- Dynamic Cover Image Logic -->
     {% if trend.cover_image %}
@@ -56,9 +56,9 @@
       "@context": "https://schema.org",
       "@type": "NewsArticle",
       "mainEntityOfPage": { "@type": "WebPage", "@id": "https://trendiatr.com/trend/{{ trend.slug }}" },
-      "headline": "{{ trend.title | replace('"', '\\"') }}",
-      "description": "{{ trend.summary[:200] | replace('"', '\\"') if trend.summary else '' }}",
-      "articleBody": "{{ trend.summary | replace('"', '\\"') if trend.summary else '' }}",
+      "headline": {{ trend.title | tojson }},
+      "description": {{ (trend.summary[:200] if trend.summary else '') | tojson }},
+      "articleBody": {{ (trend.summary if trend.summary else '') | tojson }},
       "image": ["https://trendiatr.com/static/og-image.png"],
       "datePublished": "{{ trend.first_seen.isoformat() if trend.first_seen else '' }}",
       "dateModified": "{{ trend.last_updated.isoformat() if trend.last_updated else '' }}",

@@ -33,3 +33,4 @@ ai_monitor_data.csv
 # فایل‌های بک‌آپ داکر و فایل‌های موقت سیستم‌عامل
 docker-compose.yml.bak
 .DS_Store
+.aider*
