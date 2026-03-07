@@ -6,7 +6,7 @@
     
     <!-- Dynamic SEO Meta Tags -->
     <title>{{ trend.title }} | TrendiaTR Haber Analizi</title>
-    <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapای زکا haber analizi.' }}">
+    <meta name="description" content="{{ trend.summary[:160] | replace('"', '\\"') if trend.summary else 'TrendiaTR ile gerçek zamanlı yapay zeka haber analizi.' }}">
     <link rel="canonical" href="https://trendiatr.com/trend/{{ trend.slug }}">
     {% if trend.tags %}
     <meta name="keywords" content="{{ trend.tags | join(', ') }}">
