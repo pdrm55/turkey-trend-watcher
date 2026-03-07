@@ -77,11 +77,27 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .trajectory-up { color: #10b981; }
         .trajectory-down { color: #f43f5e; }
-        .sparkline-container { width: 220px; height: 80px; } /* Increased height for chart visibility */
-        
-        /* CSS to hide mobile scrollbar for category nav */
+        .sparkline-container { width: 220px; height: 80px; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Slide-over Drawer CSS */
+        .drawer-overlay {
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px);
+            z-index: 60; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+        }
+        .drawer-overlay.open { opacity: 1; pointer-events: auto; }
+        
+        .drawer-panel {
+            position: fixed; top: 0; right: -100%; width: 100%; max-width: 400px; height: 100%;
+            background: white; z-index: 70; box-shadow: -5px 0 25px rgba(0,0,0,0.1);
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column;
+        }
+        .drawer-panel.open { right: 0; }
+        @media (max-width: 640px) {
+            .drawer-panel { top: auto; bottom: -100%; right: 0; width: 100%; max-width: 100%; height: 85vh; border-radius: 24px 24px 0 0; transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+            .drawer-panel.open { bottom: 0; right: 0; }
+        }
     </style>
 </head>
 <body class="pb-20 bg-slate-50">
@@ -193,7 +209,6 @@
                             <span class="text-[10px] font-bold {{ sig_color }} uppercase">{{ sig_label }}</span>
                         </div>
                         <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                            <!-- FIX: Error 500 removed by using conditional logic instead of | min filter -->
                             {% set bar_width = tps_val if tps_val <= 100 else 100 %}
                             <div class="h-full {{ bar_color }}" style="width: {{ bar_width }}%"></div>
                         </div>
@@ -212,7 +227,6 @@
                     <!-- Sparkline Chart Container -->
                     <div class="bg-white px-3 py-2 rounded-xl border border-slate-100 shadow-sm sparkline-container relative flex flex-col justify-center">
                         <h3 class="text-[9px] font-black text-slate-400 uppercase mb-1">Haber Yayılım Hızı (TPS)</h3>
-                        <!-- Chart area with defined height -->
                         <div class="relative w-full h-12">
                             <canvas id="tpsChart"></canvas>
                         </div>
@@ -263,9 +277,13 @@
                         </div>
                         {% endif %}
 
-                        <!-- Social Sharing Buttons added here -->
+                        <!-- Social Sharing & Comments Buttons -->
                         <div class="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Bu Haberi Paylaş</span>
+                            <button onclick="openComments('{{ trend.id }}')" class="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 px-4 py-2 rounded-xl font-bold text-sm transition-colors border border-blue-100">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                                Yorumlar
+                            </button>
+                            
                             <div class="flex gap-3">
                                 <a href="https://x.com/intent/tweet?text={{ trend.title | urlencode }}&url=https://trendiatr.com/trend/{{ trend.slug }}" target="_blank" class="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-600 hover:bg-black hover:text-white hover:border-black flex items-center justify-center transition-all shadow-sm">
                                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
@@ -341,7 +359,57 @@
         </footer>
     </main>
 
+    <!-- Comments Slide-over Drawer -->
+    <div id="comments-overlay" class="drawer-overlay" onclick="closeComments()"></div>
+    <div id="comments-drawer" class="drawer-panel">
+        <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <h2 class="text-lg font-black text-slate-900 flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                Yorumlar
+            </h2>
+            <button onclick="closeComments()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="flex border-b border-slate-100">
+            <button onclick="loadComments('popular')" id="tab-popular" class="flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600">En Popüler</button>
+            <button onclick="loadComments('newest')" id="tab-newest" class="flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700">En Yeni</button>
+        </div>
+
+        <!-- Comments List -->
+        <div id="comments-list" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scroll bg-slate-50/50">
+            <div class="text-center text-slate-400 text-sm py-10">Yorumlar yükleniyor...</div>
+        </div>
+
+        <!-- Comment Input -->
+        <div class="p-4 border-t border-slate-100 bg-white">
+            <div id="comment-form-msg" class="hidden text-xs font-bold mb-2 p-2 rounded"></div>
+            <input type="text" id="comment-name" placeholder="Adınız" class="w-full mb-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
+            <div class="relative">
+                <textarea id="comment-text" rows="2" placeholder="Düşüncelerinizi paylaşın..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 resize-none pr-12"></textarea>
+                <button onclick="submitComment()" class="absolute bottom-2 right-2 p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        // Session Fingerprint Management
+        function getSessionId() {
+            let sid = localStorage.getItem('trendia_session_id');
+            if (!sid) {
+                sid = 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+                localStorage.setItem('trendia_session_id', sid);
+            }
+            return sid;
+        }
+        const SESSION_ID = getSessionId();
+        let currentCommentTrendId = "{{ trend.id }}";
+        let currentCommentSort = 'popular';
+
         document.addEventListener('DOMContentLoaded', async function() {
             const ctx = document.getElementById('tpsChart').getContext('2d');
             const trendId = "{{ trend.id }}";
@@ -350,12 +418,9 @@
                 const response = await fetch(`/api/trends/${trendId}/history`);
                 const historyData = await response.json();
                 
-                // IMPORTANT FIX: Handle single data point case
-                // Chart.js requires at least 2 points to draw a line.
-                // If we only have 1 point (new trend), we pre-pend a '0' point.
                 if (historyData.data.length === 1) {
-                    historyData.labels.unshift(''); // Empty label for start
-                    historyData.data.unshift(0);    // Start from 0 signal
+                    historyData.labels.unshift('');
+                    historyData.data.unshift(0);
                 }
 
                 new Chart(ctx, {
@@ -383,7 +448,7 @@
                         maintainAspectRatio: false,
                         plugins: {
                             legend: { display: false },
-                            title: { display: false }, // Title handled by HTML now
+                            title: { display: false },
                             tooltip: {
                                 enabled: true,
                                 mode: 'index',
@@ -409,7 +474,7 @@
                             y: { 
                                 display: true, 
                                 beginAtZero: true,
-                                suggestedMax: 5, // Fix: Prevent chart from looking full with just 1 or 2 signals
+                                suggestedMax: 5,
                                 grid: { display: false },
                                 ticks: { maxTicksLimit: 3, font: { size: 8 } }
                             }
@@ -430,6 +495,131 @@
             if(q) {
                 window.location.href = '/?q=' + encodeURIComponent(q);
             }
+        }
+
+        // Comments Logic
+        function openComments(trendId) {
+            currentCommentTrendId = trendId;
+            document.getElementById('comments-overlay').classList.add('open');
+            document.getElementById('comments-drawer').classList.add('open');
+            document.body.style.overflow = 'hidden';
+            
+            const savedName = localStorage.getItem('trendia_user_name');
+            if (savedName) document.getElementById('comment-name').value = savedName;
+            
+            loadComments(currentCommentSort);
+        }
+
+        function closeComments() {
+            document.getElementById('comments-overlay').classList.remove('open');
+            document.getElementById('comments-drawer').classList.remove('open');
+            document.body.style.overflow = 'auto';
+        }
+
+        async function loadComments(sortType) {
+            currentCommentSort = sortType;
+            document.getElementById('tab-popular').className = sortType === 'popular' ? 'flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600' : 'flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700';
+            document.getElementById('tab-newest').className = sortType === 'newest' ? 'flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600' : 'flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700';
+            
+            const list = document.getElementById('comments-list');
+            list.innerHTML = '<div class="text-center text-slate-400 text-sm py-10">Yükleniyor...</div>';
+            
+            try {
+                const res = await fetch(`/api/comments/${currentCommentTrendId}?sort=${sortType}&session_id=${SESSION_ID}`);
+                const comments = await res.json();
+                
+                if (comments.length === 0) {
+                    list.innerHTML = '<div class="text-center text-slate-400 text-sm py-10">İlk yorumu siz yapın!</div>';
+                    return;
+                }
+                
+                list.innerHTML = comments.map(c => {
+                    const isPending = c.status === 'pending';
+                    const isShadow = c.status === 'shadow_banned';
+                    const statusBadge = (isPending || isShadow) ? `<span class="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded ml-2">Onay Bekliyor</span>` : '';
+                    
+                    const likeClass = c.user_vote === 1 ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:bg-slate-100';
+                    const dislikeClass = c.user_vote === -1 ? 'text-red-600 bg-red-50' : 'text-slate-400 hover:bg-slate-100';
+                    
+                    const date = new Date(c.created_at).toLocaleDateString('tr-TR', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+                    
+                    return `
+                    <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center">
+                                <div class="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 mr-2">${c.user_name.charAt(0).toUpperCase()}</div>
+                                <span class="text-xs font-bold text-slate-800">${c.user_name}</span>
+                                ${statusBadge}
+                            </div>
+                            <span class="text-[10px] text-slate-400">${date}</span>
+                        </div>
+                        <p class="text-sm text-slate-600 mb-3">${c.content}</p>
+                        <div class="flex items-center gap-3">
+                            <button onclick="voteComment(${c.id}, 1)" class="flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${likeClass}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"></path></svg>
+                                <span class="text-xs font-bold">${c.likes}</span>
+                            </button>
+                            <button onclick="voteComment(${c.id}, -1)" class="flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${dislikeClass}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5"></path></svg>
+                                <span class="text-xs font-bold">${c.dislikes}</span>
+                            </button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                list.innerHTML = '<div class="text-center text-red-400 text-sm py-10">Yorumlar yüklenemedi.</div>';
+            }
+        }
+
+        async function submitComment() {
+            const nameInput = document.getElementById('comment-name');
+            const textInput = document.getElementById('comment-text');
+            const msgBox = document.getElementById('comment-form-msg');
+            
+            const name = nameInput.value.trim();
+            const content = textInput.value.trim();
+            
+            if (!name || !content) {
+                msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
+                msgBox.innerText = 'Lütfen adınızı ve yorumunuzu girin.';
+                return;
+            }
+            
+            localStorage.setItem('trendia_user_name', name);
+            msgBox.className = 'hidden';
+            
+            try {
+                const res = await fetch(`/api/comments/${currentCommentTrendId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_name: name, content: content, session_id: SESSION_ID })
+                });
+                
+                const data = await res.json();
+                if (data.status === 'success') {
+                    textInput.value = '';
+                    if (data.moderation_status === 'rejected') {
+                        msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
+                        msgBox.innerText = 'Yorumunuz topluluk kurallarına uymadığı için reddedildi.';
+                    } else {
+                        loadComments(currentCommentSort);
+                    }
+                }
+            } catch (e) {
+                msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
+                msgBox.innerText = 'Bir hata oluştu.';
+            }
+        }
+
+        async function voteComment(commentId, voteType) {
+            try {
+                await fetch(`/api/comments/vote/${commentId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: SESSION_ID, vote_type: voteType })
+                });
+                loadComments(currentCommentSort);
+            } catch (e) {}
         }
     </script>
 </body>

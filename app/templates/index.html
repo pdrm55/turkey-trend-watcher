@@ -89,6 +89,24 @@
             0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
             50% { opacity: 0.5; box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
         }
+
+        /* Slide-over Drawer CSS */
+        .drawer-overlay {
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px);
+            z-index: 60; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+        }
+        .drawer-overlay.open { opacity: 1; pointer-events: auto; }
+        
+        .drawer-panel {
+            position: fixed; top: 0; right: -100%; width: 100%; max-width: 400px; height: 100%;
+            background: white; z-index: 70; box-shadow: -5px 0 25px rgba(0,0,0,0.1);
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column;
+        }
+        .drawer-panel.open { right: 0; }
+        @media (max-width: 640px) {
+            .drawer-panel { top: auto; bottom: -100%; right: 0; width: 100%; max-width: 100%; height: 85vh; border-radius: 24px 24px 0 0; transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+            .drawer-panel.open { bottom: 0; right: 0; }
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 pb-20">
@@ -352,13 +370,63 @@
         </div>
     </div>
 
+    <!-- Comments Slide-over Drawer -->
+    <div id="comments-overlay" class="drawer-overlay" onclick="closeComments()"></div>
+    <div id="comments-drawer" class="drawer-panel">
+        <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <h2 class="text-lg font-black text-slate-900 flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                Yorumlar
+            </h2>
+            <button onclick="closeComments()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="flex border-b border-slate-100">
+            <button onclick="loadComments('popular')" id="tab-popular" class="flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600">En Popüler</button>
+            <button onclick="loadComments('newest')" id="tab-newest" class="flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700">En Yeni</button>
+        </div>
+
+        <!-- Comments List -->
+        <div id="comments-list" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scroll bg-slate-50/50">
+            <div class="text-center text-slate-400 text-sm py-10">Yorumlar yükleniyor...</div>
+        </div>
+
+        <!-- Comment Input -->
+        <div class="p-4 border-t border-slate-100 bg-white">
+            <div id="comment-form-msg" class="hidden text-xs font-bold mb-2 p-2 rounded"></div>
+            <input type="text" id="comment-name" placeholder="Adınız" class="w-full mb-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
+            <div class="relative">
+                <textarea id="comment-text" rows="2" placeholder="Düşüncelerinizi paylaşın..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 resize-none pr-12"></textarea>
+                <button onclick="submitComment()" class="absolute bottom-2 right-2 p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        // Session Fingerprint Management
+        function getSessionId() {
+            let sid = localStorage.getItem('trendia_session_id');
+            if (!sid) {
+                sid = 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+                localStorage.setItem('trendia_session_id', sid);
+            }
+            return sid;
+        }
+        const SESSION_ID = getSessionId();
+
         // State Management
         let activeCategory = "{{ active_category if active_category else 'Hepsi' }}";
         let timelineOffset = 0;
         let lastUpdateCheck = new Date().toISOString();
         let currentSearchQuery = "";
         let currentDateFilter = "";
+        let currentCommentTrendId = null;
+        let currentCommentSort = 'popular';
 
         const CAT_COLORS = {
             "Siyaset": "bg-red-50 text-red-600 border-red-100",
@@ -375,7 +443,6 @@
             cooling: `<svg class="w-4 h-4 trajectory-cooling" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`
         };
 
-        // Logic to determine arrow icon based on TPS and Recency
         function getTrajectory(score, lastUpdate) {
             const now = new Date();
             const last = new Date(lastUpdate);
@@ -397,7 +464,6 @@
             const icon = TRAJECTORY_ICONS[trajectory];
             const catClass = CAT_COLORS[trend.category] || "bg-slate-100 text-slate-600 border-slate-200";
             const wrapperClass = isHot ? "card-hot-section" : "bg-white border-slate-200 hover:border-blue-300 hover:shadow-xl";
-            // استفاده از فرمت ID-Slug برای پایداری لینک در صورت تغییر Slug توسط هوش مصنوعی
             const identifier = trend.slug ? `${trend.trend_id}-${trend.slug}` : trend.id; 
 
             const hasImage = !!trend.image;
@@ -407,34 +473,39 @@
                 `<img src="/static/${trend.image}" alt="${trend.title}" class="h-48 w-full object-cover rounded-t-2xl mb-4" loading="lazy" onerror="this.style.display='none'">` : '';
 
             return `
-            <a href="/trend/${identifier}" onclick="handleTrendClick(event, '${identifier}')"
-                class="trend-card ${wrapperClass} rounded-2xl ${containerPadding} border relative overflow-hidden group cursor-pointer transition-all flex flex-col h-full">
-                ${imageHtml}
-                <div class="flex flex-col flex-1 ${contentPadding}">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border uppercase tracking-wider ${catClass}">
-                            ${trend.category || 'Gündem'}
-                        </span>
-                        <div class="flex items-center gap-1.5">
-                            ${icon}
-                            <span class="text-[10px] font-bold ${trajectory === 'hot' ? 'text-red-600' : 'text-slate-500'}">
-                                ${Math.round(trend.score)} TPS
+            <div class="trend-card ${wrapperClass} rounded-2xl ${containerPadding} border relative overflow-hidden group transition-all flex flex-col h-full">
+                <a href="/trend/${identifier}" onclick="handleTrendClick(event, '${identifier}')" class="block flex-1">
+                    ${imageHtml}
+                    <div class="flex flex-col h-full ${contentPadding}">
+                        <div class="flex justify-between items-start mb-4">
+                            <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border uppercase tracking-wider ${catClass}">
+                                ${trend.category || 'Gündem'}
                             </span>
+                            <div class="flex items-center gap-1.5">
+                                ${icon}
+                                <span class="text-[10px] font-bold ${trajectory === 'hot' ? 'text-red-600' : 'text-slate-500'}">
+                                    ${Math.round(trend.score)} TPS
+                                </span>
+                            </div>
+                        </div>
+                        <h3 class="text-base font-bold mb-4 leading-snug text-slate-800 group-hover:text-red-600 transition-colors line-clamp-3">
+                            ${trend.title}
+                        </h3>
+                        <div class="mt-auto flex items-center justify-between pt-4 border-t border-slate-50">
+                            <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                                <span class="text-blue-600 truncate max-w-[100px]">${trend.source_sample}</span>
+                                <span class="opacity-30">•</span>
+                                <span>${formatTime(trend.last_update)}</span>
+                            </div>
+                            <div class="text-[9px] font-black text-slate-300">${trend.count} KAYNAK</div>
                         </div>
                     </div>
-                    <h3 class="text-base font-bold mb-4 leading-snug text-slate-800 group-hover:text-red-600 transition-colors line-clamp-3">
-                        ${trend.title}
-                    </h3>
-                    <div class="mt-auto flex items-center justify-between pt-4 border-t border-slate-50">
-                        <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                            <span class="text-blue-600 truncate max-w-[100px]">${trend.source_sample}</span>
-                            <span class="opacity-30">•</span>
-                            <span>${formatTime(trend.last_update)}</span>
-                        </div>
-                        <div class="text-[9px] font-black text-slate-300">${trend.count} KAYNAK</div>
-                    </div>
-                </div>
-            </a>`;
+                </a>
+                <!-- Comment Button Overlay -->
+                <button onclick="openComments('${identifier}')" class="absolute bottom-4 right-4 bg-white/90 backdrop-blur border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 rounded-full p-2 shadow-sm transition-all flex items-center gap-1 z-10">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                </button>
+            </div>`;
         }
 
         const SKELETON_CARD = `
@@ -533,7 +604,7 @@
                         </div>
                         <div class="w-px h-3 bg-slate-700 mx-2"></div>
                     `;
-                }).join('').slice(0, -42); // Remove last separator div
+                }).join('').slice(0, -42);
 
                 container.innerHTML = liveIndicator + tickerItems;
             } catch (e) {}
@@ -546,29 +617,20 @@
             activeCategory = cat;
             timelineOffset = 0;
             
-            // SEO History update
             const url = cat === "Hepsi" ? "/" : `/category/${cat.toLowerCase()}`;
             window.history.pushState(null, '', url);
 
-            // GA4 Event: Select Category
             if (typeof gtag === 'function') {
                 gtag('event', 'select_category', {'category_name': cat});
                 gtag('config', 'G-3B9YSY997H', {'page_path': url});
             }
 
-            // Fix Dynamic Title
             const dynamicTitle = document.getElementById('dynamic-hot-title');
-            if (dynamicTitle) {
-                dynamicTitle.innerText = cat === "Hepsi" ? "" : cat + " ";
-            }
+            if (dynamicTitle) dynamicTitle.innerText = cat === "Hepsi" ? "" : cat + " ";
 
-            // Fix Header Subtitle
             const headerSubtitle = document.getElementById('header-subtitle');
-            if (headerSubtitle) {
-                headerSubtitle.innerText = cat === "Hepsi" ? "Yapay Zeka Destekli Gerçek Zamanlı Analiz" : `${cat} Dünyasından Gerçek Zamanlı Analizler`;
-            }
+            if (headerSubtitle) headerSubtitle.innerText = cat === "Hepsi" ? "Yapay Zeka Destekli Gerçek Zamanlı Analiz" : `${cat} Dünyasından Gerçek Zamanlı Analizler`;
 
-            // Visual feedback
             document.querySelectorAll('.category-btn').forEach(btn => {
                 const isMatch = btn.innerText.trim() === cat;
                 btn.className = `category-btn px-5 py-2 rounded-xl text-sm font-bold transition-all border ${isMatch ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`;
@@ -597,11 +659,8 @@
             currentDateFilter = date;
             
             const clearBtn = document.getElementById('clearSearchBtn');
-            if (q || date) {
-                clearBtn.classList.remove('hidden');
-            } else {
-                clearBtn.classList.add('hidden');
-            }
+            if (q || date) clearBtn.classList.remove('hidden');
+            else clearBtn.classList.add('hidden');
             
             fetchHot();
             refreshTimeline();
@@ -610,12 +669,9 @@
         function clearSearch() {
             document.getElementById('searchInput').value = '';
             document.getElementById('dateInput').value = '';
-            
             currentSearchQuery = "";
             currentDateFilter = "";
-            
             document.getElementById('clearSearchBtn').classList.add('hidden');
-            
             fetchHot();
             refreshTimeline();
         }
@@ -625,11 +681,7 @@
             event.preventDefault();
             openModal(identifier);
             window.history.pushState(null, '', `/trend/${identifier}`);
-            
-            // GA4 Virtual Page View for Modal
-            if (typeof gtag === 'function') {
-                gtag('config', 'G-3B9YSY997H', {'page_path': `/trend/${identifier}`});
-            }
+            if (typeof gtag === 'function') gtag('config', 'G-3B9YSY997H', {'page_path': `/trend/${identifier}`});
         }
 
         async function openModal(identifier) {
@@ -653,26 +705,18 @@
                 document.getElementById('modal-tps-badge').innerText = `${data.tps_score} TPS`;
                 
                 let seoHtml = '';
-
-                // Build Tags
                 if (data.tags && data.tags.length > 0) {
                     seoHtml += `<div class="flex flex-wrap gap-1.5 mb-2">` + 
                         data.tags.map(t => `<span onclick="document.getElementById('searchInput').value='${t}'; handleSearch(); closeModal();" class="cursor-pointer px-2 py-1 bg-white border border-slate-200 hover:border-slate-400 text-slate-600 text-[9px] font-bold rounded-md transition-colors">#${t}</span>`).join('') +
                         `</div>`;
                 }
-
-                // Build Entities
                 if (data.entities) {
                     let entList = [];
                     if (data.entities.people) data.entities.people.forEach(p => entList.push(`<span class="px-2 py-1 bg-purple-50 text-purple-600 text-[9px] font-bold rounded-md">👤 ${p}</span>`));
                     if (data.entities.locations) data.entities.locations.forEach(l => entList.push(`<span class="px-2 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-md">📍 ${l}</span>`));
                     if (data.entities.organizations) data.entities.organizations.forEach(o => entList.push(`<span class="px-2 py-1 bg-blue-50 text-blue-600 text-[9px] font-bold rounded-md">🏢 ${o}</span>`));
-
-                    if (entList.length > 0) {
-                        seoHtml += `<div class="flex flex-wrap gap-1.5 pt-2 border-t border-blue-100/50">${entList.join('')}</div>`;
-                    }
+                    if (entList.length > 0) seoHtml += `<div class="flex flex-wrap gap-1.5 pt-2 border-t border-blue-100/50">${entList.join('')}</div>`;
                 }
-
                 document.getElementById('modal-seo-tags').innerHTML = seoHtml;
                 
                 document.getElementById('modal-news-list').innerHTML = data.news_list.map(news => `
@@ -687,7 +731,6 @@
 
                 const relatedSection = document.getElementById('modal-related-section');
                 const relatedList = document.getElementById('modal-related-list');
-
                 if (data.related_trends && data.related_trends.length > 0) {
                     relatedSection.classList.remove('hidden');
                     relatedList.innerHTML = data.related_trends.map(rt => `
@@ -708,7 +751,6 @@
                 } else {
                     relatedSection.classList.add('hidden');
                 }
-
             } catch (e) {}
         }
 
@@ -717,10 +759,7 @@
             document.body.style.overflow = 'auto';
             const url = activeCategory === "Hepsi" ? "/" : `/category/${activeCategory.toLowerCase()}`;
             window.history.pushState(null, '', url);
-            
-            if (typeof gtag === 'function') {
-                gtag('config', 'G-3B9YSY997H', {'page_path': url});
-            }
+            if (typeof gtag === 'function') gtag('config', 'G-3B9YSY997H', {'page_path': url});
         }
 
         function openTpsModal() {
@@ -742,7 +781,6 @@
         function closeContactModal() {
             document.getElementById('contact-modal').classList.add('hidden');
             document.body.style.overflow = 'auto';
-            // Reset form
             document.getElementById('contactForm').reset();
             document.getElementById('contact-message').classList.add('hidden');
             const btn = document.getElementById('contact-submit-btn');
@@ -755,11 +793,9 @@
             const form = event.target;
             const btn = document.getElementById('contact-submit-btn');
             const msgBox = document.getElementById('contact-message');
-            
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
 
-            // Loading state
             btn.disabled = true;
             btn.innerHTML = '<svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Gönderiliyor...';
             msgBox.classList.add('hidden');
@@ -770,16 +806,13 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
                 });
-
                 if (response.ok) {
                     msgBox.className = 'p-3 rounded-xl text-xs font-bold text-center bg-green-50 text-green-600 border border-green-100';
                     msgBox.innerText = 'Mesajınız başarıyla iletildi. Teşekkürler!';
                     msgBox.classList.remove('hidden');
                     form.reset();
                     setTimeout(closeContactModal, 2000);
-                } else {
-                    throw new Error('Submission failed');
-                }
+                } else throw new Error('Submission failed');
             } catch (error) {
                 msgBox.className = 'p-3 rounded-xl text-xs font-bold text-center bg-red-50 text-red-600 border border-red-100';
                 msgBox.innerText = 'Bir hata oluştu. Lütfen daha sonra tekrar deneyin.';
@@ -790,8 +823,133 @@
             }
         }
 
+        // Comments Logic
+        function openComments(trendId) {
+            currentCommentTrendId = trendId;
+            document.getElementById('comments-overlay').classList.add('open');
+            document.getElementById('comments-drawer').classList.add('open');
+            document.body.style.overflow = 'hidden';
+            
+            // Restore name if saved
+            const savedName = localStorage.getItem('trendia_user_name');
+            if (savedName) document.getElementById('comment-name').value = savedName;
+            
+            loadComments(currentCommentSort);
+        }
+
+        function closeComments() {
+            document.getElementById('comments-overlay').classList.remove('open');
+            document.getElementById('comments-drawer').classList.remove('open');
+            document.body.style.overflow = 'auto';
+        }
+
+        async function loadComments(sortType) {
+            currentCommentSort = sortType;
+            document.getElementById('tab-popular').className = sortType === 'popular' ? 'flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600' : 'flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700';
+            document.getElementById('tab-newest').className = sortType === 'newest' ? 'flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600' : 'flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700';
+            
+            const list = document.getElementById('comments-list');
+            list.innerHTML = '<div class="text-center text-slate-400 text-sm py-10">Yükleniyor...</div>';
+            
+            try {
+                const res = await fetch(`/api/comments/${currentCommentTrendId}?sort=${sortType}&session_id=${SESSION_ID}`);
+                const comments = await res.json();
+                
+                if (comments.length === 0) {
+                    list.innerHTML = '<div class="text-center text-slate-400 text-sm py-10">İlk yorumu siz yapın!</div>';
+                    return;
+                }
+                
+                list.innerHTML = comments.map(c => {
+                    const isPending = c.status === 'pending';
+                    const isShadow = c.status === 'shadow_banned';
+                    const statusBadge = (isPending || isShadow) ? `<span class="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded ml-2">Onay Bekliyor</span>` : '';
+                    
+                    const likeClass = c.user_vote === 1 ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:bg-slate-100';
+                    const dislikeClass = c.user_vote === -1 ? 'text-red-600 bg-red-50' : 'text-slate-400 hover:bg-slate-100';
+                    
+                    const date = new Date(c.created_at).toLocaleDateString('tr-TR', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+                    
+                    return `
+                    <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center">
+                                <div class="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 mr-2">${c.user_name.charAt(0).toUpperCase()}</div>
+                                <span class="text-xs font-bold text-slate-800">${c.user_name}</span>
+                                ${statusBadge}
+                            </div>
+                            <span class="text-[10px] text-slate-400">${date}</span>
+                        </div>
+                        <p class="text-sm text-slate-600 mb-3">${c.content}</p>
+                        <div class="flex items-center gap-3">
+                            <button onclick="voteComment(${c.id}, 1)" class="flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${likeClass}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"></path></svg>
+                                <span class="text-xs font-bold">${c.likes}</span>
+                            </button>
+                            <button onclick="voteComment(${c.id}, -1)" class="flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${dislikeClass}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5"></path></svg>
+                                <span class="text-xs font-bold">${c.dislikes}</span>
+                            </button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                list.innerHTML = '<div class="text-center text-red-400 text-sm py-10">Yorumlar yüklenemedi.</div>';
+            }
+        }
+
+        async function submitComment() {
+            const nameInput = document.getElementById('comment-name');
+            const textInput = document.getElementById('comment-text');
+            const msgBox = document.getElementById('comment-form-msg');
+            
+            const name = nameInput.value.trim();
+            const content = textInput.value.trim();
+            
+            if (!name || !content) {
+                msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
+                msgBox.innerText = 'Lütfen adınızı ve yorumunuzu girin.';
+                return;
+            }
+            
+            localStorage.setItem('trendia_user_name', name);
+            msgBox.className = 'hidden';
+            
+            try {
+                const res = await fetch(`/api/comments/${currentCommentTrendId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_name: name, content: content, session_id: SESSION_ID })
+                });
+                
+                const data = await res.json();
+                if (data.status === 'success') {
+                    textInput.value = '';
+                    if (data.moderation_status === 'rejected') {
+                        msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
+                        msgBox.innerText = 'Yorumunuz topluluk kurallarına uymadığı için reddedildi.';
+                    } else {
+                        loadComments(currentCommentSort);
+                    }
+                }
+            } catch (e) {
+                msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
+                msgBox.innerText = 'Bir hata oluştu.';
+            }
+        }
+
+        async function voteComment(commentId, voteType) {
+            try {
+                await fetch(`/api/comments/vote/${commentId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: SESSION_ID, vote_type: voteType })
+                });
+                loadComments(currentCommentSort);
+            } catch (e) {}
+        }
+
         // Init routine
-        // Parse URL parameters for direct search links (e.g. /?q=tag)
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('q')) {
             currentSearchQuery = urlParams.get('q');
@@ -804,14 +962,8 @@
         fetchMarketData();
         document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
         
-        // Auto-refresh hot trends every 2 mins
-        setInterval(() => {
-            fetchHot(false);
-        }, 120000);
-        
-        // Refresh market data every 60s
+        setInterval(() => fetchHot(false), 120000);
         setInterval(fetchMarketData, 60000);
-
         window.onpopstate = () => closeModal();
     </script>
 </body>

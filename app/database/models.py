@@ -92,6 +92,9 @@ class Trend(Base):
     
     # رابطه با پیش‌نویس X (توییتر)
     x_draft = relationship("XDraft", backref="trend", uselist=False)
+    
+    # رابطه با نظرات
+    comments = relationship("Comment", backref="trend", cascade="all, delete-orphan")
 
 class TrendArrivals(Base):
     """
@@ -165,6 +168,34 @@ class XDraft(Base):
     created_at = Column(DateTime, default=utc_now)
     sent_at = Column(DateTime, nullable=True)
 
+class Comment(Base):
+    """نظرات کاربران با پشتیبانی از Shadow Ban و AI Moderation"""
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    trend_id = Column(Integer, ForeignKey('trends.id'), nullable=False)
+    user_name = Column(String(100), nullable=False)
+    session_id = Column(String(255), nullable=False, index=True) # Fingerprint کاربر
+    content = Column(Text, nullable=False)
+    likes = Column(Integer, default=0)
+    dislikes = Column(Integer, default=0)
+    status = Column(String(20), default="pending") # approved, pending, rejected, shadow_banned
+    created_at = Column(DateTime, default=utc_now)
+    
+    votes = relationship("CommentVote", backref="comment", cascade="all, delete-orphan")
+
+class CommentVote(Base):
+    """جلوگیری از رای تکراری کاربران به نظرات"""
+    __tablename__ = "comment_votes"
+    id = Column(Integer, primary_key=True, index=True)
+    comment_id = Column(Integer, ForeignKey('comments.id'), nullable=False)
+    session_id = Column(String(255), nullable=False, index=True)
+    vote_type = Column(Integer, nullable=False) # 1 for like, -1 for dislike
+    created_at = Column(DateTime, default=utc_now)
+
+    __table_args__ = (
+        Index('idx_comment_vote_session', 'comment_id', 'session_id', unique=True),
+    )
+
 def init_db():
     """
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
@@ -174,7 +205,7 @@ def init_db():
     try:
         # ۱. ساخت جداول پایه در صورت عدم وجود
         Base.metadata.create_all(bind=engine)
-        print("✅ XDrafts table initialized (if not exists).")
+        print("✅ Tables initialized (if not exists).")
         
         inspector = inspect(engine)
         

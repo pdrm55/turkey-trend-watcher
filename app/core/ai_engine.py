@@ -111,6 +111,45 @@ class AIEngine:
             logger.error(f"Local LLM Verification Failed: {e}")
             return False 
 
+    def moderate_comment(self, text: str) -> str:
+        """AI Auto-Moderation for user comments using local Qwen model"""
+        prompt = f"""
+        Act as a strict community moderator for a Turkish news website.
+        Analyze the following user comment. Check for:
+        1. Profanity, swear words, or severe insults (Küfür, hakaret).
+        2. Racism, hate speech, or discrimination (Irkçılık, nefret söylemi).
+        3. Spam, advertisements, or gibberish (Spam, reklam, anlamsız metin).
+
+        If the comment contains ANY of the above, status is "rejected".
+        If the comment is completely clean and normal, status is "approved".
+        If you are unsure, status is "pending".
+
+        Comment: "{text}"
+        
+        OUTPUT FORMAT: Return ONLY a raw JSON object. Do NOT use markdown formatting.
+        Example: {{"status": "approved"}}
+        """
+        payload = {
+            "model": LOCAL_MODEL_NAME, "prompt": prompt, "stream": False, "format": "json",
+            "options": {"temperature": 0.0, "num_ctx": 1024}
+        }
+        try:
+            response = requests.post(OLLAMA_API_URL, json=payload, timeout=5)
+            result = response.json()
+            raw_text = result.get('response', '{}').strip()
+            
+            raw_text = raw_text.strip("` \n")
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:].strip()
+                
+            status = json.loads(raw_text).get("status", "pending")
+            if status not in ["approved", "rejected", "pending"]:
+                return "pending"
+            return status
+        except Exception as e:
+            logger.error(f"AI Moderation Failed: {e}")
+            return "pending" # Default to pending if AI fails
+
     def get_cluster_reference_doc(self, cluster_id):
         """Fetch the primary reference document for a cluster"""
         try:
