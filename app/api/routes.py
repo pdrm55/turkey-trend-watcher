@@ -425,6 +425,24 @@ def admin_update_comment_status(comment_id):
     finally:
         db.close()
 
+@api_bp.route('/api/admin/comments/<int:comment_id>', methods=['DELETE'])
+@requires_auth
+def admin_delete_comment(comment_id):
+    """Admin: Delete a comment"""
+    db = SessionLocal()
+    try:
+        comment = db.query(Comment).filter(Comment.id == comment_id).first()
+        if not comment: return jsonify({"error": "Comment not found"}), 404
+        
+        db.delete(comment)
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
 @api_bp.route('/admin/editorial')
 @requires_auth
 def editorial_panel():

@@ -462,6 +462,7 @@
                             ${c.status !== 'approved' ? `<button onclick="updateCommentStatus(${c.id}, 'approved')" class="text-[10px] bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded">Approve</button>` : ''}
                             ${c.status !== 'rejected' ? `<button onclick="updateCommentStatus(${c.id}, 'rejected')" class="text-[10px] bg-red-600 hover:bg-red-500 text-white px-2 py-1 rounded">Reject</button>` : ''}
                             ${c.status !== 'shadow_banned' ? `<button onclick="updateCommentStatus(${c.id}, 'shadow_banned')" class="text-[10px] bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded" title="Ban this user silently">Shadow Ban</button>` : ''}
+                            <button onclick="deleteComment(${c.id})" class="text-[10px] bg-slate-600 hover:bg-slate-500 text-white px-2 py-1 rounded" title="Delete permanently">Delete</button>
                         </td>
                     </tr>`;
                 }).join('');
@@ -482,6 +483,24 @@
                 loadAdminComments();
             } catch (e) {
                 alert('Error updating status');
+            }
+        }
+
+        async function deleteComment(id) {
+            if (!confirm('Are you sure you want to permanently delete this comment?')) return;
+            
+            try {
+                const res = await fetch(`/api/admin/comments/${id}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    loadAdminComments();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error deleting comment');
             }
         }
     </script>
