@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect, send_from_directory, current_app
 import os
-from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft
+from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft, Comment, CommentVote
 from sqlalchemy import desc, func, or_
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
@@ -219,6 +219,198 @@ def render_trend_page(identifier):
             redis_client.setex(cache_key, 600, html_content)
             
         return html_content
+    finally:
+        db.close()
+
+# --- Comment System Routes ---
+
+@api_bp.route('/api/comments/<int:trend_id>', methods=['GET'])
+def get_comments(trend_id):
+    """Get comments for a specific trend"""
+    sort_by = request.args.get('sort', 'popular')
+    session_id = request.args.get('session_id')
+    
+    db = SessionLocal()
+    try:
+        query = db.query(Comment).filter(
+            Comment.trend_id == trend_id,
+            Comment.status.in_(['approved', 'pending']) # Show pending to everyone? Usually only approved. Let's stick to approved + own pending
+        )
+        
+        # Logic: Show approved comments OR comments belonging to this session (even if pending/rejected)
+        if session_id:
+            query = db.query(Comment).filter(
+                Comment.trend_id == trend_id,
+                or_(
+                    Comment.status == 'approved',
+                    and_(Comment.session_id == session_id, Comment.status != 'deleted')
+                )
+            )
+        else:
+            query = query.filter(Comment.status == 'approved')
+            
+        if sort_by == 'newest':
+            comments = query.order_by(desc(Comment.created_at)).limit(50).all()
+        else: # popular
+            comments = query.order_by(desc(Comment.likes - Comment.dislikes), desc(Comment.created_at)).limit(50).all()
+            
+        results = []
+        for c in comments:
+            # Check user vote
+            user_vote = 0
+            if session_id:
+                vote = db.query(CommentVote).filter(
+                    CommentVote.comment_id == c.id,
+                    CommentVote.session_id == session_id
+                ).first()
+                if vote: user_vote = vote.vote_type
+                
+            results.append({
+                "id": c.id,
+                "user_name": c.user_name,
+                "content": c.content,
+                "likes": c.likes,
+                "dislikes": c.dislikes,
+                "created_at": c.created_at.isoformat(),
+                "status": c.status,
+                "user_vote": user_vote
+            })
+            
+        return jsonify(results)
+    finally:
+        db.close()
+
+@api_bp.route('/api/comments/<int:trend_id>', methods=['POST'])
+def post_comment(trend_id):
+    """Post a new comment"""
+    data = request.json or {}
+    user_name = data.get('user_name')
+    content = data.get('content')
+    session_id = data.get('session_id')
+    
+    if not all([user_name, content, session_id]):
+        return jsonify({"error": "Missing fields"}), 400
+        
+    db = SessionLocal()
+    try:
+        # AI Moderation
+        moderation_status = ai_engine.moderate_comment(content)
+        
+        comment = Comment(
+            trend_id=trend_id,
+            user_name=user_name,
+            session_id=session_id,
+            content=content,
+            status=moderation_status
+        )
+        db.add(comment)
+        db.commit()
+        
+        return jsonify({"status": "success", "moderation_status": moderation_status, "id": comment.id})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@api_bp.route('/api/comments/vote/<int:comment_id>', methods=['POST'])
+def vote_comment(comment_id):
+    """Vote on a comment (like/dislike)"""
+    data = request.json or {}
+    session_id = data.get('session_id')
+    vote_type = int(data.get('vote_type', 0)) # 1 or -1
+    
+    if not session_id or vote_type not in [1, -1]:
+        return jsonify({"error": "Invalid data"}), 400
+        
+    db = SessionLocal()
+    try:
+        comment = db.query(Comment).filter(Comment.id == comment_id).first()
+        if not comment: return jsonify({"error": "Comment not found"}), 404
+        
+        existing_vote = db.query(CommentVote).filter(
+            CommentVote.comment_id == comment_id,
+            CommentVote.session_id == session_id
+        ).first()
+        
+        if existing_vote:
+            # If clicking same vote, remove it (toggle off)
+            if existing_vote.vote_type == vote_type:
+                if vote_type == 1: comment.likes -= 1
+                else: comment.dislikes -= 1
+                db.delete(existing_vote)
+            else:
+                # Change vote
+                if vote_type == 1:
+                    comment.likes += 1
+                    comment.dislikes -= 1
+                else:
+                    comment.likes -= 1
+                    comment.dislikes += 1
+                existing_vote.vote_type = vote_type
+        else:
+            # New vote
+            new_vote = CommentVote(comment_id=comment_id, session_id=session_id, vote_type=vote_type)
+            db.add(new_vote)
+            if vote_type == 1: comment.likes += 1
+            else: comment.dislikes += 1
+            
+        db.commit()
+        return jsonify({"status": "success", "likes": comment.likes, "dislikes": comment.dislikes})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/comments', methods=['GET'])
+@requires_auth
+def admin_list_comments():
+    """Admin: List comments for moderation"""
+    status = request.args.get('status', 'all')
+    
+    db = SessionLocal()
+    try:
+        query = db.query(Comment, Trend.title).join(Trend, Comment.trend_id == Trend.id)
+        
+        if status != 'all':
+            query = query.filter(Comment.status == status)
+            
+        comments = query.order_by(desc(Comment.created_at)).limit(100).all()
+        
+        results = []
+        for c, trend_title in comments:
+            results.append({
+                "id": c.id,
+                "trend_title": trend_title,
+                "user_name": c.user_name,
+                "session_id": c.session_id,
+                "content": c.content,
+                "status": c.status,
+                "created_at": c.created_at.isoformat()
+            })
+        return jsonify(results)
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/comments/<int:comment_id>/status', methods=['POST'])
+@requires_auth
+def admin_update_comment_status(comment_id):
+    """Admin: Approve/Reject/ShadowBan comment"""
+    data = request.json or {}
+    new_status = data.get('status')
+    
+    if new_status not in ['approved', 'rejected', 'shadow_banned', 'pending']:
+        return jsonify({"error": "Invalid status"}), 400
+        
+    db = SessionLocal()
+    try:
+        comment = db.query(Comment).filter(Comment.id == comment_id).first()
+        if not comment: return jsonify({"error": "Comment not found"}), 404
+        
+        comment.status = new_status
+        db.commit()
+        return jsonify({"status": "success"})
     finally:
         db.close()
 
