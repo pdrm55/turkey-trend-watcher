@@ -151,7 +151,7 @@ def generate_x_thread(trend_title, cluster_text, category):
     
     Args:
         trend_title (str): The headline of the trend.
-        cluster_text (str): The raw text content/summary of the news.
+        cluster_text (str): The raw text content/summary of the news, including timeline of dependent events.
         category (str): The category of the news.
         
     Returns:
@@ -162,20 +162,21 @@ def generate_x_thread(trend_title, cluster_text, category):
         return None
 
     prompt = f"""
-    You are an Expert Turkish Social Media Editor. Create a viral 5-part Twitter thread (flood) based on this news.
+    You are an "Expert News Analyst and Investigative Journalist" for the news platform 'TrendiaTR'. 
+    Create a viral, highly analytical 5-part Twitter thread (flood) based on the provided timeline of a main event and its dependent/related news.
 
     CRITICAL RULE: ALL GENERATED TEXT MUST BE STRICTLY IN THE TURKISH LANGUAGE (TÜRKÇE).
 
     Headline: {trend_title}
-    Context: {cluster_text}
+    Context & Timeline: {cluster_text}
 
-    Generate a JSON response with exactly these 6 keys:
-    - 'tweet_1_hook': A shocking or highly engaging opening line with emojis (in Turkish). No hashtags.
-    - 'tweet_2_context': 2-3 lines explaining the core of the event simply (in Turkish).
-    - 'tweet_3_data': 2 or 3 bullet points with hard facts or data from the context (in Turkish).
-    - 'tweet_4_insight': A short AI prediction or analysis of the consequences (in Turkish).
-    - 'tweet_5_cta': An engaging question to the audience and exactly 2 hashtags (in Turkish).
-    - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis) to be printed on the image (in Turkish).
+    Analyze the flow of these connected events and generate a JSON response with exactly these 6 keys:
+    - 'tweet_1_hook': A compelling hook highlighting the scale, evolution, or hidden truth of the ongoing story (with emojis). No hashtags.
+    - 'tweet_2_context': Summarize the chronological flow of events (how the story started and how the dependent events unfolded).
+    - 'tweet_3_data': Extract the critical connections, contradictions, or key data points between the main news and its dependent news items.
+    - 'tweet_4_insight': Provide a deep analytical insight, consequence, or prediction based on the trajectory of these connected events.
+    - 'tweet_5_cta': Conclude the analysis with a strong summary and ask an engaging question to the audience. Include exactly 2 hashtags.
+    - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis) to be printed on the image.
     """
 
     try:
