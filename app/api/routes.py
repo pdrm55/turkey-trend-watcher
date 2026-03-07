@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect, send_from_directory, current_app
 import os
 from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft, Comment, CommentVote
-from sqlalchemy import desc, func, or_
+from sqlalchemy import desc, func, or_, and_
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
 from app.config import Config
@@ -196,6 +196,8 @@ def render_trend_page(identifier):
             Trend.is_active == True,
             Trend.id != trend.id
         ).all()
+        
+        comments_count = db.query(Comment).filter(Comment.trend_id == trend.id, Comment.status == 'approved').count()
             
         base_url = get_public_url()
         canonical_url = f"{base_url}/trend/{trend.id}-{trend.slug}" if trend.slug else f"{base_url}/trend/{trend.cluster_id}"
@@ -211,7 +213,8 @@ def render_trend_page(identifier):
             canonical_url=canonical_url,
             base_url=base_url,
             date_published=date_published,
-            date_modified=date_modified
+            date_modified=date_modified,
+            comments_count=comments_count
         )
         
         # 2. Save to Redis Cache (10 minutes TTL)
