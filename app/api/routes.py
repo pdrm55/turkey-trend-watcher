@@ -1089,6 +1089,7 @@ def get_trends():
         results = []
         for t in trends:
             last_news = db.query(RawNews).filter(RawNews.trend_id == t.id).order_by(desc(RawNews.published_at)).first()
+            comments_count = db.query(Comment).filter(Comment.trend_id == t.id, Comment.status == 'approved').count()
             results.append({
                 "id": t.cluster_id,
                 "trend_id": t.id, # شناسه عددی برای ساخت لینک‌های پایدار
@@ -1101,7 +1102,8 @@ def get_trends():
                 "first_seen": t.first_seen.isoformat() + 'Z' if t.first_seen else None,
                 "last_update": t.last_updated.isoformat() + 'Z' if t.last_updated else None, 
                 "source_sample": last_news.source_name if last_news else "Bilinmiyor",
-                "image": t.cover_image
+                "image": t.cover_image,
+                "comments_count": comments_count
             })
         
         response_json = json.dumps(results)
@@ -1140,6 +1142,8 @@ def get_trend_details(identifier):
             Trend.is_active == True, 
             Trend.id != trend.id
         ).all()
+        
+        comments_count = db.query(Comment).filter(Comment.trend_id == trend.id, Comment.status == 'approved').count()
 
         formatted_news = []
         for n in news_items:
@@ -1162,6 +1166,7 @@ def get_trend_details(identifier):
             "tps_score": round(trend.final_tps, 1),
             "summary": trend.summary or "Generating summary...",
             "image": trend.cover_image,
+            "comments_count": comments_count,
             "tags": trend.tags or [],
             "entities": trend.entities or {},
             "news_list": formatted_news,
