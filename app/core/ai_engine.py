@@ -116,6 +116,12 @@ class AIEngine:
 
     def moderate_comment(self, text: str) -> str:
         """AI Auto-Moderation for user comments using local Qwen model"""
+        # 0. Basic Blacklist Check (Fallback & Speed)
+        # Simple list of Turkish profanity/spam keywords
+        blacklist = ["küfür", "hakaret", "aptal", "gerizekalı", "salak", "bet", "casino", "http", "www", ".com"]
+        if any(bad in text.lower() for bad in blacklist):
+            return "rejected"
+            
         prompt = f"""
         Act as a strict community moderator for a Turkish news website.
         Analyze the following user comment. Check for:
@@ -148,10 +154,16 @@ class AIEngine:
             status = json.loads(raw_text).get("status", "pending")
             if status not in ["approved", "rejected", "pending"]:
                 return "pending"
+            
+            # If AI is unsure (pending), but text is short and clean, approve it
+            if status == "pending" and len(text) < 20 and not any(bad in text.lower() for bad in blacklist):
+                return "approved"
+                
             return status
         except Exception as e:
             logger.error(f"AI Moderation Failed: {e}")
-            return "pending" # Default to pending if AI fails
+            # Fallback: If AI fails, approve unless it hits blacklist (checked at start)
+            return "approved"
 
     def get_cluster_reference_doc(self, cluster_id):
         """Fetch the primary reference document for a cluster"""
