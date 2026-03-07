@@ -44,9 +44,8 @@ LOCAL_MODEL_NAME = "qwen2.5:1.5b"
 class AIEngine:
     def __init__(self):
         """Initialize AI Engine and connect to Vector Database"""
-        print("🧠 Loading Multilingual Embedding Model (Phase 3 Fixed)...", flush=True)
-        # Using a powerful multilingual model for Turkish market
-        self.model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
+        # Lazy load the model to save RAM on workers that don't need embedding
+        self.model = None
         
         try:
             self.chroma_client = chromadb.HttpClient(
@@ -66,6 +65,10 @@ class AIEngine:
     def get_embedding(self, text: str):
         """Convert text to numerical vector (Embedding)"""
         try:
+            if self.model is None:
+                print("🧠 Loading Multilingual Embedding Model (Lazy Load)...", flush=True)
+                self.model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
+
             if not isinstance(text, str): text = str(text)
             vector = self.model.encode(text, convert_to_numpy=True).tolist()
             return vector

@@ -17,15 +17,6 @@ import uuid
 from PIL import Image
 from werkzeug.utils import secure_filename
 
-# --- اصلاح حیاتی: انتقال ایمپورت به سطح ماژول ---
-# این کار باعث می‌شود مدل هوش مصنوعی فقط یک‌بار (زمان روشن شدن سرور) لود شود
-# و نه هر بار که کاربر روی لینک کلیک می‌کند.
-from app.core.ai_engine import ai_engine 
-from app.core.x_ai_service import generate_x_content, generate_x_thread
-from app.core.x_image_gen import generate_x_image
-from app.core.tg_notifier import notify_admin_x_draft
-from app.workers.summarizer import generate_summary_with_gemini
-
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
 
@@ -142,8 +133,8 @@ def render_trend_page(identifier):
             return cached_html
 
     db = SessionLocal()
-    # ایمپورت ai_engine از اینجا حذف شد و به بالا منتقل گردید
     try:
+        from app.core.ai_engine import ai_engine
         # جستجو بر اساس اسلاگ سئو یا شناسه کلاستر
         trend = resolve_trend_smart(db, identifier)
         
@@ -235,6 +226,7 @@ def get_comments(identifier):
     
     db = SessionLocal()
     try:
+        from app.core.ai_engine import ai_engine
         trend = resolve_trend_smart(db, identifier)
         if not trend: return jsonify({"error": "Trend not found"}), 404
         trend_id = trend.id
@@ -300,6 +292,7 @@ def post_comment(identifier):
         
     db = SessionLocal()
     try:
+        from app.core.ai_engine import ai_engine
         trend = resolve_trend_smart(db, identifier)
         if not trend: return jsonify({"error": "Trend not found"}), 404
         trend_id = trend.id
@@ -460,6 +453,7 @@ def generate_manual_news_draft():
         return jsonify({"error": "Text is too short (Requires at least 50 characters)"}), 400
         
     try:
+        from app.workers.summarizer import generate_summary_with_gemini
         ai_data, in_tok, out_tok, duration = generate_summary_with_gemini(content)
         
         if not ai_data:
@@ -529,6 +523,7 @@ def publish_manual_news():
             
     db = SessionLocal()
     try:
+        from app.core.ai_engine import ai_engine
         from app.core.text_utils import slugify_turkish
         
         threshold_setting = db.query(SystemSettings).filter_by(key="x_publish_threshold").first()
@@ -633,6 +628,9 @@ def generate_x_drafts():
     
     db = SessionLocal()
     try:
+        from app.core.x_ai_service import generate_x_content
+        from app.core.x_image_gen import generate_x_image
+        from app.core.tg_notifier import notify_admin_x_draft
         # Subquery to find trends that already have drafts
         
         candidates = db.query(Trend).filter(
@@ -833,6 +831,9 @@ def generate_x_draft_by_id():
         
     db = SessionLocal()
     try:
+        from app.core.x_ai_service import generate_x_content
+        from app.core.x_image_gen import generate_x_image
+        from app.core.tg_notifier import notify_admin_x_draft
         trend = db.query(Trend).filter(Trend.id == trend_id).first()
         if not trend:
             return jsonify({"error": "Trend not found"}), 404
@@ -923,6 +924,9 @@ def generate_x_thread_by_id():
         
     db = SessionLocal()
     try:
+        from app.core.x_ai_service import generate_x_thread
+        from app.core.x_image_gen import generate_x_image
+        from app.core.tg_notifier import notify_admin_x_draft
         trend = db.query(Trend).filter(Trend.id == trend_id).first()
         if not trend:
             return jsonify({"error": "Trend not found"}), 404
@@ -1156,8 +1160,8 @@ def get_trend_details(identifier):
             return make_response(cached_data, 200, {"Content-Type": "application/json"})
 
     db = SessionLocal()
-    # ایمپورت ai_engine از اینجا حذف شد
     try:
+        from app.core.ai_engine import ai_engine
         trend = resolve_trend_smart(db, identifier)
         if not trend: return jsonify({"error": "Trend not found"}), 404
         
@@ -1456,6 +1460,7 @@ def admin_merge_trends():
         
     db = SessionLocal()
     try:
+        from app.core.ai_engine import ai_engine
         source_trend = db.query(Trend).filter(Trend.id == int(source_id)).first()
         target_trend = db.query(Trend).filter(Trend.id == int(target_id)).first()
         
