@@ -224,14 +224,18 @@ def render_trend_page(identifier):
 
 # --- Comment System Routes ---
 
-@api_bp.route('/api/comments/<int:trend_id>', methods=['GET'])
-def get_comments(trend_id):
+@api_bp.route('/api/comments/<identifier>', methods=['GET'])
+def get_comments(identifier):
     """Get comments for a specific trend"""
     sort_by = request.args.get('sort', 'popular')
     session_id = request.args.get('session_id')
     
     db = SessionLocal()
     try:
+        trend = resolve_trend_smart(db, identifier)
+        if not trend: return jsonify({"error": "Trend not found"}), 404
+        trend_id = trend.id
+
         query = db.query(Comment).filter(
             Comment.trend_id == trend_id,
             Comment.status.in_(['approved', 'pending']) # Show pending to everyone? Usually only approved. Let's stick to approved + own pending
@@ -280,8 +284,8 @@ def get_comments(trend_id):
     finally:
         db.close()
 
-@api_bp.route('/api/comments/<int:trend_id>', methods=['POST'])
-def post_comment(trend_id):
+@api_bp.route('/api/comments/<identifier>', methods=['POST'])
+def post_comment(identifier):
     """Post a new comment"""
     data = request.json or {}
     user_name = data.get('user_name')
@@ -293,6 +297,10 @@ def post_comment(trend_id):
         
     db = SessionLocal()
     try:
+        trend = resolve_trend_smart(db, identifier)
+        if not trend: return jsonify({"error": "Trend not found"}), 404
+        trend_id = trend.id
+
         # AI Moderation
         moderation_status = ai_engine.moderate_comment(content)
         
