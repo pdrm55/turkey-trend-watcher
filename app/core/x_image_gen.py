@@ -59,19 +59,20 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
         
         # AI Icon
         ai_icon_size = 110
-        # Move AI Icon to Right: box_x_end - padding - icon_size
-        ai_x_pos = box_x_end - 40 - ai_icon_size
+        # AI Icon -> Right Side
+        ai_x_pos = box_x_end - 40 - ai_icon_size 
         
         # Fire Icon
-        # Move Fire Icon to Left: box_x_start + padding
-        fire_x_start = box_x_start + 40
+        # Fire Icon -> Left Side
+        fire_x_start = box_x_start + 40 
         fire_icon_width = 60 
         fire_icon_height = 78 
         fire_icon = fire_icon.resize((fire_icon_width, fire_icon_height))
 
         # Text Area
-        text_x_start = fire_x_start + fire_icon_width + 40 + 180 # +180 for TPS text space
-        text_x_end = ai_x_pos - 20
+        # Text sits between Fire (Left) and AI (Right)
+        text_x_start = fire_x_start + fire_icon_width + 40 + 180 # +180px reserved for TPS number
+        text_x_end = ai_x_pos - 40
         text_area_width = text_x_end - text_x_start
 
         # Box Vertical Positioning
@@ -141,7 +142,7 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
             ai_icon_final = Image.merge('RGBA', (r, g, b, a))
             
             frame.paste(ai_icon_final, (int(ai_x_pos), int(center_y - (ai_icon_size / 2))), ai_icon_final)
-
+            
             # B) Fire Icon (Floating Effect)
             # Y position oscillates +/- 5 pixels
             float_offset = 5 * math.sin(i * 0.15)
@@ -181,7 +182,7 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
             current_tps = tps_value * ease_progress
             display_tps = f"{current_tps:.1f}"
             
-            text_tps_x = fire_x_start + fire_icon_width + 15
+            text_tps_x = fire_x_start + fire_icon_width + 15 
             # TPS text moves slightly with the fire icon for cohesion
             text_tps_y = center_y - 25 + float_offset
             
