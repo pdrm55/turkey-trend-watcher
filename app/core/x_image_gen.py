@@ -59,17 +59,19 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
         
         # AI Icon
         ai_icon_size = 110
-        ai_x_pos = box_x_start + 40
+        # Move AI Icon to Right: box_x_end - padding - icon_size
+        ai_x_pos = box_x_end - 40 - ai_icon_size
         
         # Fire Icon
-        fire_x_start = 1100
+        # Move Fire Icon to Left: box_x_start + padding
+        fire_x_start = box_x_start + 40
         fire_icon_width = 60 
         fire_icon_height = 78 
         fire_icon = fire_icon.resize((fire_icon_width, fire_icon_height))
 
         # Text Area
-        text_x_start = ai_x_pos + ai_icon_size + 40
-        text_x_end = fire_x_start - 20
+        text_x_start = fire_x_start + fire_icon_width + 40 + 180 # +180 for TPS text space
+        text_x_end = ai_x_pos - 20
         text_area_width = text_x_end - text_x_start
 
         # Box Vertical Positioning
