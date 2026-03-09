@@ -109,6 +109,7 @@ posthog==5.4.0
 prompt_toolkit==3.0.52
 proto-plus==1.27.0
 protobuf==5.29.5
+psutil==6.0.0
 psycopg2-binary==2.9.11
 pulsar-client==3.9.0
 pyaes==1.6.1

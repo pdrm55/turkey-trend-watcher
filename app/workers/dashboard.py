@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import time
 import docker
+import psutil
 from datetime import datetime
 
 # --- Page Configuration ---
@@ -115,6 +116,31 @@ elif tab_selection == "🛠️ Workers & System Live Monitor":
     st.title("🛠️ Workers & System Live Monitor")
     st.markdown("Real-time monitoring of Docker containers and worker logs.")
     
+    # --- Host Resource Monitor ---
+    st.subheader("🖥️ Host Server Live Resources (htop style)")
+
+    @st.fragment(run_every="2s")
+    def live_system_stats():
+        col1, col2 = st.columns(2)
+        
+        # CPU
+        with col1:
+            cpu_percent = psutil.cpu_percent(interval=None)
+            st.metric("Host CPU Usage", f"{cpu_percent}%")
+            st.progress(cpu_percent / 100)
+            
+        # RAM
+        with col2:
+            ram = psutil.virtual_memory()
+            ram_total_gb = ram.total / (1024**3)
+            ram_used_gb = ram.used / (1024**3)
+            st.metric(f"Host RAM Usage ({ram_used_gb:.1f}GB / {ram_total_gb:.1f}GB)", f"{ram.percent}%")
+            st.progress(ram.percent / 100)
+
+    live_system_stats()
+    
+    st.divider()
+
     try:
         client = docker.from_env()
         containers = client.containers.list(all=True)
