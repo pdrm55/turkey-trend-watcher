@@ -70,7 +70,9 @@ services:
     build: .
     container_name: ttw_dashboard
     depends_on: ["api_server"]
-    volumes: [".:/app"]
+    volumes: 
+      - ".:/app"
+      - "/var/run/docker.sock:/var/run/docker.sock"
     env_file: [".env"]
     ports: ["8501:8501"]
     networks: ["ttw_network"]
