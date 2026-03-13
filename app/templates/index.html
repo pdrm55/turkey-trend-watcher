@@ -12,6 +12,7 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23ef4444'/%3E%3Ctext x='50%25' y='53%25' dominant-baseline='middle' text-anchor='middle' font-family='Inter, sans-serif' font-weight='800' font-size='60' fill='white'%3ETT%3C/text%3E%3C/svg%3E">
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     
     <!-- Global site tag (gtag.js) - Google Analytics -->
@@ -107,6 +108,29 @@
             .drawer-panel { top: auto; bottom: -100%; right: 0; width: 100%; max-width: 100%; height: 85vh; border-radius: 24px 24px 0 0; transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
             .drawer-panel.open { bottom: 0; right: 0; }
         }
+    </style>
+
+    <style>
+        .news-content-area h3 {
+            border-left: 4px solid #ef4444;
+            font-weight: 700;
+            font-size: 1.1rem;
+            padding-left: 0.75rem;
+            margin: 1.5rem 0 1rem 0;
+        }
+        .news-content-area p {
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+        .news-content-area blockquote {
+            background-color: #f1f5f9;
+            border-left: 4px solid #94a3b8;
+            font-style: italic;
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+        }
+        .news-content-area ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+        .news-content-area li { margin-bottom: 0.5rem; padding-left: 0.5rem; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 pb-20">
@@ -256,7 +280,7 @@
             <div class="p-8 overflow-y-auto custom-scroll flex-1">
                 <div class="mb-8 bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
                     <div class="text-[10px] text-blue-600 font-black uppercase mb-3 tracking-widest">Yapay Zeka Analizi</div>
-                    <p id="modal-summary" class="text-sm text-slate-700 leading-relaxed font-medium"></p>
+                    <div id="modal-summary"></div>
                     <div id="modal-seo-tags" class="mt-4"></div>
                 </div>
                 
@@ -711,7 +735,9 @@
                 const data = await res.json();
                 
                 document.getElementById('modal-title').innerText = data.title;
-                document.getElementById('modal-summary').innerText = data.summary;
+                const modalSummary = document.getElementById('modal-summary');
+                modalSummary.innerHTML = marked.parse(data.summary || '');
+                modalSummary.classList.add('news-content-area');
                 document.getElementById('modal-category').innerText = data.category || 'Gündem';
                 document.getElementById('modal-tps-badge').innerText = `${data.tps_score} TPS`;
                 

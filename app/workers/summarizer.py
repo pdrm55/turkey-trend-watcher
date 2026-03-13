@@ -160,6 +160,17 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
     ### EVOLUTIONARY CONTEXT:
     The provided text may contain updates to an older story. If the new data contains a definitive outcome, final score, or major update that makes the previous context obsolete, overwrite the previous headline and summary with the most recent and important 'Core Event'.
 
+    ### SMART FORMATTING RULES (MARKDOWN):
+    - You MUST return the 'summary' field in raw Markdown.
+    - Structure:
+        1. Start with `### ⚡ Özet` and provide 3 key takeaways as bullet points.
+        2. Use `###` for logical sub-headings (e.g., "Olayın Özeti", "Arka Plan", "Resmi Açıklamalar").
+        3. Keep paragraphs strictly short (maximum 2-3 sentences per block) for mobile readability.
+        4. Conclude with a final section: `### 🤖 Yapay Zeka Analizi`.
+    - Styling:
+        - Use `**bold**` for key entity names (people, organizations) and critical numbers/dates.
+        - Use `> blockquotes` for official statements, direct quotes, or crucial announcements.
+
     ### CONSTRAINTS
     - Language: Turkish (TR) only.
     - Style: Strictly professional, neutral, and journalistic. No clickbait.
@@ -170,7 +181,7 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
     ### OUTPUT FORMAT (JSON ONLY)
     {{
         "headline": "...",
-        "summary": "...",
+        "summary": "Raw Markdown text here...",
         "category": "...",
         "category_reasoning": "...",
         "fact_check": "Brief validation of logic...",
