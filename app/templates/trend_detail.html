@@ -107,7 +107,7 @@
             font-weight: 700;
             font-size: 1.1rem;
             padding-left: 0.75rem;
-            margin: 1.5rem 0 1rem 0;
+            margin-top: 1.5rem;
         }
         .news-article-body p {
             margin-bottom: 1rem;
@@ -116,10 +116,10 @@
             color: #334155;
         }
         .news-article-body blockquote {
-            background-color: #f1f5f9;
-            border-left: 4px solid #94a3b8;
+            background: #f3f4f6;
+            border-left: 4px solid #9ca3af;
             font-style: italic;
-            padding: 0.75rem 1rem;
+            padding: 1rem;
             margin: 1rem 0;
         }
         .news-article-body ul {
@@ -347,7 +347,7 @@
                                 <a href="{{ news.link }}" target="_blank" class="text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors">KAYNAĞA GİT ↗</a>
                                 {% endif %}
                             </div>
-                            <p class="text-sm text-slate-600 leading-relaxed">{{ news.content }}</p>
+                            <div class="source-content-raw text-sm text-slate-600 leading-relaxed">{{ news.content }}</div>
                             <div class="mt-2 text-[10px] text-slate-400 font-medium">
                                 {{ news.time.strftime('%H:%M') if news.time else '' }}
                             </div>
@@ -439,6 +439,24 @@
             return sid;
         }
         const SESSION_ID = getSessionId();
+
+        // Global Text Formatter for News Sources (Wall of Text Fix)
+        function formatRawText(text) {
+            if (!text) return "";
+            // HTML Escape
+            const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            
+            // Split by newlines
+            let chunks = safeText.split(/\n+/).filter(c => c.trim().length > 0);
+
+            // If still one massive block, split by sentences
+            if (chunks.length === 1 && chunks[0].length > 200) {
+                chunks = chunks[0].replace(/(\. )/g, "$1|SPLIT|").split("|SPLIT|");
+            }
+
+            return chunks.map(c => `<p class="mb-3 leading-relaxed text-gray-700">${c}</p>`).join('');
+        }
+
         let currentCommentTrendId = "{{ trend.id }}";
         let currentCommentSort = 'popular';
 
@@ -462,6 +480,14 @@
                 summaryContainer.classList.add('news-article-body');
                 // Remove conflicting Tailwind prose styles from the parent
                 document.getElementById('summary-wrapper').classList.remove('prose', 'prose-slate');
+            }
+
+            // Process Source Content
+            const rawSources = document.querySelectorAll('.source-content-raw');
+            if (rawSources) {
+                rawSources.forEach(el => {
+                    el.innerHTML = formatRawText(el.textContent);
+                });
             }
 
             // Chart.js Logic
