@@ -36,108 +36,109 @@ class AlertService:
             logger.error(f"عدم توانایی در اتصال به تلگرام: {e}")
             return None
 
-    def _format_for_telegram(self, text):
-        """Converts Markdown to Telegram HTML with specific formatting rules."""
-        if not text: return ""
-
-        # 1. Header Replacements
-        # Replace variants of Özet header
-        text = re.sub(r'###\s*⚡️?\s*Özet', r'⚡️ <b>Özet</b>', text)
-        # Replace Yapay Zeka Analizi with a preceding newline
-        text = text.replace("### 🤖 Yapay Zeka Analizi", "\n🤖 <b>Yapay Zeka Analizi</b>")
-        
-        # 2. Generic Sub-headers (### Title -> 🔹 <b>Title</b>)
-        # Avoid re-processing headers already handled above
-        text = re.sub(r'###\s*(?!⚡️?\s*Özet|🤖\s*Yapay Zeka Analizi)(.+)', r'🔹 <b>\1</b>', text)
-
-        # 3. Bold and Quote Replacements
-        text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)  # **bold** -> <b>bold</b>
-        text = re.sub(r'^>\s*(.+)', r'<i>\1</i>', text, flags=re.MULTILINE)  # > quote -> <i>quote</i>
-        
-        # 4. Cleanup remaining # symbols and handle section spacing
-        text = text.replace("#", "")
-        # Ensure double newlines between sections for readability
-        text = re.sub(r'\n*(⚡️|🤖|🔹)', r'\n\n\1', text)
-        return text.strip()
-
     def send_admin_alert(self, title, tps, trajectory, cluster_id):
         """
-        ارسال هشدار به ادمین.
-        تغییر فاز ۶: انتشار خودکار است، لذا دکمه‌های تایید غیرفعال (مخفی) شدند.
-        دکمه مشاهده در سایت برای بررسی سریع ادمین باقی مانده است.
+        ارسال هشدار به ادمین در صورت شناسایی ترند صعودی
+        این پیام شامل دکمه‌های شیشه‌ای (Inline Keyboard) است.
         """
-        if not self.admin_id: return False
-        
-        icon = "⏫" if trajectory == "up" else "🔥"
+        if not self.admin_id:
+            return False
+            
+        trend_emoji = "🔥" if trajectory == "soaring" else "📈"
         msg = (
-            f"🚨 <b>سیگنال جدید شناسایی شد</b>\n\n"
+            f"⚠️ <b>هشدار ترند جدید</b> {trend_emoji}\n\n"
             f"📌 <b>موضوع:</b> {title}\n"
-            f"{icon} <b>امتیاز:</b> {tps:.1f} TPS\n"
-            f"📈 <b>وضعیت:</b> {trajectory.upper()}\n\n"
-            f"✅ <i>این خبر طبق تنظیمات جدید، به صورت خودکار منتشر می‌شود.</i>"
+            f"📊 <b>امتیاز (TPS):</b> {tps:.1f}\n"
+            f"🚀 <b>وضعیت:</b> {trajectory.upper()}\n"
         )
-
-        # ساخت دکمه‌های شیشه‌ای
+        
+        # ساخت کیبورد شیشه‌ای برای تایید یا رد سریع ترند توسط ادمین
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ تایید انتشار", "callback_data": f"approve_{cluster_id}"},
+                    {"text": "❌ رد ترند", "callback_data": f"reject_{cluster_id}"}
+                ],
+                [
+                    {"text": "🔍 مشاهده جزئیات", "callback_data": f"details_{cluster_id}"}
+                ]
+            ]
+        }
+        
         payload = {
             "chat_id": self.admin_id,
             "text": msg,
             "parse_mode": "HTML",
-            "reply_markup": {
-                "inline_keyboard": [
-                    # دکمه‌های تایید/حذف برای استفاده در آینده (در صورت نیاز به فعال‌سازی مجدد) کامنت شدند
-                    # [
-                    #     {"text": "✅ تایید دستی", "callback_data": f"pub_{cluster_id}"},
-                    #     {"text": "🗑️ حذف ترند", "callback_data": f"del_{cluster_id}"}
-                    # ],
-                    [
-                        {"text": "📝 مشاهده در سایت", "url": f"{Config.BASE_SITE_URL}/trend/{cluster_id}"}
-                    ]
-                ]
-            }
+            "reply_markup": reply_markup
         }
+        
         return self._send("sendMessage", payload)
 
-    def publish_to_channel(self, title, summary, category, url, image_path=None):
-        """انتشار خبر در کانال عمومی تلگرام (اتوماسیون کامل)"""
-        if not self.channel_id: return False
+    def _format_for_telegram(self, text):
+        """
+        تبدیل مارک‌داون وب به HTML تلگرام طبق منطق:
+        - تبدیل تیترهای خاص به ایموجی + بولد
+        - تبدیل ستاره به <b> و نقل‌قول به <i>
+        - پاکسازی علامت‌های #
+        """
+        if not text:
+            return ""
+
+        # ۱. جایگزینی هدرهای اختصاصی
+        text = text.replace("### ⚡️ Özet", "⚡️ <b>Özet</b>")
+        text = text.replace("### ⚡ Özet", "⚡️ <b>Özet</b>")
+        text = text.replace("### 🤖 Yapay Zeka Analizi", "🤖 <b>Yapay Zeka Analizi</b>")
         
-        # Icons
+        # ۲. تبدیل سایر تیترهای مارک‌داون به استایل تلگرامی
+        text = re.sub(r'###\s+(.*)', r'🔹 <b>\1</b>', text)
+        
+        # ۳. تبدیل فرمت‌های متنی
+        text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+        text = re.sub(r'^>\s+(.*)', r'<i>\1</i>', text, flags=re.MULTILINE)
+        
+        # ۴. پاکسازی نهایی (حذف هشتگ‌های باقی‌مانده)
+        text = text.replace("#", "")
+        
+        return text.strip()
+
+    def publish_to_channel(self, title, summary, category, url, image_path=None):
+        """
+        ارسال خبر به کانال با مدیریت هوشمند طول متن و تگ‌های HTML
+        """
+        if not self.channel_id:
+            return False
+        
         cat_icons = {
-            "Siyaset": "🏛️", 
-            "Ekonomi": "💰", 
-            "Spor": "⚽", 
-            "Teknoloji": "💻", 
-            "Sanat": "🎨", 
-            "Gündem": "📢"
+            "Siyaset": "🏛️", "Ekonomi": "💰", "Spor": "⚽", 
+            "Teknoloji": "💻", "Sanat": "🎨", "Gündem": "📢"
         }
         icon = cat_icons.get(category, "🔹")
         
-        # Format content
+        # ساخت بخش‌های پیام
         formatted_summary = self._format_for_telegram(summary)
+        header = f"{icon} <b>{category.upper()}</b> | {title}"
+        footer = f"🚀 <a href='{url}'>Haberin Tamamını Oku</a>"
         
-        # Define Header
-        header = f"{icon} <b>{category.upper()}</b> | <b>{title}</b>\n\n"
-        
-        # Smart Truncation Logic (Caption limit: 1024, Text limit: 4096)
-        # We target ~950 for captions to be safe with HTML tags
+        # محدودیت کاراکتر (۱۰۲۴ برای عکس، ۴۰۹۶ برای متن)
         limit = 950 if image_path else 4000
         
-        full_msg = header + formatted_summary
-        
-        if len(full_msg) > limit:
-            # Truncate while trying to preserve line integrity
-            available_chars = limit - len(header) - 5
-            lines = formatted_summary.split('\n')
-            truncated_body = ""
+        # بررسی طول پیام و برش هوشمند
+        if len(header + formatted_summary + footer) > limit:
+            max_summary_len = limit - len(header) - len(footer) - 20
+            truncated = formatted_summary[:max_summary_len]
             
-            for line in lines:
-                if len(truncated_body) + len(line) + 2 < available_chars:
-                    truncated_body += line + "\n"
-                else:
-                    truncated_body += "..."
-                    break
-            full_msg = header + truncated_body.strip()
+            # جلوگیری از شکستن تگ‌های HTML (بستن تگ‌های باز)
+            open_tags = re.findall(r'<(b|i)>', truncated)
+            close_tags = re.findall(r'</(b|i)>', truncated)
+            if len(open_tags) > len(close_tags):
+                # تگ باز وجود دارد، آن را می‌بندیم یا از محل تگ باز برش می‌دهیم
+                last_tag_pos = truncated.rfind("<b") if "b" in open_tags[-1] else truncated.rfind("<i")
+                truncated = truncated[:last_tag_pos]
             
+            formatted_summary = truncated.strip() + "..."
+
+        # ترکیب نهایی با رعایت فاصله‌گذاری (Double Newline)
+        full_msg = f"{header}\n\n{formatted_summary}\n\n{footer}"
         
         reply_markup = {
             "inline_keyboard": [[
@@ -146,7 +147,10 @@ class AlertService:
         }
 
         if image_path:
-            full_image_url = f"{Config.BASE_SITE_URL}/static/{image_path}"
+            # پاکسازی مسیر تصویر
+            clean_path = image_path.lstrip('/')
+            full_image_url = f"{Config.BASE_SITE_URL}/static/{clean_path}"
+            
             payload = {
                 "chat_id": self.channel_id,
                 "photo": full_image_url,
@@ -163,6 +167,28 @@ class AlertService:
                 "reply_markup": reply_markup
             }
             return self._send("sendMessage", payload)
+
+    def send_system_status(self, db_status="OK", scraper_status="ACTIVE", error_count=0):
+        """
+        گزارش وضعیت روزانه یا دوره‌ای سیستم به ادمین.
+        """
+        if not self.admin_id:
+            return False
+            
+        status_icon = "✅" if error_count == 0 else "⚠️"
+        msg = (
+            f"⚙️ <b>وضعیت سیستم</b> {status_icon}\n\n"
+            f"🗄 <b>دیتابیس:</b> {db_status}\n"
+            f"🕷 <b>ربات جمع‌آوری:</b> {scraper_status}\n"
+            f"❌ <b>خطاهای اخیر:</b> {error_count}\n"
+        )
+        
+        payload = {
+            "chat_id": self.admin_id,
+            "text": msg,
+            "parse_mode": "HTML"
+        }
+        return self._send("sendMessage", payload)
 
 # نمونه‌سازی واحد برای استفاده در کل اپلیکیشن
 alert_service = AlertService()
