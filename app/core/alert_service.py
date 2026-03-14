@@ -1,5 +1,6 @@
 import os
 import requests
+import re
 import logging
 import json
 from app.config import Config
@@ -34,6 +35,25 @@ class AlertService:
         except Exception as e:
             logger.error(f"عدم توانایی در اتصال به تلگرام: {e}")
             return None
+
+    def _format_for_telegram(self, text):
+        """Converts Markdown to Telegram HTML and handles specific headers."""
+        if not text: return ""
+
+        # 1. Header Replacements
+        text = text.replace("### ⚡ Özet", "⚡ <b>Özet</b>")
+        text = text.replace("### 🤖 Yapay Zeka Analizi", "🤖 <b>Analiz:</b>")
+        
+        # 2. Generic Sub-headers (### Title -> 🔹 Title)
+        text = re.sub(r'###\s*(.+)', r'🔹 <b>\1</b>', text)
+
+        # 3. Formatting Replacements
+        text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)  # **bold** -> <b>bold</b>
+        text = re.sub(r'^>\s*(.+)', r'<i>\1</i>', text, flags=re.MULTILINE)  # > quote -> <i>quote</i>
+        
+        # 4. Cleanup
+        text = text.replace("###", "") # Remove leftover markdown headers
+        return text.strip()
 
     def send_admin_alert(self, title, tps, trajectory, cluster_id):
         """
@@ -76,7 +96,7 @@ class AlertService:
         """انتشار خبر در کانال عمومی تلگرام (اتوماسیون کامل)"""
         if not self.channel_id: return False
         
-        # انتخاب ایموجی بر اساس دسته‌بندی برای زیبایی ظاهری
+        # Icons
         cat_icons = {
             "Siyaset": "🏛️", 
             "Ekonomi": "💰", 
@@ -87,13 +107,32 @@ class AlertService:
         }
         icon = cat_icons.get(category, "🔹")
         
-        # محدود کردن طول خلاصه برای نمایش بهتر در موبایل
-        clean_summary = summary[:500] + "..." if len(summary) > 500 else summary
+        # Format content
+        formatted_summary = self._format_for_telegram(summary)
         
-        msg = (
-            f"{icon} <b>{category.upper()}</b> | {title}\n\n"
-            f"{clean_summary}\n"
-        )
+        # Define Header
+        header = f"{icon} <b>{category.upper()}</b> | <b>{title}</b>\n\n"
+        
+        # Smart Truncation Logic (Caption limit: 1024, Text limit: 4096)
+        # We target ~950 for captions to be safe with HTML tags
+        limit = 950 if image_path else 4000
+        
+        full_msg = header + formatted_summary
+        
+        if len(full_msg) > limit:
+            # Truncate while trying to preserve line integrity
+            available_chars = limit - len(header) - 5
+            lines = formatted_summary.split('\n')
+            truncated_body = ""
+            
+            for line in lines:
+                if len(truncated_body) + len(line) + 2 < available_chars:
+                    truncated_body += line + "\n"
+                else:
+                    truncated_body += "..."
+                    break
+            full_msg = header + truncated_body.strip()
+            
         
         reply_markup = {
             "inline_keyboard": [[
@@ -106,7 +145,7 @@ class AlertService:
             payload = {
                 "chat_id": self.channel_id,
                 "photo": full_image_url,
-                "caption": msg,
+                "caption": full_msg,
                 "parse_mode": "HTML",
                 "reply_markup": reply_markup
             }
@@ -114,7 +153,7 @@ class AlertService:
         else:
             payload = {
                 "chat_id": self.channel_id,
-                "text": msg,
+                "text": full_msg,
                 "parse_mode": "HTML",
                 "reply_markup": reply_markup
             }
