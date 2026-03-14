@@ -37,22 +37,27 @@ class AlertService:
             return None
 
     def _format_for_telegram(self, text):
-        """Converts Markdown to Telegram HTML and handles specific headers."""
+        """Converts Markdown to Telegram HTML with specific formatting rules."""
         if not text: return ""
 
         # 1. Header Replacements
-        text = text.replace("### ⚡ Özet", "⚡ <b>Özet</b>")
-        text = text.replace("### 🤖 Yapay Zeka Analizi", "🤖 <b>Analiz:</b>")
+        # Replace variants of Özet header
+        text = re.sub(r'###\s*⚡️?\s*Özet', r'⚡️ <b>Özet</b>', text)
+        # Replace Yapay Zeka Analizi with a preceding newline
+        text = text.replace("### 🤖 Yapay Zeka Analizi", "\n🤖 <b>Yapay Zeka Analizi</b>")
         
-        # 2. Generic Sub-headers (### Title -> 🔹 Title)
-        text = re.sub(r'###\s*(.+)', r'🔹 <b>\1</b>', text)
+        # 2. Generic Sub-headers (### Title -> 🔹 <b>Title</b>)
+        # Avoid re-processing headers already handled above
+        text = re.sub(r'###\s*(?!⚡️?\s*Özet|🤖\s*Yapay Zeka Analizi)(.+)', r'🔹 <b>\1</b>', text)
 
-        # 3. Formatting Replacements
+        # 3. Bold and Quote Replacements
         text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)  # **bold** -> <b>bold</b>
         text = re.sub(r'^>\s*(.+)', r'<i>\1</i>', text, flags=re.MULTILINE)  # > quote -> <i>quote</i>
         
-        # 4. Cleanup
-        text = text.replace("###", "") # Remove leftover markdown headers
+        # 4. Cleanup remaining # symbols and handle section spacing
+        text = text.replace("#", "")
+        # Ensure double newlines between sections for readability
+        text = re.sub(r'\n*(⚡️|🤖|🔹)', r'\n\n\1', text)
         return text.strip()
 
     def send_admin_alert(self, title, tps, trajectory, cluster_id):
