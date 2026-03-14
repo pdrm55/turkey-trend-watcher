@@ -1,4 +1,5 @@
 import re
+import html
 from bs4 import BeautifulSoup
 
 # Spam keywords for filtering out advertisements and fraud
@@ -97,6 +98,9 @@ def clean_text(text: str) -> str:
     if not text:
         return ""
         
+    # Decode HTML entities first so BeautifulSoup can properly identify and remove tags
+    text = html.unescape(text)
+
     # ۱. حذف تگ‌های HTML با استفاده از BeautifulSoup
     # این بخش مشکل نمایش کدهای سایت‌هایی مثل Milliyet را حل می‌کند
     try:

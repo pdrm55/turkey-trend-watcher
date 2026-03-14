@@ -447,15 +447,21 @@
         function formatRawText(text) {
             if (!text) return "";
             
-            // 1. Decode HTML entities (e.g., &lt;img&gt; to <img>)
+            // 1. Decode HTML entities (handle potential double encoding)
+            let decodedText = text;
             const decoder = document.createElement("textarea");
-            decoder.innerHTML = text;
-            const decodedText = decoder.value;
+            for (let i = 0; i < 2; i++) {
+                decoder.innerHTML = decodedText;
+                decodedText = decoder.value;
+            }
             
             // 2. Strip unwanted HTML tags using the browser's DOM
             const tmp = document.createElement("DIV");
             tmp.innerHTML = decodedText;
-            const plainText = tmp.textContent || tmp.innerText || "";
+            let plainText = tmp.textContent || tmp.innerText || "";
+            
+            // Fallback regex to strip any leftover literal tags that survived DOM parsing
+            plainText = plainText.replace(/<\/?[^>]+(>|$)/g, "");
             
             // 3. Clean up extra spaces and split the clean text by newlines
             let chunks = plainText.split(/\n+/).map(c => c.trim()).filter(c => c.length > 0);
