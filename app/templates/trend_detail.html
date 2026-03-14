@@ -440,21 +440,29 @@
         }
         const SESSION_ID = getSessionId();
 
-        // Global Text Formatter for News Sources (Wall of Text Fix)
+        // Global Text Formatter for News Sources (Wall of Text & HTML Tags Fix)
         function formatRawText(text) {
             if (!text) return "";
-            // HTML Escape
-            const safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
             
-            // Split by newlines
-            let chunks = safeText.split(/\n+/).filter(c => c.trim().length > 0);
+            // 1. Strip unwanted HTML tags using the browser's DOM
+            const tmp = document.createElement("DIV");
+            tmp.innerHTML = text;
+            const plainText = tmp.textContent || tmp.innerText || "";
+            
+            // 2. Split the clean text by newlines
+            let chunks = plainText.split(/\n+/).filter(c => c.trim().length > 0);
 
-            // If still one massive block, split by sentences
+            // 3. If the text is still one massive block, split by sentences
             if (chunks.length === 1 && chunks[0].length > 200) {
                 chunks = chunks[0].replace(/(\. )/g, "$1|SPLIT|").split("|SPLIT|");
             }
 
-            return chunks.map(c => `<p class="mb-3 leading-relaxed text-gray-700">${c}</p>`).join('');
+            // 4. Return chunks wrapped in styled paragraph tags
+            return chunks.map(c => {
+                // Escape special characters for security
+                const safeChunk = c.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                return `<p class="mb-3 leading-relaxed text-slate-600">${safeChunk}</p>`;
+            }).join('');
         }
 
         let currentCommentTrendId = "{{ trend.id }}";
