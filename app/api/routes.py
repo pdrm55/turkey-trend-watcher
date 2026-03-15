@@ -668,9 +668,9 @@ def generate_x_drafts():
             hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
 
             main_tweet = (
-                f"🤖 AI Özeti: {ai_data['ai_summary']}\n\n"
+                f"{ai_data['ai_summary']}\n\n"
                 f"📊 TPS: {tps_val} | Yayılım Hızı: {spread_speed}x\n\n"
-                f"💬 {ai_data['interaction_question']}\n\n"
+                f"{ai_data['interaction_question']}\n\n"
                 f"#{hash1} #{hash2} #TrendiaTR"
             )
             
@@ -877,9 +877,9 @@ def generate_x_draft_by_id():
         hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
 
         main_tweet = (
-            f"🤖 AI Özeti: {ai_data['ai_summary']}\n\n"
+            f"{ai_data['ai_summary']}\n\n"
             f"📊 TPS: {tps_val} | Yayılım Hızı: {spread_speed}x\n\n"
-            f"💬 {ai_data['interaction_question']}\n\n"
+            f"{ai_data['interaction_question']}\n\n"
             f"#{hash1} #{hash2} #TrendiaTR"
         )
         

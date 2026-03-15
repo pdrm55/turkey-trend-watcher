@@ -64,70 +64,49 @@ _initialize_client()
 
 def generate_x_content(trend_title, cluster_text, category):
     """
-    Generates optimized X (Twitter) Premium content using Gemini.
-    
-    Args:
-        trend_title (str): The headline of the trend.
-        cluster_text (str): The raw text content/summary of the news.
-        category (str): The category of the news.
-        
-    Returns:
-        dict: A dictionary with 'ai_summary', 'interaction_question', 'hashtags', and 'image_short_text', or None if failed.
+    Generates optimized X (Twitter) Premium content using Gemini with Spintax Rotation.
     """
     if not client:
         logger.error("Gemini client is not initialized.")
         return None
 
     styles = [
-        "Official & Statistical: Start with '🤖 AI Özeti:' and use a formal, analytical tone.",
-        "Breaking News: Start with '🚨 SON DAKİKA:' and create a sense of urgency. Do not use the word AI.",
-        "Analytical Storytelling: Start the summary directly with a thought-provoking question, then explain the core event.",
-        "Minimalist: Provide a very short, punchy, direct summary in just one sentence without any prefixes.",
-        "Fact-Focused: Focus on the most striking fact or quote from the news. Start with '📌 Öne Çıkan Detay:'"
+        "Start EXACTLY with '🤖 AI Özeti:' and use a formal, analytical tone.",
+        "Start EXACTLY with '🚨 SON DAKİKA:' and create a sense of urgency. Do not use the word AI.",
+        "Start EXACTLY with '🤔 Analiz:' and explain the core event in a storytelling style.",
+        "Start EXACTLY with '⚡ Kısaca:' and provide a very short, punchy, direct summary.",
+        "Start EXACTLY with '📌 Öne Çıkan Detay:' and focus on the most striking fact or quote."
     ]
     selected_style = random.choice(styles)
 
     prompt = f"""
-    ### SYSTEM ROLE
     You are an "Expert Turkish Social Media Editor" for the news platform 'TrendiaTR'. 
-    Your goal is to create highly engaging, professional, and viral content for X (Twitter) based on a "Zero-Click" strategy, where the user gets all the key info directly in the tweet.
+    Create highly engaging, professional, and viral content for X (Twitter).
 
     CRITICAL RULE: ALL GENERATED TEXT MUST BE STRICTLY IN THE TURKISH LANGUAGE (TÜRKÇE).
 
-    ### STYLE INSTRUCTION
-    {selected_style}
-
     ### INPUT DATA
     - Headline: {trend_title}
-    - Category: {category}
     - Context: {cluster_text}
 
     ### TASK
-    Analyze the context and generate a JSON response with exactly these 4 keys:
+    Generate a JSON response with exactly these 4 keys:
 
     1. "ai_summary": 
-       - A 1-line highly engaging summary of the news.
-       - Must include 1 or 2 relevant emojis.
+       - A 1-line highly engaging summary.
+       - MANDATORY STYLE RULE: {selected_style}
 
     2. "interaction_question":
-       - An open-ended, thought-provoking question related to the news to encourage user comments and interaction.
+       - An open-ended, thought-provoking question related to the news.
+       - MUST start with a conversational emoji like 💬, ❓, or 🗣️.
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
 
     4. "image_short_text":
-       - A heavily compressed, single-sentence summary of the news.
+       - A heavily compressed, single-sentence summary.
        - STRICTLY UNDER 130 CHARACTERS.
-       - This text will be printed physically on an image, so it must be concise.
-       - NO EMOJIS in this specific field.
-
-    ### OUTPUT FORMAT (JSON ONLY)
-    {{
-        "ai_summary": "...",
-        "interaction_question": "...",
-        "hashtags": ["tag1", "tag2"],
-        "image_short_text": "..."
-    }}
+       - STRICTLY UNDER 130 CHARACTERS. NO EMOJIS.
     """
 
     try:
@@ -136,7 +115,7 @@ def generate_x_content(trend_title, cluster_text, category):
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type='application/json',
-                temperature=0.7,
+                temperature=0.8,
             )
         )
         
@@ -148,10 +127,9 @@ def generate_x_content(trend_title, cluster_text, category):
             logger.error("Failed to decode JSON from AI response.")
             return None
         
-        # Basic validation
         required_keys = ["ai_summary", "interaction_question", "hashtags", "image_short_text"]
         if not all(k in result for k in required_keys):
-            logger.error(f"AI response missing required keys. Got: {list(result.keys())}")
+            logger.error(f"AI response missing required keys.")
             return None
             
         return result
