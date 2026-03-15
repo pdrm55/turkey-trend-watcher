@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import random
 from google import genai
 from google.genai import types
 
@@ -77,10 +78,24 @@ def generate_x_content(trend_title, cluster_text, category):
         logger.error("Gemini client is not initialized.")
         return None
 
+    styles = [
+        "Official & Statistical: Start with '🤖 AI Özeti:' and use a formal, analytical tone.",
+        "Breaking News: Start with '🚨 SON DAKİKA:' and create a sense of urgency. Do not use the word AI.",
+        "Analytical Storytelling: Start the summary directly with a thought-provoking question, then explain the core event.",
+        "Minimalist: Provide a very short, punchy, direct summary in just one sentence without any prefixes.",
+        "Fact-Focused: Focus on the most striking fact or quote from the news. Start with '📌 Öne Çıkan Detay:'"
+    ]
+    selected_style = random.choice(styles)
+
     prompt = f"""
     ### SYSTEM ROLE
     You are an "Expert Turkish Social Media Editor" for the news platform 'TrendiaTR'. 
     Your goal is to create highly engaging, professional, and viral content for X (Twitter) based on a "Zero-Click" strategy, where the user gets all the key info directly in the tweet.
+
+    CRITICAL RULE: ALL GENERATED TEXT MUST BE STRICTLY IN THE TURKISH LANGUAGE (TÜRKÇE).
+
+    ### STYLE INSTRUCTION
+    {selected_style}
 
     ### INPUT DATA
     - Headline: {trend_title}

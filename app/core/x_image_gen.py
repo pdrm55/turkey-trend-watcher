@@ -2,6 +2,7 @@ import os
 import logging
 import textwrap
 import math
+import random
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 
 # Configure module logger
@@ -31,7 +32,11 @@ def generate_x_image(trend_id, headline, short_summary, tps_value):
 
         # --- 2. Load Assets ---
         try:
-            base = Image.open(os.path.join(assets_dir, "BackGround.png")).convert("RGBA")
+            bg_files = ["bg_1.png", "bg_2.png", "bg_3.png", "bg_4.png", "bg_5.png"]
+            selected_bg = random.choice(bg_files)
+            logger.info(f"Selected background: {selected_bg}")
+            
+            base = Image.open(os.path.join(assets_dir, selected_bg)).convert("RGBA")
             fire_icon = Image.open(os.path.join(assets_dir, "FireLogo.png")).convert("RGBA")
             ai_icon = Image.open(os.path.join(assets_dir, "ai.png")).convert("RGBA")
         except FileNotFoundError as e:
