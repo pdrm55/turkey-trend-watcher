@@ -171,6 +171,13 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
         - Use `**bold**` for key entity names (people, organizations) and critical numbers/dates.
         - Use `> blockquotes` for official statements, direct quotes, or crucial announcements.
 
+    ### TELEGRAM CAPTION RULES:
+    - Generate a standalone summary specifically for the Telegram channel in the `telegram_caption` field.
+    - Value Proposition: The reader MUST fully understand the core event and its importance WITHOUT needing to click the link. Provide a complete but condensed story.
+    - Length: 2 to 3 short paragraphs (approx 100-150 words).
+    - Format: Use emojis naturally. Use **bold** for names and key figures.
+    - Restriction: DO NOT use Markdown headers like ###. Use a journalistic, engaging, and highly readable tone.
+
     ### CONSTRAINTS
     - Language: Turkish (TR) only.
     - Style: Strictly professional, neutral, and journalistic. No clickbait.
@@ -182,6 +189,7 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
     {{
         "headline": "...",
         "summary": "Raw Markdown text here...",
+        "telegram_caption": "...",
         "category": "...",
         "category_reasoning": "...",
         "fact_check": "Brief validation of logic...",
