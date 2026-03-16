@@ -344,8 +344,12 @@ def process_pending_trends():
                     
                     # Handle cases where AI returns None or empty string
                     extracted_summary = ai_result.get("summary")
-                    if not extracted_summary or extracted_summary.lower() == "none":
-                        extracted_summary = f"{trend.title} konusu şu an sosyal medyada ve haber kaynaklarında gündem oluşturuyor. Detaylar analiz ediliyor."
+                    extracted_tg_caption = ai_result.get("telegram_caption")
+                    
+                    # STRICT ENFORCEMENT: Reject the AI output completely if telegram_caption is missing
+                    if not extracted_summary or extracted_summary.lower() == "none" or not extracted_tg_caption or extracted_tg_caption.lower() == "none":
+                        print(f"   ⚠️ AI validation failed: missing summary or telegram_caption. Retrying next cycle.")
+                        continue
 
                     trend.summary = extracted_summary
                     trend.category = final_category 
@@ -392,10 +396,14 @@ def process_pending_trends():
                 separator = "&" if "?" in target_url else "?"
                 target_url = f"{target_url}{separator}{utm_params}"
                 
-                # NEW: Extract dedicated telegram caption, fallback to main summary if missing
-                tg_caption = trend.summary
-                if isinstance(trend.entities, dict) and trend.entities.get("telegram_caption"):
+                # STRICT ENFORCEMENT: Extract dedicated telegram caption, NO FALLBACK
+                tg_caption = None
+                if isinstance(trend.entities, dict):
                     tg_caption = trend.entities.get("telegram_caption")
+                
+                if not tg_caption:
+                    print(f"   ⚠️ Publish skipped: 'telegram_caption' missing for Trend {trend.id}")
+                    continue
                 
                 # Call the service and check return value
                 success = alert_service.publish_to_channel(

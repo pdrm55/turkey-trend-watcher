@@ -117,14 +117,13 @@ class AlertService:
         # ساخت بخش‌های پیام
         formatted_summary = self._format_for_telegram(summary)
         header = f"{icon} <b>{category.upper()}</b> | {title}"
-        footer = f"🚀 <a href='{url}'>Haberin Tamamını Oku</a>"
         
         # محدودیت کاراکتر (۱۰۲۴ برای عکس، ۴۰۹۶ برای متن)
         limit = 950 if image_path else 4000
         
         # بررسی طول پیام و برش هوشمند
-        if len(header + formatted_summary + footer) > limit:
-            max_summary_len = limit - len(header) - len(footer) - 20
+        if len(header + "\n\n" + formatted_summary) > limit:
+            max_summary_len = limit - len(header) - 20
             truncated = formatted_summary[:max_summary_len]
             
             # جلوگیری از شکستن تگ‌های HTML (بستن تگ‌های باز)
@@ -138,7 +137,7 @@ class AlertService:
             formatted_summary = truncated.strip() + "..."
 
         # ترکیب نهایی با رعایت فاصله‌گذاری (Double Newline)
-        full_msg = f"{header}\n\n{formatted_summary}\n\n{footer}"
+        full_msg = f"{header}\n\n{formatted_summary}"
         
         reply_markup = {
             "inline_keyboard": [[

@@ -634,10 +634,14 @@ def publish_manual_news():
         separator = "&" if "?" in target_url else "?"
         target_url = f"{target_url}{separator}{utm_params}"
         
-        # Extract dedicated telegram caption, fallback to main summary if missing
-        tg_caption = trend.summary
-        if isinstance(trend.entities, dict) and trend.entities.get("telegram_caption"):
+        # STRICT ENFORCEMENT: Extract dedicated telegram caption
+        tg_caption = None
+        if isinstance(trend.entities, dict):
             tg_caption = trend.entities.get("telegram_caption")
+            
+        if not tg_caption:
+            db.rollback()
+            return jsonify({"error": "Telegram Caption (Özel Özet) eksik! Lütfen içeriğin AI tarafından tam oluşturulduğundan emin olun."}), 400
 
         success = alert_service.publish_to_channel(
             title=trend.title,
