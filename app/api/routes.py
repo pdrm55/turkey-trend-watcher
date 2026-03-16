@@ -25,6 +25,7 @@ from app.core.x_ai_service import generate_x_content, generate_x_thread
 from app.core.x_image_gen import generate_x_image
 from app.core.tg_notifier import notify_admin_x_draft
 from app.workers.summarizer import generate_summary_with_gemini
+from app.core.alert_service import alert_service
 
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
@@ -466,8 +467,10 @@ def generate_manual_news_draft():
         return jsonify({
             "status": "success",
             "title": ai_data.get("headline", ""),
-            "summary": ai_data.get("summary", ""),
-            "category": ai_data.get("category", "Gündem")
+                "summary": ai_data.get("summary", ""),
+                "category": ai_data.get("category", "Gündem"),
+                "telegram_caption": ai_data.get("telegram_caption", ""),
+                "entities": ai_data.get("entities", {})
         })
     except Exception as e:
         logger.error(f"Manual Draft Error: {e}")
@@ -481,6 +484,8 @@ def publish_manual_news():
     title = request.form.get('title')
     summary = request.form.get('summary')
     category = request.form.get('category')
+    telegram_caption = request.form.get('telegram_caption')
+    entities_str = request.form.get('entities')
     
     # Advanced Image Processing (Matches image_processor.py standards)
     image_url = None
@@ -574,6 +579,17 @@ def publish_manual_news():
         if image_url:
             trend.cover_image = image_url
             
+        # NEW: Save Telegram caption in the JSON column
+        entities_dict = {}
+        if entities_str:
+            try:
+                entities_dict = json.loads(entities_str)
+            except json.JSONDecodeError:
+                pass
+        if telegram_caption:
+            entities_dict["telegram_caption"] = telegram_caption
+        trend.entities = entities_dict
+            
         # 4. Generate SEO Slug if missing
         if not trend.slug and title:
             base_slug = slugify_turkish(title)
@@ -612,6 +628,28 @@ def publish_manual_news():
         arrival = TrendArrivals(trend_id=trend.id, raw_news_id=raw_news.id, timestamp=datetime.utcnow())
         db.add(arrival)
         
+        # 6. Publish to Telegram immediately
+        target_url = f"{get_public_url()}/trend/{trend.slug if trend.slug else trend.cluster_id}"
+        utm_params = "utm_source=telegram&utm_medium=channel&utm_campaign=hot_trends"
+        separator = "&" if "?" in target_url else "?"
+        target_url = f"{target_url}{separator}{utm_params}"
+        
+        # Extract dedicated telegram caption, fallback to main summary if missing
+        tg_caption = trend.summary
+        if isinstance(trend.entities, dict) and trend.entities.get("telegram_caption"):
+            tg_caption = trend.entities.get("telegram_caption")
+
+        success = alert_service.publish_to_channel(
+            title=trend.title,
+            summary=tg_caption, # MUST use the dedicated caption here!
+            category=trend.category,
+            url=target_url,
+            image_path=trend.cover_image
+        )
+        
+        if success:
+            trend.is_published = True
+
         db.commit()
         return jsonify({"status": "success", "trend_id": trend.id, "tps": trend.final_tps})
         

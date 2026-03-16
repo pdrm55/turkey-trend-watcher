@@ -354,6 +354,8 @@ def process_pending_trends():
                     entities_dict = ai_result.get("entities", {})
                     if isinstance(entities_dict, dict):
                         entities_dict["image_search_query"] = ai_result.get("image_search_query")
+                        # NEW: Save Telegram caption in the JSON column
+                        entities_dict["telegram_caption"] = ai_result.get("telegram_caption")
                     trend.entities = entities_dict
                     
                     # Handle Conflict Data (Layer 6)
@@ -390,10 +392,15 @@ def process_pending_trends():
                 separator = "&" if "?" in target_url else "?"
                 target_url = f"{target_url}{separator}{utm_params}"
                 
+                # NEW: Extract dedicated telegram caption, fallback to main summary if missing
+                tg_caption = trend.summary
+                if isinstance(trend.entities, dict) and trend.entities.get("telegram_caption"):
+                    tg_caption = trend.entities.get("telegram_caption")
+                
                 # Call the service and check return value
                 success = alert_service.publish_to_channel(
                     title=trend.title,
-                    summary=trend.summary,
+                    summary=tg_caption, # MUST use the dedicated caption here!
                     category=trend.category,
                     url=target_url,
                     image_path=trend.cover_image
