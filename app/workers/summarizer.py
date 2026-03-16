@@ -166,7 +166,7 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
         1. Start with `### ⚡ Özet` and provide 3 key takeaways as bullet points.
         2. Use `###` for logical sub-headings (e.g., "Olayın Özeti", "Arka Plan", "Resmi Açıklamalar").
         3. Keep paragraphs strictly short (maximum 2-3 sentences per block) for mobile readability.
-        4. Conclude with a final section: `### 🤖 Yapay Zeka Analizi`.
+        4. Conclude with a final section: `### 🤖 Yapay Zeka Analizi`. Under this heading, you MUST write exactly 1-2 sentences explaining the deeper context, why this news matters, or its potential future impact.
     - Styling:
         - Use `**bold**` for key entity names (people, organizations) and critical numbers/dates.
         - Use `> blockquotes` for official statements, direct quotes, or crucial announcements.
