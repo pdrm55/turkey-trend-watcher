@@ -71,11 +71,11 @@ def generate_x_content(trend_title, cluster_text, category):
         return None
 
     styles = [
-        "Start EXACTLY with '🤖 AI Özeti:' and use a formal, analytical tone.",
-        "Start EXACTLY with '🚨 SON DAKİKA:' and create a sense of urgency. Do not use the word AI.",
-        "Start EXACTLY with '🤔 Analiz:' and explain the core event in a storytelling style.",
-        "Start EXACTLY with '⚡ Kısaca:' and provide a very short, punchy, direct summary.",
-        "Start EXACTLY with '📌 Öne Çıkan Detay:' and focus on the most striking fact or quote."
+        "Shock/Urgency: Start with 🚨 or 💥. Make the first sentence sound like a massive revelation or crisis.",
+        "Controversy/Polarization: Start with ⚖️ or 🗣️. Highlight conflicting sides or massive debate.",
+        "Insider/Behind-the-Scenes: Start with 🕵️‍♂️ or 📂. Reveal a hidden truth or consequence.",
+        "Prediction/Future Impact: Start with 🔮 or ⏳. Focus on how this event changes the future.",
+        "Curiosity/Blind-Spot: Start with ❓ or 🧠. Focus on a shocking detail mainstream media missed."
     ]
     selected_style = random.choice(styles)
 
@@ -97,8 +97,7 @@ def generate_x_content(trend_title, cluster_text, category):
        - MANDATORY STYLE RULE: {selected_style}
 
     2. "interaction_question":
-       - An open-ended, thought-provoking question related to the news.
-       - MUST start with a conversational emoji like 💬, ❓, or 🗣️.
+       - MUST be a highly polarizing, BINARY question (Option A or Option B?) starting with 💬 or 🥊. Do NOT ask generic 'what do you think?' questions.
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]

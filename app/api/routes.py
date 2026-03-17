@@ -709,9 +709,18 @@ def generate_x_drafts():
             hash1 = hashtags[0] if len(hashtags) > 0 else trend.category
             hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
 
+            # Determine urgency label based on TPS
+            if tps_val >= 80:
+                tps_label = "(🔥 Gündemi Sarsan Hız!)"
+            elif tps_val >= 50:
+                tps_label = "(🚀 Hızla Yükselen Trend!)"
+            else:
+                tps_label = "(⚡ Radar Altı Önemli Gelişme)"
+
             main_tweet = (
                 f"{ai_data['ai_summary']}\n\n"
-                f"📊 TPS: {tps_val} | Yayılım Hızı: {spread_speed}x\n\n"
+                f"📊 **TPS: {tps_val}** | Yayılım Hızı: {spread_speed}x\n"
+                f"{tps_label}\n\n"
                 f"{ai_data['interaction_question']}\n\n"
                 f"#{hash1} #{hash2} #TrendiaTR"
             )
@@ -918,9 +927,18 @@ def generate_x_draft_by_id():
         hash1 = hashtags[0] if len(hashtags) > 0 else trend.category
         hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
 
+        # Determine urgency label based on TPS
+        if tps_val >= 80:
+            tps_label = "(🔥 Gündemi Sarsan Hız!)"
+        elif tps_val >= 50:
+            tps_label = "(🚀 Hızla Yükselen Trend!)"
+        else:
+            tps_label = "(⚡ Radar Altı Önemli Gelişme)"
+
         main_tweet = (
             f"{ai_data['ai_summary']}\n\n"
-            f"📊 TPS: {tps_val} | Yayılım Hızı: {spread_speed}x\n\n"
+            f"📊 **TPS: {tps_val}** | Yayılım Hızı: {spread_speed}x\n"
+            f"{tps_label}\n\n"
             f"{ai_data['interaction_question']}\n\n"
             f"#{hash1} #{hash2} #TrendiaTR"
         )
