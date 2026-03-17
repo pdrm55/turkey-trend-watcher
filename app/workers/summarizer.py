@@ -164,9 +164,12 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
     - You MUST return the 'summary' field in raw Markdown.
     - Structure:
         1. Start with `### ⚡ Özet` and provide 3 key takeaways as bullet points.
-        2. Use `###` for logical sub-headings (e.g., "Olayın Özeti", "Arka Plan", "Resmi Açıklamalar").
+        2. Use `###` for logical sub-headings (e.g., "Olayın Özeti", "Arka Plan").
         3. Keep paragraphs strictly short (maximum 2-3 sentences per block) for mobile readability.
-        4. Conclude with a final section: `### 🤖 Yapay Zeka Analizi`. Under this heading, you MUST write exactly 1-2 sentences explaining the deeper context, why this news matters, or its potential future impact.
+        4. GEO DATA (Statistics): If the raw text contains specific numbers, percentages, or financial data, extract them into a section: `### 📊 Önemli İstatistikler`.
+        5. GEO DATA (Quotes): If the text contains expert opinions or official statements, create a section: `### 💬 Uzman Görüşleri`. Format them precisely as: `> **[Name, Title/Organization]:** "[Direct Quote]"`
+        6. Conclude with a final section: `### 🤖 Yapay Zeka Analizi`. Under this heading, you MUST write exactly 1-2 sentences explaining the deeper context, why this news matters, or its potential future impact.
+        7. GEO DATA (Citations): At the very end of the summary, add `### 🔗 Kaynaklar` and list the names of the news agencies, institutes, or sources mentioned in the raw text as a bulleted list (e.g., `- Reuters`, `- TÜİK`, `- AA`).
     - Styling:
         - Use `**bold**` for key entity names (people, organizations) and critical numbers/dates.
         - Use `> blockquotes` for official statements, direct quotes, or crucial announcements.

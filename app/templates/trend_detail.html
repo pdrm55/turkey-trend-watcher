@@ -51,25 +51,43 @@
       gtag('config', 'G-3B9YSY997H');
     </script>
     
-    <!-- JSON-LD Structured Data for News Article -->
+    <!-- GEO & SEO: Full Suite JSON-LD (Article, AI Author, Organization, FAQ) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "NewsArticle",
-      "mainEntityOfPage": { "@type": "WebPage", "@id": "https://trendiatr.com/trend/{{ trend.slug }}" },
+      "mainEntityOfPage": { "@type": "WebPage", "@id": "{{ canonical_url }}" },
       "headline": {{ trend.title | tojson }},
       "description": {{ (trend.summary[:200] if trend.summary else '') | tojson }},
-      "articleBody": {{ (trend.summary if trend.summary else '') | tojson }},
-      "image": ["https://trendiatr.com/static/og-image.png"],
-      "datePublished": "{{ trend.first_seen.isoformat() if trend.first_seen else '' }}",
-      "dateModified": "{{ trend.last_updated.isoformat() if trend.last_updated else '' }}",
-      "author": { "@type": "Organization", "name": "TrendiaTR AI" },
+      "image": [
+        "{{ trend.cover_image if trend.cover_image and trend.cover_image.startswith('http') else base_url ~ '/static/' ~ (trend.cover_image.lstrip('/') if trend.cover_image else 'assets/BackGround.png') }}"
+      ],
+      "datePublished": "{{ date_published }}",
+      "dateModified": "{{ date_modified }}",
+      "author": {
+        "@type": "Person",
+        "name": "TrendiaTR AI Analyst",
+        "url": "{{ base_url }}",
+        "jobTitle": "Yapay Zeka Haber Analisti",
+        "affiliation": {
+          "@type": "Organization",
+          "name": "TrendiaTR"
+        }
+      },
       "publisher": { 
         "@type": "Organization", 
         "name": "TrendiaTR", 
-        "logo": { "@type": "ImageObject", "url": "https://trendiatr.com/static/logo.png" } 
+        "url": "{{ base_url }}",
+        "logo": { "@type": "ImageObject", "url": "{{ base_url }}/static/logo.png" },
+        "sameAs": [
+          "https://x.com/TrendiaTR",
+          "https://t.me/TrendiaTR"
+        ]
       }
     }
+    </script>
+    <script type="application/ld+json">
+      {{ faq_schema | safe }}
     </script>
 
     <style>

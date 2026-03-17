@@ -204,6 +204,36 @@ def render_trend_page(identifier):
         date_published = trend.first_seen.isoformat() + "+00:00" if trend.first_seen else None
         date_modified = trend.last_updated.isoformat() + "+00:00" if trend.last_updated else date_published
         
+        # --- GEO: Generate Dynamic FAQ Schema ---
+        faq_items = [
+            {
+                "@type": "Question",
+                "name": f"{trend.title} olayının arka planı ve özeti nedir?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": trend.summary[:400] + "..." if trend.summary else "Detaylar analiz ediliyor."
+                }
+            }
+        ]
+        
+        if trend.summary and "🤖 Yapay Zeka Analizi" in trend.summary:
+            analysis_text = trend.summary.split("🤖 Yapay Zeka Analizi")[-1].replace("#", "").strip()
+            faq_items.append({
+                "@type": "Question",
+                "name": "Yapay zeka bu haberi ve olası etkilerini nasıl yorumluyor?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": analysis_text
+                }
+            })
+            
+        faq_schema = json.dumps({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": faq_items
+        }, ensure_ascii=False)
+        # --------------------------------------
+
         html_content = render_template(
             'trend_detail.html', 
             trend=trend, 
@@ -213,7 +243,8 @@ def render_trend_page(identifier):
             base_url=base_url,
             date_published=date_published,
             date_modified=date_modified,
-            comments_count=comments_count
+            comments_count=comments_count,
+            faq_schema=faq_schema  # Injected Schema
         )
         
         # 2. Save to Redis Cache (10 minutes TTL)
