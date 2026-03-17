@@ -89,6 +89,11 @@ def generate_x_content(trend_title, cluster_text, category):
     - Headline: {trend_title}
     - Context: {cluster_text}
 
+    ### TONE & CONTEXT RULES
+    Analyze the nature of the news. 
+    - IF the news is about natural disasters, weather (e.g., fog, rain), standard traffic updates, or non-political daily events: YOU MUST strictly avoid artificial controversy or sensationalism. Default to factual, urgent, or minimalist tones, regardless of the randomly selected style.
+    - IF the news is political, economic, or a major crisis: Apply the MANDATORY STYLE RULE fully.
+
     ### TASK
     Generate a JSON response with exactly these 4 keys:
 
@@ -97,7 +102,16 @@ def generate_x_content(trend_title, cluster_text, category):
        - MANDATORY STYLE RULE: {selected_style}
 
     2. "interaction_question":
-       - MUST be a highly polarizing, BINARY question (Option A or Option B?) starting with 💬 or 🥊. Do NOT ask generic 'what do you think?' questions.
+       - 1. Must be a highly polarizing, BINARY question (Option A or Option B?).
+       - 2. MUST use line breaks (\\n) to place Option A and Option B on separate lines.
+       - 3. Each option must have a short 2-3 word explanation (e.g., 'A) Doğru karar, güvenlik önemli').
+       - 4. MUST end with the exact phrase: 'Yorumlarda belirtin! 👇'
+       - 5. Format Example:
+         [Emoji] [The Question?]
+         A) [Option A + short reason]
+         B) [Option B + short reason]
+         
+         Yorumlarda belirtin! 👇
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
