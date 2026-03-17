@@ -98,27 +98,21 @@ def generate_x_content(trend_title, cluster_text, category):
     Generate a JSON response with exactly these 4 keys:
 
     1. "ai_summary": 
-       - A 1-line highly engaging summary.
+       - A 1 or 2-line highly engaging summary.
+       - CRITICAL: You MUST include the core factual reason, specific accusation, or concrete trigger of the event (e.g., 'arrested due to a 1-year-old video'). Do NOT just write abstract commentary.
        - MANDATORY STYLE RULE: {selected_style}
 
     2. "interaction_question":
-       - 1. Must be a highly polarizing, BINARY question (Option A or Option B?).
-       - 2. MUST use line breaks (\\n) to place Option A and Option B on separate lines.
-       - 3. Each option must have a short 2-3 word explanation (e.g., 'A) Doğru karar, güvenlik önemli').
-       - 4. MUST end with the exact phrase: 'Yorumlarda A veya B seçin + nedenini yazın! 👇'
-       - 5. Format Example:
-         [Emoji] [The Question?]
-         A) [Option A + short reason]
-         B) [Option B + short reason]
-         
-         Yorumlarda A veya B seçin + nedenini yazın! 👇
+       - Must be a highly polarizing, BINARY question (Option A or Option B?).
+       - MUST use line breaks (\\n) to place Option A and Option B on separate lines.
+       - CRITICAL: Each option must be a full phrase or sentence (4 to 8 words) that clearly explains the stance (e.g., 'A) İfade özgürlüğü ön planda olmalı ve korunmalı'). Do not use overly brief 2-word options.
+       - MUST end with the exact phrase: 'Yorumlarda A veya B seçin + nedenini yazın! 👇'
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
 
     4. "image_short_text":
        - A heavily compressed, single-sentence summary.
-       - STRICTLY UNDER 130 CHARACTERS.
        - STRICTLY UNDER 130 CHARACTERS. NO EMOJIS.
     """
 
