@@ -111,7 +111,7 @@ def generate_x_content(trend_title, cluster_text, category):
          A) [Option A + short reason]
          B) [Option B + short reason]
          
-         Yorumlarda belirtin! 👇
+         Yorumlarda A veya B seçin + nedenini yazın! 👇
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
