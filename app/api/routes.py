@@ -1023,13 +1023,20 @@ def generate_x_thread_by_id():
         
         spread_speed = round(tps_val / 7.5, 1)
 
-        part1 = f"🧵 {ai_data['tweet_1_hook']}\n\n📊 TPS: {tps_val} | Yayılım Hızı: {spread_speed}x"
-        part2 = ai_data['tweet_2_context']
-        part3 = ai_data['tweet_3_data']
-        part4 = f"🤖 AI Analizi: {ai_data['tweet_4_insight']}"
-        part5 = f"{ai_data['tweet_5_cta']}\n\n🔗 Olayın tüm detayları: 👇\n{full_link}"
+        # Determine urgency label based on TPS
+        if tps_val >= 80:
+            tps_label = "(🔥 Gündemi Sarsan Hız!)"
+        elif tps_val >= 50:
+            tps_label = "(🚀 Hızla Yükselen Trend!)"
+        else:
+            tps_label = "(⚡ Radar Altı Önemli Gelişme)"
+
+        part1 = f"{ai_data['tweet_1_hook']}\n\n📊 **TPS: {tps_val}** | Yayılım Hızı: {spread_speed}x\n{tps_label}\n\nDevamı ↓ 🧵"
+        part2 = ai_data['tweet_2_facts']
+        part3 = ai_data['tweet_3_ai_insight']
+        part4 = f"{ai_data['tweet_4_cta']}\n\n🔗 Olayın tüm detayları ve harita: 👇\n{full_link}"
         
-        caption = f"{part1}\n\n====THREAD====\n\n{part2}\n\n====THREAD====\n\n{part3}\n\n====THREAD====\n\n{part4}\n\n====THREAD====\n\n{part5}"
+        caption = f"{part1}\n\n====THREAD====\n\n{part2}\n\n====THREAD====\n\n{part3}\n\n====THREAD====\n\n{part4}"
         
         # Save Draft
         draft = XDraft(

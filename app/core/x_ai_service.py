@@ -147,46 +147,33 @@ def generate_x_content(trend_title, cluster_text, category):
 
 def generate_x_thread(trend_title, cluster_text, category):
     """
-    Generates a 5-part Twitter thread (flood) using Gemini.
-    
-    Args:
-        trend_title (str): The headline of the trend.
-        cluster_text (str): The raw text content/summary of the news, including timeline of dependent events.
-        category (str): The category of the news.
-        
-    Returns:
-        dict: A dictionary with tweet parts and image text, or None if failed.
+    Generates a viral 4-part Twitter thread (flood) using Gemini.
     """
     if not client:
         logger.error("Gemini client is not initialized.")
         return None
 
     prompt = f"""
-    You are an "Expert News Analyst and Investigative Journalist" for the news platform 'TrendiaTR'. 
-    Create a viral, highly analytical 5-part Twitter thread (flood) based on the provided timeline of a main event and its dependent/related news.
+    You are an "Expert News Analyst" for 'TrendiaTR'. Create a highly scannable, viral 4-part Twitter thread based on this event.
 
     CRITICAL RULE: ALL GENERATED TEXT MUST BE STRICTLY IN THE TURKISH LANGUAGE (TÜRKÇE).
 
     Headline: {trend_title}
-    Context & Timeline: {cluster_text}
+    Context: {cluster_text}
 
-    Analyze the flow of these connected events and generate a JSON response with exactly these 6 keys:
-    - 'tweet_1_hook': A compelling hook highlighting the scale, evolution, or hidden truth of the ongoing story (with emojis). No hashtags.
-    - 'tweet_2_context': Summarize the chronological flow of events (how the story started and how the dependent events unfolded).
-    - 'tweet_3_data': Extract the critical connections, contradictions, or key data points between the main news and its dependent news items.
-    - 'tweet_4_insight': Provide a deep analytical insight, consequence, or prediction based on the trajectory of these connected events.
-    - 'tweet_5_cta': Conclude the analysis with a strong summary and ask an engaging question to the audience. Include exactly 2 hashtags.
-    - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis) to be printed on the image.
+    Generate a JSON response with exactly these 5 keys:
+    - 'tweet_1_hook': 🚨 Start with a shocking emoji and 1-2 punchy sentences summarizing the core event. Do not add hashtags here.
+    - 'tweet_2_facts': 📌 Provide 2 or 3 extremely short bullet points with the most important hard facts or quotes.
+    - 'tweet_3_ai_insight': 🤖 Start with 'AI Analizi:'. Provide 2 short bullet points explaining the consequences, future scenarios, or hidden impact.
+    - 'tweet_4_cta': A polarizing BINARY question (Option A or Option B?) formulated exactly like our single posts, on separate lines, ending with 'Yorumlarda A veya B seçin! 👇' and exactly 2 hashtags.
+    - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis).
     """
 
     try:
         response = client.models.generate_content(
             model=MODEL_NAME,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type='application/json',
-                temperature=0.7,
-            )
+            config=types.GenerateContentConfig(response_mime_type='application/json', temperature=0.7)
         )
         
         try:
@@ -197,10 +184,9 @@ def generate_x_thread(trend_title, cluster_text, category):
             logger.error("Failed to decode JSON from AI response.")
             return None
         
-        # Basic validation
-        required_keys = ["tweet_1_hook", "tweet_2_context", "tweet_3_data", "tweet_4_insight", "tweet_5_cta", "image_short_text"]
+        required_keys = ["tweet_1_hook", "tweet_2_facts", "tweet_3_ai_insight", "tweet_4_cta", "image_short_text"]
         if not all(k in result for k in required_keys):
-            logger.error(f"AI response missing required keys. Got: {list(result.keys())}")
+            logger.error(f"AI response missing keys.")
             return None
             
         return result
