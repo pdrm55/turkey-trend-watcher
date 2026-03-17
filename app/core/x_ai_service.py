@@ -105,7 +105,7 @@ def generate_x_content(trend_title, cluster_text, category):
        - 1. Must be a highly polarizing, BINARY question (Option A or Option B?).
        - 2. MUST use line breaks (\\n) to place Option A and Option B on separate lines.
        - 3. Each option must have a short 2-3 word explanation (e.g., 'A) Doğru karar, güvenlik önemli').
-       - 4. MUST end with the exact phrase: 'Yorumlarda belirtin! 👇'
+       - 4. MUST end with the exact phrase: 'Yorumlarda A veya B seçin + nedenini yazın! 👇'
        - 5. Format Example:
          [Emoji] [The Question?]
          A) [Option A + short reason]
