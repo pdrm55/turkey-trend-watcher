@@ -20,18 +20,32 @@ class AlertService:
         self.channel_id = Config.PUBLIC_CHANNEL_ID
         self.api_url = f"https://api.telegram.org/bot{self.bot_token}"
 
-    def _send(self, method, payload):
+    def _send(self, method, payload, files=None, timeout=15):
         """متد داخلی برای ارسال درخواست به API تلگرام"""
         if not self.bot_token:
             logger.error("خطا: TELEGRAM_BOT_TOKEN در فایل .env یافت نشد.")
             return None
         
         try:
-            response = requests.post(f"{self.api_url}/{method}", json=payload, timeout=15)
+            if files:
+                # وقتی فایل ارسال می‌شود، بخش‌های تو در تو (مثل کیبورد) باید به استرینگ JSON تبدیل شوند
+                data_payload = {}
+                for key, value in payload.items():
+                    if isinstance(value, (dict, list)):
+                        data_payload[key] = json.dumps(value)
+                    else:
+                        data_payload[key] = value
+                response = requests.post(f"{self.api_url}/{method}", data=data_payload, files=files, timeout=timeout)
+            else:
+                response = requests.post(f"{self.api_url}/{method}", json=payload, timeout=timeout)
+                
             result = response.json()
             if not result.get("ok"):
                 logger.error(f"خطای تلگرام: {result.get('description')}")
             return result
+        except requests.exceptions.Timeout:
+            logger.error(f"خطای Timeout در اتصال به تلگرام (متد {method}).")
+            return None
         except Exception as e:
             logger.error(f"عدم توانایی در اتصال به تلگرام: {e}")
             return None
@@ -101,7 +115,7 @@ class AlertService:
         
         return text.strip()
 
-    def publish_to_channel(self, title, summary, category, url, image_path=None):
+    def publish_to_channel(self, title, summary, category, url, image_path=None, video_path=None):
         """
         ارسال خبر به کانال با مدیریت هوشمند طول متن و تگ‌های HTML
         """
@@ -121,8 +135,8 @@ class AlertService:
         formatted_summary = self._format_for_telegram(summary)
         header = f"{icon} <b>{category.upper()}</b> | {title}"
         
-        # محدودیت کاراکتر (۱۰۲۴ برای عکس، ۴۰۹۶ برای متن)
-        limit = 950 if image_path else 4000
+        # محدودیت کاراکتر (۱۰۲۴ برای عکس/ویدیو، ۴۰۹۶ برای متن)
+        limit = 950 if (image_path or video_path) else 4000
         
         # بررسی طول پیام و برش هوشمند
         if len(header + "\n\n" + formatted_summary) > limit:
@@ -135,7 +149,8 @@ class AlertService:
             if len(open_tags) > len(close_tags):
                 # تگ باز وجود دارد، آن را می‌بندیم یا از محل تگ باز برش می‌دهیم
                 last_tag_pos = truncated.rfind("<b") if "b" in open_tags[-1] else truncated.rfind("<i")
-                truncated = truncated[:last_tag_pos]
+                if last_tag_pos != -1:
+                    truncated = truncated[:last_tag_pos]
             
             formatted_summary = truncated.strip() + "..."
 
@@ -148,6 +163,31 @@ class AlertService:
             ]]
         }
 
+        # ۱. تلاش برای ارسال ویدئو
+        if video_path:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            clean_vid_path = video_path.lstrip('/')
+            full_video_path = os.path.join(base_dir, 'static', clean_vid_path)
+            
+            if os.path.exists(full_video_path):
+                try:
+                    with open(full_video_path, 'rb') as v_file:
+                        payload = {
+                            "chat_id": self.channel_id,
+                            "caption": full_msg,
+                            "parse_mode": "HTML",
+                            "reply_markup": reply_markup
+                        }
+                        files = {'video': v_file}
+                        result = self._send("sendVideo", payload, files=files, timeout=60)
+                        if result and result.get("ok"):
+                            return result
+                except Exception as e:
+                    logger.error(f"خطا در آپلود ویدیو به تلگرام: {e}")
+                
+                logger.warning("سقوط به ارسال عکس (Fallback) به دلیل خطای آپلود ویدیو...")
+
+        # ۲. ارسال عکس (حالت پیش‌فرض یا Fallback)
         if image_path:
             # پاکسازی مسیر تصویر
             clean_path = image_path.lstrip('/')
@@ -161,14 +201,15 @@ class AlertService:
                 "reply_markup": reply_markup
             }
             return self._send("sendPhoto", payload)
-        else:
-            payload = {
-                "chat_id": self.channel_id,
-                "text": full_msg,
-                "parse_mode": "HTML",
-                "reply_markup": reply_markup
-            }
-            return self._send("sendMessage", payload)
+            
+        # ۳. ارسال متن ساده
+        payload = {
+            "chat_id": self.channel_id,
+            "text": full_msg,
+            "parse_mode": "HTML",
+            "reply_markup": reply_markup
+        }
+        return self._send("sendMessage", payload)
 
     def send_system_status(self, db_status="OK", scraper_status="ACTIVE", error_count=0):
         """

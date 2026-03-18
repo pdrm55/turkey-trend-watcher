@@ -709,7 +709,8 @@ def publish_manual_news():
             summary=tg_caption, # MUST use the dedicated caption here!
             category=trend.category,
             url=target_url,
-            image_path=trend.cover_image
+            image_path=trend.cover_image,
+            video_path=trend.video_path
         )
         
         if success:
