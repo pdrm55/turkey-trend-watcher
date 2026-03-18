@@ -39,6 +39,7 @@ class RawNews(Base):
     media_url = Column(String(500), nullable=True)
     media_path = Column(String(255), nullable=True)
     media_meta = Column(JSON, nullable=True)
+    video_path = Column(String(500), nullable=True)
     
     # رابطه با جدول ورود سیگنال‌ها (برای محاسبات Velocity)
     arrivals = relationship("TrendArrivals", backref="news_item", cascade="all, delete-orphan")
@@ -82,6 +83,7 @@ class Trend(Base):
     last_updated = Column(DateTime, default=utc_now)
     is_active = Column(Boolean, default=True)
     cover_image = Column(String(255), nullable=True)
+    video_path = Column(String(500), nullable=True)
     tags = Column(JSON, nullable=True)
     entities = Column(JSON, nullable=True)
     last_summary_msg_count = Column(Integer, default=0)
@@ -252,6 +254,11 @@ def init_db():
             if 'is_published' not in trend_columns:
                 print("📢 Adding 'is_published' column to 'trends'...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN is_published BOOLEAN DEFAULT FALSE"))
+                
+            # Migration for Video Support
+            if 'video_path' not in trend_columns:
+                print("🎥 Adding 'video_path' to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN video_path VARCHAR(500)"))
             
             # Migration for Trend Cover Image
             if 'cover_image' not in trend_columns:
@@ -291,6 +298,10 @@ def init_db():
                 conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_url VARCHAR(500)"))
                 conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_path VARCHAR(255)"))
                 conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_meta JSONB"))
+                
+            if 'video_path' not in news_columns:
+                print("🎥 Adding 'video_path' to 'raw_news'...")
+                conn.execute(text("ALTER TABLE raw_news ADD COLUMN video_path VARCHAR(500)"))
             
             conn.commit()
         

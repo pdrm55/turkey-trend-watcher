@@ -561,6 +561,32 @@ def publish_manual_news():
                 logger.error(f"Image processing error in Editorial: {e}")
                 return jsonify({"error": "Image processing failed"}), 500
             
+    # Advanced Video Processing (Phase 1)
+    video_url = None
+    if 'video' in request.files:
+        video_file = request.files['video']
+        if video_file and video_file.filename:
+            try:
+                # Setup YYYY/MM/DD folder structure under media/videos
+                now = datetime.utcnow()
+                year, month, day = now.strftime("%Y"), now.strftime("%m"), now.strftime("%d")
+                
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                folder_path = os.path.join(base_dir, 'static', 'media', 'videos', year, month, day)
+                os.makedirs(folder_path, exist_ok=True)
+                
+                # Generate unique filename retaining original extension or fallback to .mp4
+                ext = os.path.splitext(secure_filename(video_file.filename))[1]
+                if not ext: ext = ".mp4"
+                filename = f"vid_{uuid.uuid4().hex}{ext}"
+                full_path = os.path.join(folder_path, filename)
+                
+                video_file.save(full_path)
+                video_url = f"media/videos/{year}/{month}/{day}/{filename}"
+            except Exception as e:
+                logger.error(f"Video processing error in Editorial: {e}")
+                return jsonify({"error": "Video processing failed"}), 500
+
     db = SessionLocal()
     try:
         from app.core.text_utils import slugify_turkish
@@ -609,6 +635,8 @@ def publish_manual_news():
         trend.category = category
         if image_url:
             trend.cover_image = image_url
+        if video_url:
+            trend.video_path = video_url
             
         # NEW: Save Telegram caption in the JSON column
         entities_dict = {}
@@ -652,6 +680,8 @@ def publish_manual_news():
         if image_url:
             raw_news.media_status = 2
             raw_news.media_path = image_url
+        if video_url:
+            raw_news.video_path = video_url
             
         db.add(raw_news)
         db.flush()
@@ -1167,7 +1197,7 @@ def get_trends():
     date_str = request.args.get('date', '')
 
     # --- منطق کشینگ Redis ---
-    cache_key = f"trends_v1_{category}_{list_type}_{offset}_{limit}_{q}_{date_str}"
+    cache_key = f"trends_v2_{category}_{list_type}_{offset}_{limit}_{q}_{date_str}"
     if redis_client:
         cached_data = redis_client.get(cache_key)
         if cached_data:
@@ -1228,6 +1258,7 @@ def get_trends():
                 "last_update": t.last_updated.isoformat() + 'Z' if t.last_updated else None, 
                 "source_sample": last_news.source_name if last_news else "Bilinmiyor",
                 "image": t.cover_image,
+                "video_path": t.video_path,
                 "comments_count": comments_count
             })
         
@@ -1245,7 +1276,7 @@ def get_trend_details(identifier):
     """API جزئیات ترند برای مودال با کشینگ طولانی‌تر (فاز ۶)"""
     
     # کلید اختصاصی برای هر کلاستر
-    cache_key = f"detail_v1_{identifier}"
+    cache_key = f"detail_v2_{identifier}"
     if redis_client:
         cached_data = redis_client.get(cache_key)
         if cached_data:
@@ -1290,6 +1321,7 @@ def get_trend_details(identifier):
             "tps_score": round(trend.final_tps, 1),
             "summary": trend.summary or "Generating summary...",
             "image": trend.cover_image,
+            "video_path": trend.video_path,
             "comments_count": comments_count,
             "tags": trend.tags or [],
             "entities": trend.entities or {},

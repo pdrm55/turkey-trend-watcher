@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 
 # Add project root to sys path for internal module access
@@ -137,6 +138,24 @@ async def main():
                 # Construct unique link for source tracking
                 unique_id = f"https://t.me/{ch_id}/{event.message.id}"
                 
+                video_path_db = None
+                if getattr(event.message, 'video', None):
+                    try:
+                        now_utc = datetime.now(timezone.utc)
+                        year, month, day = now_utc.strftime("%Y"), now_utc.strftime("%m"), now_utc.strftime("%d")
+                        # Ensure path is correct for the docker container
+                        vid_folder = os.path.join("/app/app/static/media/videos", year, month, day)
+                        os.makedirs(vid_folder, exist_ok=True)
+                        
+                        vid_filename = f"vid_{uuid.uuid4().hex}.mp4"
+                        final_vid_full_path = os.path.join(vid_folder, vid_filename)
+                        
+                        print(f"📥 Downloading video from {ch_id}...")
+                        await client.download_media(event.message.video, file=final_vid_full_path)
+                        video_path_db = f"media/videos/{year}/{month}/{day}/{vid_filename}"
+                    except Exception as e:
+                        print(f"⚠️ Failed to download video: {e}")
+
                 # --- Step 1: AI Clustering ---
                 cluster_id, is_duplicate = ai_engine.process_news(raw_text, ch_id, unique_id)
                 if not cluster_id: return
@@ -150,6 +169,8 @@ async def main():
                     trend.message_count += 1
                     trend.last_updated = msg_time
                     trend.needs_scoring = True # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه در ورکر پس‌زمینه
+                    if video_path_db and not trend.video_path:
+                        trend.video_path = video_path_db
                     action = "📈 Signal Added"
                 else:
                     # New trend detected: Create initial headline and SEO slug immediately
@@ -166,7 +187,8 @@ async def main():
                         category=initial_category,
                         first_seen=msg_time,
                         last_updated=msg_time,
-                        needs_scoring=True # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه اولیه
+                        needs_scoring=True, # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه اولیه
+                        video_path=video_path_db
                     )
                     db.add(trend)
                     db.flush() # Secure the trend.id
@@ -181,7 +203,8 @@ async def main():
                     external_id=unique_id,
                     content=raw_text,
                     published_at=msg_time,
-                    trend_id=trend.id
+                    trend_id=trend.id,
+                    video_path=video_path_db
                 )
                 db.add(news_item)
                 db.flush()

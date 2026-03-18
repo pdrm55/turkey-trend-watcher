@@ -306,6 +306,9 @@
                 </button>
             </div>
             <div class="p-8 overflow-y-auto custom-scroll flex-1">
+                <!-- NEW: Modal Media Container -->
+                <div id="modal-media-container" class="w-full relative hidden mb-6 rounded-2xl overflow-hidden shadow-sm"></div>
+                
                 <div class="mb-8 bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
                     <div class="text-[10px] text-blue-600 font-black uppercase mb-3 tracking-widest">Yapay Zeka Analizi</div>
                     <div id="modal-summary"></div>
@@ -564,11 +567,26 @@
             const wrapperClass = isHot ? "card-hot-section" : "bg-white border-slate-200 hover:border-blue-300 hover:shadow-xl";
             const identifier = trend.slug ? `${trend.trend_id}-${trend.slug}` : trend.id; 
 
-            const hasImage = !!trend.image;
+            const hasImage = !!trend.image || !!trend.video_path;
             const containerPadding = hasImage ? "p-0" : "p-6";
             const contentPadding = hasImage ? "p-6" : "";
-            const imageHtml = hasImage ? 
-                `<img src="/static/${trend.image}" alt="${escapeHtml(trend.title)}" class="h-48 w-full object-cover rounded-t-2xl mb-4" loading="lazy" onerror="this.style.display='none'">` : '';
+            
+            let imageHtml = '';
+            if (trend.video_path) {
+                const bgImg = trend.image ? `<img src="/static/${trend.image}" alt="${escapeHtml(trend.title)}" class="h-48 w-full object-cover rounded-t-2xl" loading="lazy" onerror="this.style.display='none'">` : `<div class="h-48 w-full bg-slate-800 rounded-t-2xl"></div>`;
+                imageHtml = `
+                <div class="relative h-48 w-full mb-4 group">
+                    ${bgImg}
+                    <div class="absolute inset-0 bg-black/20 rounded-t-2xl pointer-events-none"></div>
+                    <button onclick="handleCardPlayClick(event, '${identifier}')" class="absolute inset-0 flex items-center justify-center w-full h-full z-10 focus:outline-none">
+                        <div class="w-12 h-12 bg-white/30 backdrop-blur-md border border-white/50 rounded-full flex items-center justify-center group-hover:bg-red-600 group-hover:border-red-600 transition-all duration-300 shadow-lg group-hover:scale-110">
+                            <svg class="w-6 h-6 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        </div>
+                    </button>
+                </div>`;
+            } else if (trend.image) {
+                imageHtml = `<img src="/static/${trend.image}" alt="${escapeHtml(trend.title)}" class="h-48 w-full object-cover rounded-t-2xl mb-4" loading="lazy" onerror="this.style.display='none'">`;
+            }
 
             return `
             <div class="trend-card ${wrapperClass} rounded-2xl ${containerPadding} border relative overflow-hidden group transition-all flex flex-col h-full">
@@ -783,7 +801,19 @@
             if (typeof gtag === 'function') gtag('config', 'G-3B9YSY997H', {'page_path': `/trend/${identifier}`});
         }
 
-        async function openModal(identifier) {
+        function handleCardPlayClick(event, identifier) {
+            event.preventDefault();
+            event.stopPropagation();
+            openModal(identifier, true); // true = autoPlay video when modal opens
+        }
+
+        function playModalVideo(videoPath) {
+            const container = document.getElementById('modal-media-container');
+            const videoUrl = videoPath.startsWith('http') ? videoPath : '/static/' + videoPath;
+            container.innerHTML = `<video controls autoplay class="w-full h-64 md:h-80 object-contain bg-black"><source src="${videoUrl}" type="video/mp4"></video>`;
+        }
+
+        async function openModal(identifier, autoPlay = false) {
             const modal = document.getElementById('detail-modal');
             modal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
@@ -794,10 +824,35 @@
             document.getElementById('modal-seo-tags').innerHTML = "";
             document.getElementById('modal-tps-badge').innerText = "";
             
+            const modalMedia = document.getElementById('modal-media-container');
+            modalMedia.innerHTML = '';
+            modalMedia.classList.add('hidden');
+            
             try {
                 const res = await fetch(`/api/trends/${identifier}`);
                 const data = await res.json();
                 
+                if (data.video_path) {
+                    modalMedia.classList.remove('hidden');
+                    if (autoPlay) {
+                        playModalVideo(data.video_path);
+                    } else {
+                        const bgImg = data.image ? `<img src="/static/${data.image}" alt="${escapeHtml(data.title)}" class="w-full h-64 md:h-80 object-cover" loading="lazy">` : `<div class="w-full h-64 md:h-80 bg-slate-800"></div>`;
+                        modalMedia.innerHTML = `
+                            ${bgImg}
+                            <div class="absolute inset-0 bg-black/20 pointer-events-none"></div>
+                            <button onclick="playModalVideo('${data.video_path}')" class="absolute inset-0 flex items-center justify-center w-full h-full z-10 focus:outline-none group">
+                                <div class="w-16 h-16 md:w-20 md:h-20 bg-white/30 backdrop-blur-md border border-white/50 rounded-full flex items-center justify-center group-hover:bg-red-600 group-hover:border-red-600 transition-all duration-300 shadow-lg group-hover:scale-110">
+                                    <svg class="w-8 h-8 md:w-10 md:h-10 text-white translate-x-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                </div>
+                            </button>
+                        `;
+                    }
+                } else if (data.image) {
+                    modalMedia.innerHTML = `<img src="/static/${data.image}" alt="${escapeHtml(data.title)}" class="w-full h-64 md:h-80 object-cover" loading="lazy">`;
+                    modalMedia.classList.remove('hidden');
+                }
+
                 document.getElementById('modal-title').innerText = data.title;
                 const modalSummary = document.getElementById('modal-summary');
                 modalSummary.innerHTML = marked.parse(data.summary || '');

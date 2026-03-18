@@ -41,6 +41,9 @@
 
                 <!-- Right Column: Editable Output & Upload -->
                 <div class="space-y-5 bg-slate-900/50 p-6 rounded-xl border border-slate-700">
+                    <!-- Hidden fields for AI Data -->
+                    <input type="hidden" id="edTelegramCaption" value="">
+                    <input type="hidden" id="edEntities" value="">
                     <div>
                         <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Headline</label>
                         <input type="text" id="edTitle" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none font-bold text-lg">
@@ -67,10 +70,17 @@
                     </div>
                     
                     <!-- File Upload Section -->
-                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Cover Image Upload (Optional)</label>
-                        <input type="file" id="edImage" accept="image/png, image/jpeg, image/webp" class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-500 transition-colors">
-                        <p class="text-xs text-slate-500 mt-2">Image will be automatically resized to 800px width and converted to optimized WebP format.</p>
+                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-4">
+                        <div>
+                            <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Cover Image Upload (Optional)</label>
+                            <input type="file" id="edImage" accept="image/png, image/jpeg, image/webp" class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-500 transition-colors">
+                            <p class="text-xs text-slate-500 mt-2">Image will be automatically resized to 800px width and converted to optimized WebP format.</p>
+                        </div>
+                        <div class="pt-4 border-t border-slate-700">
+                            <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Video Upload (Optional)</label>
+                            <input type="file" id="edVideo" accept="video/mp4,video/webm,video/quicktime" class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-500 transition-colors">
+                            <p class="text-xs text-slate-500 mt-2">Upload a short video clip (MP4, WebM, MOV) to attach to this news.</p>
+                        </div>
                     </div>
                     
                     <div class="pt-4 mt-2 border-t border-slate-700">
@@ -111,6 +121,9 @@
                     document.getElementById('edSummary').value = data.summary;
                     document.getElementById('edCategory').value = data.category;
                     
+                    document.getElementById('edTelegramCaption').value = data.telegram_caption || '';
+                    document.getElementById('edEntities').value = JSON.stringify(data.entities || {});
+                    
                     document.getElementById('btnPublishEditorial').disabled = false;
                 } else {
                     alert("Error: " + (data.error || "Unknown AI error occurred."));
@@ -129,8 +142,12 @@
             const summary = document.getElementById('edSummary').value.trim();
             const category = document.getElementById('edCategory').value;
             const targetTrendId = document.getElementById('edTargetTrendId').value.trim();
+            const telegramCaption = document.getElementById('edTelegramCaption').value;
+            const entities = document.getElementById('edEntities').value;
             const imageInput = document.getElementById('edImage');
             const imageFile = imageInput.files.length > 0 ? imageInput.files[0] : null;
+            const videoInput = document.getElementById('edVideo');
+            const videoFile = videoInput.files.length > 0 ? videoInput.files[0] : null;
             
             const btn = document.getElementById('btnPublishEditorial');
 
@@ -147,6 +164,8 @@
             formData.append('title', title);
             formData.append('summary', summary);
             formData.append('category', category);
+            formData.append('telegram_caption', telegramCaption);
+            formData.append('entities', entities);
             
             if (targetTrendId) {
                 formData.append('target_trend_id', targetTrendId);
@@ -154,6 +173,10 @@
             
             if (imageFile) {
                 formData.append('image', imageFile);
+            }
+            
+            if (videoFile) {
+                formData.append('video', videoFile);
             }
 
             try {
@@ -165,6 +188,19 @@
                 // ERROR HANDLING: Catch HTML error pages from Nginx/Gunicorn before parsing JSON
                 if (!res.ok) {
                     const errorText = await res.text();
+                    
+                    try {
+                        const errJson = JSON.parse(errorText);
+                        if (errJson.error) {
+                            alert(`Hata (${res.status}): ${errJson.error}`);
+                            btn.disabled = false;
+                            btn.innerHTML = "🚀 Publish as Hot Trend";
+                            return;
+                        }
+                    } catch (e) {
+                        // Ignore parse error, fallback to raw HTML/Text handling below
+                    }
+                    
                     console.error("Server Error HTML/Text:", errorText);
                     
                     if (res.status === 413) {
@@ -189,7 +225,10 @@
                     document.getElementById('edTitle').value = '';
                     document.getElementById('edSummary').value = '';
                     document.getElementById('edImage').value = '';
+                    document.getElementById('edVideo').value = '';
                     document.getElementById('edTargetTrendId').value = '';
+                    document.getElementById('edTelegramCaption').value = '';
+                    document.getElementById('edEntities').value = '';
                     btn.disabled = true;
                     btn.innerHTML = "🚀 Publish as Hot Trend";
                 } else {
