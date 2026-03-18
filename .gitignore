@@ -10,6 +10,7 @@ __pycache__/
 # نادیده گرفتن پوشه‌های حجیم دیتابیس که در دستور tree فیلتر کرده بودید
 postgres_data/
 chroma_db_data/
+app/static/media/
 # نادیده گرفتن دیتابیس‌های احتمالی SQLite
 *.sqlite3
 *.db
