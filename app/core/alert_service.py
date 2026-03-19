@@ -120,7 +120,7 @@ class AlertService:
         ارسال خبر به کانال با مدیریت هوشمند طول متن و تگ‌های HTML
         """
         # TEMPORARY MUTE FOR TESTING
-        return True
+        #return True
         
         if not self.channel_id:
             return False
