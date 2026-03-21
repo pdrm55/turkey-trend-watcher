@@ -200,7 +200,11 @@ class AlertService:
                 "parse_mode": "HTML",
                 "reply_markup": reply_markup
             }
-            return self._send("sendPhoto", payload)
+            result = self._send("sendPhoto", payload)
+            if result and result.get("ok"):
+                return result
+                
+            logger.warning("سقوط به ارسال متن ساده (Fallback) به دلیل خطای تلگرام در دریافت عکس...")
             
         # ۳. ارسال متن ساده
         payload = {

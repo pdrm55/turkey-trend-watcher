@@ -405,7 +405,9 @@ def process_pending_trends():
                     tg_caption = trend.entities.get("telegram_caption")
                 
                 if not tg_caption:
-                    print(f"   ⚠️ Publish skipped: 'telegram_caption' missing for Trend {trend.id}")
+                    print(f"   ⚠️ Publish skipped: 'telegram_caption' missing for legacy Trend {trend.id}. Marking as published to unblock queue.")
+                    trend.is_published = True
+                    db.commit()
                     continue
                 
                 # Call the service and check return value
