@@ -110,9 +110,9 @@ def generate_x_content(trend_title, cluster_text, category):
          a. IDENTIFY the core tension or uncertainty in the news.
          b. SYNTHESIZE a polarizing BINARY question.
          c. Scenario A and Scenario B MUST BE the direct grammatical answers to the question.
-       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\n\n" to create line breaks inside the JSON value.
+       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\\n\\n" (double backslash) to create line breaks inside the JSON value.
        - YOU MUST strictly adhere to this exact output string format:
-       "[Your intelligent question?]\n\nA) [Scenario A - 4 to 8 words]\nB) [Scenario B - 4 to 8 words]\n\nA veya B? Yorumlarda nedenini belirtin! 👇"
+       "[Your intelligent question?]\\n\\nA) [Scenario A - 4 to 8 words]\\nB) [Scenario B - 4 to 8 words]\\n\\nA veya B? Yorumlarda nedenini belirtin! 👇"
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
@@ -178,9 +178,9 @@ def generate_x_thread(trend_title, cluster_text, category):
          a. IDENTIFY the core tension or uncertainty in the news.
          b. SYNTHESIZE a polarizing BINARY question.
          c. Scenario A and Scenario B MUST BE the direct grammatical answers to the question.
-       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\n\n" to create line breaks inside the JSON value.
+       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\\n\\n" (double backslash) to create line breaks inside the JSON value.
        - YOU MUST strictly adhere to this exact output string format:
-       "[Your intelligent question?]\n\nA) [Scenario A - 4 to 8 words]\nB) [Scenario B - 4 to 8 words]\n\nA veya B? Yorumlarda nedenini belirtin! 👇"
+       "[Your intelligent question?]\\n\\nA) [Scenario A - 4 to 8 words]\\nB) [Scenario B - 4 to 8 words]\\n\\nA veya B? Yorumlarda nedenini belirtin! 👇"
     - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis).
     """
 
