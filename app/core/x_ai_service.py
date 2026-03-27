@@ -102,13 +102,21 @@ def generate_x_content(trend_title, cluster_text, category):
        - CRITICAL: You MUST include the core factual reason, specific accusation, or concrete trigger of the event (e.g., 'arrested due to a 1-year-old video'). Do NOT just write abstract commentary.
        - MANDATORY STYLE RULE: {selected_style}
 
-    2. "interaction_question" (CRITICAL):
-       - You are a high-IQ Data Journalist. DO NOT ask cliché, abstract, or generic questions (like 'Is this good or bad?').
-       - Formulate a polarizing, highly intelligent BINARY question (Option A or Option B?).
-       - The question MUST target the ROOT CAUSE, the HIDDEN MOTIVE, or the LONG-TERM CONSEQUENCE of the event.
-       - MUST use line breaks (\\n) to place Option A and Option B on separate lines.
-       - Each option must be a compelling, thought-provoking phrase (4 to 8 words).
-       - MUST end with the exact phrase: 'A veya B? Yorumlarda nedenini belirtin! 👇'
+    2. "interaction_question" (CRITICAL - LOGICAL CHAIN-OF-THOUGHT):
+       - DO NOT write a placeholder question.
+       - FOLLOW THIS LOGICAL PROCESS to generate a high-IQ, contextual question (do not output the process, only the result):
+         a. IDENTIFY the most specific controversial element or uncertainty in the `Headline` and `Context`.
+         b. CREATE Scenario A: A positive, official, or pro-active consequence derived ONLY from this specific news.
+         c. CREATE Scenario B: A negative, critical, or complex counter-consequence derived ONLY from this specific news.
+         d. SYNTHESIZE a question that forces a choice between A and B, tieing it directly to specific details (like people, dates, or numbers).
+       - YOU MUST strictly adhere to the following output template for the JSON value:
+
+       💬 [Your intelligent, polarizing, high-IQ question tied directly to news details?]
+
+       A) [Scenario A - A compelling phrase, 4 to 8 words]
+       B) [Scenario B - A compelling phrase, 4 to 8 words]
+
+       A veya B? Yorumlarda nedenini belirtin! 👇
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
@@ -167,13 +175,21 @@ def generate_x_thread(trend_title, cluster_text, category):
     - 'tweet_1_hook': 🚨 Start with a shocking emoji and 1-2 punchy sentences summarizing the core event. Do not add hashtags here.
     - 'tweet_2_facts': 📌 Provide 2 or 3 extremely short bullet points with the most important hard facts or quotes.
     - 'tweet_3_ai_insight': 🤖 Start with 'AI Analizi:'. Provide 2 short bullet points explaining the consequences, future scenarios, or hidden impact.
-    - 'tweet_4_cta' (CRITICAL):
-       - You are a high-IQ Data Journalist. DO NOT ask cliché, abstract, or generic questions (like 'Is this good or bad?').
-       - Formulate a polarizing, highly intelligent BINARY question (Option A or Option B?).
-       - The question MUST target the ROOT CAUSE, the HIDDEN MOTIVE, or the LONG-TERM CONSEQUENCE of the event.
-       - MUST use line breaks (\\n) to place Option A and Option B on separate lines.
-       - Each option must be a compelling, thought-provoking phrase (4 to 8 words).
-       - MUST end with the exact phrase: 'A veya B? Yorumlarda nedenini belirtin! 👇'
+    - 'tweet_4_cta' (CRITICAL - LOGICAL CHAIN-OF-THOUGHT):
+       - DO NOT write a placeholder question.
+       - FOLLOW THIS LOGICAL PROCESS to generate a high-IQ, contextual question (do not output the process, only the result):
+         a. IDENTIFY the most specific controversial element or uncertainty in the `Headline` and `Context`.
+         b. CREATE Scenario A: A positive, official, or pro-active consequence derived ONLY from this specific news.
+         c. CREATE Scenario B: A negative, critical, or complex counter-consequence derived ONLY from this specific news.
+         d. SYNTHESIZE a question that forces a choice between A and B, tieing it directly to specific details (like people, dates, or numbers).
+       - YOU MUST strictly adhere to the following output template for the JSON value:
+
+       💬 [Your intelligent, polarizing, high-IQ question tied directly to news details?]
+
+       A) [Scenario A - A compelling phrase, 4 to 8 words]
+       B) [Scenario B - A compelling phrase, 4 to 8 words]
+
+       A veya B? Yorumlarda nedenini belirtin! 👇
     - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis).
     """
 
