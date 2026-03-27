@@ -71,11 +71,11 @@ def generate_x_content(trend_title, cluster_text, category):
         return None
 
     styles = [
-        "Shock/Urgency: Start with 🚨 or 💥. Make the first sentence sound like a massive revelation or crisis.",
-        "Controversy/Polarization: Start with ⚖️ or 🗣️. Highlight conflicting sides or massive debate.",
-        "Insider/Behind-the-Scenes: Start with 🕵️‍♂️ or 📂. Reveal a hidden truth or consequence.",
-        "Prediction/Future Impact: Start with 🔮 or ⏳. Focus on how this event changes the future.",
-        "Curiosity/Blind-Spot: Start with ❓ or 🧠. Focus on a shocking detail mainstream media missed."
+        "Investigative Journalist: Start with 🚨. Reveal the hidden layer or real motive behind the news.",
+        "Data-Driven Analyst: Start with 📊. Focus on the scale, impact, and unprecedented nature of the event.",
+        "Geopolitical/Macro Strategist: Start with 🌍. Frame the news around shifting power dynamics or market impact.",
+        "Devil's Advocate: Start with ⚖️. Challenge the mainstream narrative of the event immediately.",
+        "Future-Caster: Start with 🔮. Directly address how this specific event changes the future landscape."
     ]
     selected_style = random.choice(styles)
 
@@ -102,11 +102,13 @@ def generate_x_content(trend_title, cluster_text, category):
        - CRITICAL: You MUST include the core factual reason, specific accusation, or concrete trigger of the event (e.g., 'arrested due to a 1-year-old video'). Do NOT just write abstract commentary.
        - MANDATORY STYLE RULE: {selected_style}
 
-    2. "interaction_question":
-       - Must be a highly polarizing, BINARY question (Option A or Option B?).
+    2. "interaction_question" (CRITICAL):
+       - You are a high-IQ Data Journalist. DO NOT ask cliché, abstract, or generic questions (like 'Is this good or bad?').
+       - Formulate a polarizing, highly intelligent BINARY question (Option A or Option B?).
+       - The question MUST target the ROOT CAUSE, the HIDDEN MOTIVE, or the LONG-TERM CONSEQUENCE of the event.
        - MUST use line breaks (\\n) to place Option A and Option B on separate lines.
-       - CRITICAL: Each option must be a full phrase or sentence (4 to 8 words) that clearly explains the stance (e.g., 'A) İfade özgürlüğü ön planda olmalı ve korunmalı'). Do not use overly brief 2-word options.
-       - MUST end with the exact phrase: 'Yorumlarda A veya B seçin + nedenini yazın! 👇'
+       - Each option must be a compelling, thought-provoking phrase (4 to 8 words).
+       - MUST end with the exact phrase: 'A veya B? Yorumlarda nedenini belirtin! 👇'
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
@@ -165,7 +167,13 @@ def generate_x_thread(trend_title, cluster_text, category):
     - 'tweet_1_hook': 🚨 Start with a shocking emoji and 1-2 punchy sentences summarizing the core event. Do not add hashtags here.
     - 'tweet_2_facts': 📌 Provide 2 or 3 extremely short bullet points with the most important hard facts or quotes.
     - 'tweet_3_ai_insight': 🤖 Start with 'AI Analizi:'. Provide 2 short bullet points explaining the consequences, future scenarios, or hidden impact.
-    - 'tweet_4_cta': A polarizing BINARY question (Option A or Option B?) formulated exactly like our single posts, on separate lines, ending with 'Yorumlarda A veya B seçin! 👇' and exactly 2 hashtags.
+    - 'tweet_4_cta' (CRITICAL):
+       - You are a high-IQ Data Journalist. DO NOT ask cliché, abstract, or generic questions (like 'Is this good or bad?').
+       - Formulate a polarizing, highly intelligent BINARY question (Option A or Option B?).
+       - The question MUST target the ROOT CAUSE, the HIDDEN MOTIVE, or the LONG-TERM CONSEQUENCE of the event.
+       - MUST use line breaks (\\n) to place Option A and Option B on separate lines.
+       - Each option must be a compelling, thought-provoking phrase (4 to 8 words).
+       - MUST end with the exact phrase: 'A veya B? Yorumlarda nedenini belirtin! 👇'
     - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis).
     """
 

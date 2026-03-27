@@ -771,19 +771,32 @@ def generate_x_drafts():
             hash1 = hashtags[0] if len(hashtags) > 0 else trend.category
             hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
 
-            # Determine urgency label based on TPS
-            if tps_val >= 80:
-                tps_label = "(🔥 Gündemi Sarsan Hız!)"
-            elif tps_val >= 50:
-                tps_label = "(🚀 Hızla Yükselen Trend!)"
+            # 1. Calculate Confidence (Güven Endeksi)
+            confidence_val = getattr(trend, 'tps_confidence', 0.85)
+            if confidence_val is None:
+                confidence_val = 0.85
+            confidence_pct = int(confidence_val * 100)
+            
+            if confidence_pct >= 90:
+                conf_label = "Teyitli Kaynaklar"
+            elif confidence_pct >= 75:
+                conf_label = "Güvenilir Veri"
             else:
-                tps_label = "(⚡ Radar Altı Önemli Gelişme)"
+                conf_label = "Gelişmekte Olan Haber"
+
+            # 2. Calculate Trend Power (Gündem Gücü)
+            if tps_val >= 80:
+                power_label = "Kritik"
+            elif tps_val >= 50:
+                power_label = "Yüksek"
+            else:
+                power_label = "Dikkat Çekici"
 
             main_tweet = (
                 f"{ai_data['ai_summary']}\n\n"
-                f"📊 **TPS: {tps_val}** | Yayılım Hızı: {spread_speed}x\n"
-                f"{tps_label}\n\n"
-                f"{ai_data['interaction_question']}\n\n"
+                f"️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
+                f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
+                f"💬 {ai_data['interaction_question']}\n\n"
                 f"#{hash1} #{hash2} #TrendiaTR"
             )
             
@@ -989,19 +1002,32 @@ def generate_x_draft_by_id():
         hash1 = hashtags[0] if len(hashtags) > 0 else trend.category
         hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
 
-        # Determine urgency label based on TPS
-        if tps_val >= 80:
-            tps_label = "(🔥 Gündemi Sarsan Hız!)"
-        elif tps_val >= 50:
-            tps_label = "(🚀 Hızla Yükselen Trend!)"
+        # 1. Calculate Confidence (Güven Endeksi)
+        confidence_val = getattr(trend, 'tps_confidence', 0.85)
+        if confidence_val is None:
+            confidence_val = 0.85
+        confidence_pct = int(confidence_val * 100)
+        
+        if confidence_pct >= 90:
+            conf_label = "Teyitli Kaynaklar"
+        elif confidence_pct >= 75:
+            conf_label = "Güvenilir Veri"
         else:
-            tps_label = "(⚡ Radar Altı Önemli Gelişme)"
+            conf_label = "Gelişmekte Olan Haber"
+
+        # 2. Calculate Trend Power (Gündem Gücü)
+        if tps_val >= 80:
+            power_label = "Kritik"
+        elif tps_val >= 50:
+            power_label = "Yüksek"
+        else:
+            power_label = "Dikkat Çekici"
 
         main_tweet = (
             f"{ai_data['ai_summary']}\n\n"
-            f"📊 **TPS: {tps_val}** | Yayılım Hızı: {spread_speed}x\n"
-            f"{tps_label}\n\n"
-            f"{ai_data['interaction_question']}\n\n"
+            f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
+            f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
+            f"💬 {ai_data['interaction_question']}\n\n"
             f"#{hash1} #{hash2} #TrendiaTR"
         )
         
@@ -1085,15 +1111,33 @@ def generate_x_thread_by_id():
         
         spread_speed = round(tps_val / 7.5, 1)
 
-        # Determine urgency label based on TPS
-        if tps_val >= 80:
-            tps_label = "(🔥 Gündemi Sarsan Hız!)"
-        elif tps_val >= 50:
-            tps_label = "(🚀 Hızla Yükselen Trend!)"
+        # 1. Calculate Confidence (Güven Endeksi)
+        confidence_val = getattr(trend, 'tps_confidence', 0.85)
+        if confidence_val is None:
+            confidence_val = 0.85
+        confidence_pct = int(confidence_val * 100)
+        
+        if confidence_pct >= 90:
+            conf_label = "Teyitli Kaynaklar"
+        elif confidence_pct >= 75:
+            conf_label = "Güvenilir Veri"
         else:
-            tps_label = "(⚡ Radar Altı Önemli Gelişme)"
+            conf_label = "Gelişmekte Olan Haber"
 
-        part1 = f"{ai_data['tweet_1_hook']}\n\n📊 **TPS: {tps_val}** | Yayılım Hızı: {spread_speed}x\n{tps_label}\n\nDevamı ↓ 🧵"
+        # 2. Calculate Trend Power (Gündem Gücü)
+        if tps_val >= 80:
+            power_label = "Kritik"
+        elif tps_val >= 50:
+            power_label = "Yüksek"
+        else:
+            power_label = "Dikkat Çekici"
+
+        part1 = (
+            f"{ai_data['tweet_1_hook']}\n\n"
+            f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
+            f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
+            f"Devamı ↓ 🧵"
+        )
         part2 = ai_data['tweet_2_facts']
         part3 = ai_data['tweet_3_ai_insight']
         part4 = f"{ai_data['tweet_4_cta']}\n\n🔗 Olayın tüm detayları ve harita: 👇\n{full_link}"

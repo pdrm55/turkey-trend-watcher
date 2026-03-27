@@ -92,19 +92,32 @@ def run_worker():
                     hash1 = hashtags[0] if len(hashtags) > 0 else trend.category
                     hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
 
-                    # Determine urgency label based on TPS
-                    if tps_val >= 80:
-                        tps_label = "(🔥 Gündemi Sarsan Hız!)"
-                    elif tps_val >= 50:
-                        tps_label = "(🚀 Hızla Yükselen Trend!)"
+                    # 1. Calculate Confidence (Güven Endeksi)
+                    confidence_val = getattr(trend, 'tps_confidence', 0.85)
+                    if confidence_val is None:
+                        confidence_val = 0.85
+                    confidence_pct = int(confidence_val * 100)
+                    
+                    if confidence_pct >= 90:
+                        conf_label = "Teyitli Kaynaklar"
+                    elif confidence_pct >= 75:
+                        conf_label = "Güvenilir Veri"
                     else:
-                        tps_label = "(⚡ Radar Altı Önemli Gelişme)"
+                        conf_label = "Gelişmekte Olan Haber"
+
+                    # 2. Calculate Trend Power (Gündem Gücü)
+                    if tps_val >= 80:
+                        power_label = "Kritik"
+                    elif tps_val >= 50:
+                        power_label = "Yüksek"
+                    else:
+                        power_label = "Dikkat Çekici"
 
                     main_tweet = (
                         f"{ai_data['ai_summary']}\n\n"
-                        f"📊 **TPS: {tps_val}** | Yayılım Hızı: {spread_speed}x\n"
-                        f"{tps_label}\n\n"
-                        f"{ai_data['interaction_question']}\n\n"
+                        f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
+                        f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
+                        f"💬 {ai_data['interaction_question']}\n\n"
                         f"#{hash1} #{hash2} #TrendiaTR"
                     )
                     
