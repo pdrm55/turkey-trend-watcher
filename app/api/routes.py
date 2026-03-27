@@ -796,7 +796,7 @@ def generate_x_drafts():
                 f"{ai_data['ai_summary']}\n\n"
                 f"️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
                 f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
-                f"💬 {ai_data['interaction_question']}\n\n"
+                f" {ai_data['interaction_question']}\n\n"
                 f"#{hash1} #{hash2} #TrendiaTR"
             )
             

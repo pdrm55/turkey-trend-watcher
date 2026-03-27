@@ -98,23 +98,23 @@ def generate_x_content(trend_title, cluster_text, category):
     Generate a JSON response with exactly these 4 keys:
 
     1. "ai_summary": 
-       - A 1 or 2-line highly engaging summary.
-       - CRITICAL: You MUST include the core factual reason, specific accusation, or concrete trigger of the event (e.g., 'arrested due to a 1-year-old video'). Do NOT just write abstract commentary.
+       - A 1 or 2-line highly engaging, assertive summary.
+       - CRITICAL: DO NOT ASK ANY QUESTIONS in this section. Make it a powerful, declarative statement or a shocking revelation.
+       - You MUST include the core factual reason or specific trigger (e.g., '2-4 weeks duration').
        - MANDATORY STYLE RULE: {selected_style}
 
     2. "interaction_question" (CRITICAL - LOGICAL CHAIN-OF-THOUGHT):
        - DO NOT write a placeholder question.
-       - FOLLOW THIS LOGICAL PROCESS to generate a high-IQ, contextual question (do not output the process, only the result):
-         a. IDENTIFY the most specific controversial element or uncertainty in the `Headline` and `Context`.
-         b. CREATE Scenario A: A positive, official, or pro-active consequence derived ONLY from this specific news.
-         c. CREATE Scenario B: A negative, critical, or complex counter-consequence derived ONLY from this specific news.
-         d. SYNTHESIZE a question that forces a choice between A and B, tieing it directly to specific details (like people, dates, or numbers).
-       - YOU MUST strictly adhere to the following output template for the JSON value:
+       - FOLLOW THIS LOGICAL PROCESS:
+         a. IDENTIFY the core tension or uncertainty in the news.
+         b. SYNTHESIZE a polarizing BINARY question (Is it X, or is it Y?).
+         c. CRITICAL: Scenario A and Scenario B MUST BE the direct grammatical answers to the question you just asked. (If you ask "Is it policy change or continuation?", Option A must be about "Change", Option B about "Continuation").
+       - YOU MUST strictly adhere to this exact output template:
 
-       💬 [Your intelligent, polarizing, high-IQ question tied directly to news details?]
+       💬 [Your intelligent, polarizing, high-IQ question?]
 
-       A) [Scenario A - A compelling phrase, 4 to 8 words]
-       B) [Scenario B - A compelling phrase, 4 to 8 words]
+       A) [Scenario A - Direct answer to the question, 4 to 8 words]
+       B) [Scenario B - Direct opposing answer, 4 to 8 words]
 
        A veya B? Yorumlarda nedenini belirtin! 👇
 
@@ -172,22 +172,21 @@ def generate_x_thread(trend_title, cluster_text, category):
     Context: {cluster_text}
 
     Generate a JSON response with exactly these 5 keys:
-    - 'tweet_1_hook': 🚨 Start with a shocking emoji and 1-2 punchy sentences summarizing the core event. Do not add hashtags here.
+    - 'tweet_1_hook': 🚨 Start with a shocking emoji and 1-2 punchy, assertive sentences summarizing the core event. CRITICAL: DO NOT ASK ANY QUESTIONS. Make it a powerful, declarative statement. Do not add hashtags here.
     - 'tweet_2_facts': 📌 Provide 2 or 3 extremely short bullet points with the most important hard facts or quotes.
     - 'tweet_3_ai_insight': 🤖 Start with 'AI Analizi:'. Provide 2 short bullet points explaining the consequences, future scenarios, or hidden impact.
     - 'tweet_4_cta' (CRITICAL - LOGICAL CHAIN-OF-THOUGHT):
        - DO NOT write a placeholder question.
-       - FOLLOW THIS LOGICAL PROCESS to generate a high-IQ, contextual question (do not output the process, only the result):
-         a. IDENTIFY the most specific controversial element or uncertainty in the `Headline` and `Context`.
-         b. CREATE Scenario A: A positive, official, or pro-active consequence derived ONLY from this specific news.
-         c. CREATE Scenario B: A negative, critical, or complex counter-consequence derived ONLY from this specific news.
-         d. SYNTHESIZE a question that forces a choice between A and B, tieing it directly to specific details (like people, dates, or numbers).
-       - YOU MUST strictly adhere to the following output template for the JSON value:
+       - FOLLOW THIS LOGICAL PROCESS:
+         a. IDENTIFY the core tension or uncertainty in the news.
+         b. SYNTHESIZE a polarizing BINARY question (Is it X, or is it Y?).
+         c. CRITICAL: Scenario A and Scenario B MUST BE the direct grammatical answers to the question you just asked. (If you ask "Is it policy change or continuation?", Option A must be about "Change", Option B about "Continuation").
+       - YOU MUST strictly adhere to this exact output template:
 
-       💬 [Your intelligent, polarizing, high-IQ question tied directly to news details?]
+       💬 [Your intelligent, polarizing, high-IQ question?]
 
-       A) [Scenario A - A compelling phrase, 4 to 8 words]
-       B) [Scenario B - A compelling phrase, 4 to 8 words]
+       A) [Scenario A - Direct answer to the question, 4 to 8 words]
+       B) [Scenario B - Direct opposing answer, 4 to 8 words]
 
        A veya B? Yorumlarda nedenini belirtin! 👇
     - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis).
