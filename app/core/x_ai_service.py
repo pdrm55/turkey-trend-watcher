@@ -105,19 +105,14 @@ def generate_x_content(trend_title, cluster_text, category):
 
     2. "interaction_question" (CRITICAL - LOGICAL CHAIN-OF-THOUGHT):
        - DO NOT write a placeholder question.
+       - CRITICAL: DO NOT use the 💬 emoji in your output.
        - FOLLOW THIS LOGICAL PROCESS:
          a. IDENTIFY the core tension or uncertainty in the news.
-         b. SYNTHESIZE a polarizing BINARY question (Is it X, or is it Y?).
-         c. CRITICAL: Scenario A and Scenario B MUST BE the direct grammatical answers to the question you just asked. (If you ask "Is it policy change or continuation?", Option A must be about "Change", Option B about "Continuation").
-       - CRITICAL: DO NOT use the 💬 emoji in your output. Start directly with the text.
-       - YOU MUST strictly adhere to this exact output template:
-
-       [Your intelligent, polarizing, high-IQ question?]
-
-       A) [Scenario A - Direct answer to the question, 4 to 8 words]
-       B) [Scenario B - Direct opposing answer, 4 to 8 words]
-
-       A veya B? Yorumlarda nedenini belirtin! 👇
+         b. SYNTHESIZE a polarizing BINARY question.
+         c. Scenario A and Scenario B MUST BE the direct grammatical answers to the question.
+       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\n\n" to create line breaks inside the JSON value.
+       - YOU MUST strictly adhere to this exact output string format:
+       "[Your intelligent question?]\n\nA) [Scenario A - 4 to 8 words]\nB) [Scenario B - 4 to 8 words]\n\nA veya B? Yorumlarda nedenini belirtin! 👇"
 
     3. "hashtags":
        - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
@@ -178,19 +173,14 @@ def generate_x_thread(trend_title, cluster_text, category):
     - 'tweet_3_ai_insight': 🤖 Start with 'AI Analizi:'. Provide 2 short bullet points explaining the consequences, future scenarios, or hidden impact.
     - 'tweet_4_cta' (CRITICAL - LOGICAL CHAIN-OF-THOUGHT):
        - DO NOT write a placeholder question.
+       - CRITICAL: DO NOT use the 💬 emoji in your output.
        - FOLLOW THIS LOGICAL PROCESS:
          a. IDENTIFY the core tension or uncertainty in the news.
-         b. SYNTHESIZE a polarizing BINARY question (Is it X, or is it Y?).
-         c. CRITICAL: Scenario A and Scenario B MUST BE the direct grammatical answers to the question you just asked. (If you ask "Is it policy change or continuation?", Option A must be about "Change", Option B about "Continuation").
-       - CRITICAL: DO NOT use the 💬 emoji in your output. Start directly with the text.
-       - YOU MUST strictly adhere to this exact output template:
-
-       [Your intelligent, polarizing, high-IQ question?]
-
-       A) [Scenario A - Direct answer to the question, 4 to 8 words]
-       B) [Scenario B - Direct opposing answer, 4 to 8 words]
-
-       A veya B? Yorumlarda nedenini belirtin! 👇
+         b. SYNTHESIZE a polarizing BINARY question.
+         c. Scenario A and Scenario B MUST BE the direct grammatical answers to the question.
+       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\n\n" to create line breaks inside the JSON value.
+       - YOU MUST strictly adhere to this exact output string format:
+       "[Your intelligent question?]\n\nA) [Scenario A - 4 to 8 words]\nB) [Scenario B - 4 to 8 words]\n\nA veya B? Yorumlarda nedenini belirtin! 👇"
     - 'image_short_text': A highly compressed, single-sentence summary strictly under 130 chars (NO emojis).
     """
 
