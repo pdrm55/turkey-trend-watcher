@@ -109,9 +109,10 @@ def generate_x_content(trend_title, cluster_text, category):
          a. IDENTIFY the core tension or uncertainty in the news.
          b. SYNTHESIZE a polarizing BINARY question (Is it X, or is it Y?).
          c. CRITICAL: Scenario A and Scenario B MUST BE the direct grammatical answers to the question you just asked. (If you ask "Is it policy change or continuation?", Option A must be about "Change", Option B about "Continuation").
+       - CRITICAL: DO NOT use the 💬 emoji in your output. Start directly with the text.
        - YOU MUST strictly adhere to this exact output template:
 
-       💬 [Your intelligent, polarizing, high-IQ question?]
+       [Your intelligent, polarizing, high-IQ question?]
 
        A) [Scenario A - Direct answer to the question, 4 to 8 words]
        B) [Scenario B - Direct opposing answer, 4 to 8 words]
@@ -181,9 +182,10 @@ def generate_x_thread(trend_title, cluster_text, category):
          a. IDENTIFY the core tension or uncertainty in the news.
          b. SYNTHESIZE a polarizing BINARY question (Is it X, or is it Y?).
          c. CRITICAL: Scenario A and Scenario B MUST BE the direct grammatical answers to the question you just asked. (If you ask "Is it policy change or continuation?", Option A must be about "Change", Option B about "Continuation").
+       - CRITICAL: DO NOT use the 💬 emoji in your output. Start directly with the text.
        - YOU MUST strictly adhere to this exact output template:
 
-       💬 [Your intelligent, polarizing, high-IQ question?]
+       [Your intelligent, polarizing, high-IQ question?]
 
        A) [Scenario A - Direct answer to the question, 4 to 8 words]
        B) [Scenario B - Direct opposing answer, 4 to 8 words]

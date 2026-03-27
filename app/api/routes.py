@@ -792,11 +792,14 @@ def generate_x_drafts():
             else:
                 power_label = "Dikkat Çekici"
 
+            # Sanitize the question to prevent double emojis
+            clean_question = ai_data.get('interaction_question', '').replace("💬", "").strip()
+
             main_tweet = (
                 f"{ai_data['ai_summary']}\n\n"
-                f"️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
+                f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
                 f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
-                f" {ai_data['interaction_question']}\n\n"
+                f"💬 {clean_question}\n\n"
                 f"#{hash1} #{hash2} #TrendiaTR"
             )
             
@@ -1023,11 +1026,14 @@ def generate_x_draft_by_id():
         else:
             power_label = "Dikkat Çekici"
 
+        # Sanitize the question to prevent double emojis
+        clean_question = ai_data.get('interaction_question', '').replace("💬", "").strip()
+
         main_tweet = (
             f"{ai_data['ai_summary']}\n\n"
             f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
             f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
-            f"💬 {ai_data['interaction_question']}\n\n"
+            f"💬 {clean_question}\n\n"
             f"#{hash1} #{hash2} #TrendiaTR"
         )
         
@@ -1140,8 +1146,11 @@ def generate_x_thread_by_id():
         )
         part2 = ai_data['tweet_2_facts']
         part3 = ai_data['tweet_3_ai_insight']
-        part4 = f"{ai_data['tweet_4_cta']}\n\n🔗 Olayın tüm detayları ve harita: 👇\n{full_link}"
         
+        # Sanitize the question to prevent double emojis
+        clean_question = ai_data.get('tweet_4_cta', '').replace("💬", "").strip()
+        part4 = f"💬 {clean_question}\n\n🔗 Olayın tüm detayları ve harita: 👇\n{full_link}"
+
         caption = f"{part1}\n\n====THREAD====\n\n{part2}\n\n====THREAD====\n\n{part3}\n\n====THREAD====\n\n{part4}"
         
         # Save Draft

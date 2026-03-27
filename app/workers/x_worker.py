@@ -113,11 +113,14 @@ def run_worker():
                     else:
                         power_label = "Dikkat Çekici"
 
+                    # Sanitize the question to prevent double emojis
+                    clean_question = ai_data.get('interaction_question', '').replace("💬", "").strip()
+
                     main_tweet = (
                         f"{ai_data['ai_summary']}\n\n"
                         f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
                         f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
-                        f" {ai_data['interaction_question']}\n\n"
+                        f"💬 {clean_question}\n\n"
                         f"#{hash1} #{hash2} #TrendiaTR"
                     )
                     
