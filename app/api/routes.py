@@ -1058,7 +1058,7 @@ def generate_x_draft_by_id():
         )
         
         if phase_type == 'radar':
-            main_tweet = "📡 **Sinyal Algılandı...**\n💬 **Bu neden trend?** Son dakikalarda X Türkiye'de ani bir etkileşim patlaması yaşanıyor.\n\n" + main_tweet
+            main_tweet = " **Bu neden trend?**\n\n" + main_tweet
             trend.radar_phase_triggered = True
         elif phase_type == 'confirmed':
             main_tweet = "🚨 **DOĞRULANDI (Sistem Güncellemesi):**\n\n" + main_tweet

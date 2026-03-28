@@ -96,8 +96,7 @@ def run_worker():
                     clean_question = ai_data.get('interaction_question', '').replace("💬", "").strip()
 
                     main_tweet = (
-                        f"📡 **Sinyal Algılandı: #{hash1}**\n"
-                        f"💬 **Bu neden trend?** Son dakikalarda X Türkiye'de ani bir etkileşim patlaması yaşanıyor.\n\n"
+                        f" **Bu neden trend?**\n\n"
                         f"{ai_data['ai_summary']}\n\n"
                         f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
                         f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
