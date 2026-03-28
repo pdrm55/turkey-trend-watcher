@@ -44,6 +44,19 @@ def run_worker():
             radar_threshold = 30.0
 
             # ==========================================
+            # CLEANUP: Remove Dead Radars (TPS < 10)
+            # ==========================================
+            dead_radars = db.query(Trend).filter(
+                Trend.radar_phase_triggered == True,
+                Trend.final_tps < 10.0
+            ).all()
+            if dead_radars:
+                for dr in dead_radars:
+                    dr.radar_phase_triggered = False
+                db.commit()
+                logger.info(f"🧹 Cleaned up {len(dead_radars)} dead radars (TPS dropped below 10).")
+
+            # ==========================================
             # PHASE 1: RADAR (Early Signals)
             # ==========================================
             # Subquery to check for existing radar drafts (draft, sent, or discarded)
@@ -211,6 +224,7 @@ def run_worker():
                         reply_to_tweet_id=trend.radar_tweet_id
                     )
                     db.add(draft)
+                    trend.radar_phase_triggered = False
                     db.commit()
                     logger.info(f"✅ Created Phase 2 (Confirmed) Draft for Trend {trend.id}")
                     notify_admin_x_draft(trend.title, tps_val, "Confirmed (Phase 2)")

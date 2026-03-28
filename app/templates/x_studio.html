@@ -376,7 +376,7 @@
                         // Use first tweet for intent
                         const encodedMain = encodeURIComponent(parts[0].trim()).replace(/'/g, "%27");
                         actionsHtml += `
-                            <button onclick="openXIntent('${encodedMain}')" class="w-full bg-black hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2">
+                            <button onclick="openXIntent('${encodedMain}', '${d.reply_to_tweet_id || ''}')" class="w-full bg-black hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2">
                                 𝕏 Open Intent (Start)
                             </button>`;
 
@@ -413,7 +413,7 @@
                                 🔗 Copy Reply (Link)
                             </button>` : ''}
 
-                            <button onclick="openXIntent('${encodedMain}')" class="w-full bg-black hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2">
+                            <button onclick="openXIntent('${encodedMain}', '${d.reply_to_tweet_id || ''}')" class="w-full bg-black hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2">
                                 𝕏 Open Intent
                             </button>`;
                     }
@@ -476,8 +476,11 @@
             });
         }
 
-        function openXIntent(encodedText) {
-            const url = `https://twitter.com/intent/tweet?text=${encodedText}`;
+        function openXIntent(encodedText, replyToId = '') {
+            let url = `https://twitter.com/intent/tweet?text=${encodedText}`;
+            if (replyToId && replyToId !== 'null' && replyToId.trim() !== '') {
+                url += `&in_reply_to=${replyToId}`;
+            }
             window.open(url, '_blank');
         }
 

@@ -849,7 +849,8 @@ def list_x_drafts():
                 "caption": d.long_caption,
                 "image_path": d.image_path,
                 "tps_score": d.tps_score,
-                "created_at": d.created_at.isoformat()
+                "created_at": d.created_at.isoformat(),
+                "reply_to_tweet_id": d.reply_to_tweet_id
             })
             
         return jsonify(results)
@@ -1062,6 +1063,7 @@ def generate_x_draft_by_id():
             trend.radar_phase_triggered = True
         elif phase_type == 'confirmed':
             main_tweet = "🚨 **DOĞRULANDI (Sistem Güncellemesi):**\n\n" + main_tweet
+            trend.radar_phase_triggered = False
 
         reply_tweet = f"Olayın tüm detayları, resmi açıklamalar ve güncel gelişmeler için: 👇 🔗\n{full_link}"
         
@@ -1184,6 +1186,9 @@ def generate_x_thread_by_id():
 
         caption = f"{part1}\n\n====THREAD====\n\n{part2}\n\n====THREAD====\n\n{part3}\n\n====THREAD====\n\n{part4}"
         
+        # Close the radar phase since a thread is being generated
+        trend.radar_phase_triggered = False
+
         # Save Draft
         draft = XDraft(
             trend_id=trend.id,
