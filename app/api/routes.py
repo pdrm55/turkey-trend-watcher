@@ -1232,6 +1232,26 @@ def set_radar_tweet_id(trend_id):
     finally:
         db.close()
 
+@api_bp.route('/api/admin/x-radars/<int:trend_id>', methods=['DELETE'])
+@requires_auth
+def cancel_active_radar(trend_id):
+    """Cancels an active radar mission by resetting its flags"""
+    db = SessionLocal()
+    try:
+        trend = db.query(Trend).filter(Trend.id == trend_id).first()
+        if not trend:
+            return jsonify({"error": "Trend not found"}), 404
+            
+        trend.radar_phase_triggered = False
+        trend.radar_tweet_id = None
+        db.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
 @api_bp.route('/api/trends/<int:trend_id>/history')
 @api_bp.route('/api/trends/<identifier>/history')
 def get_trend_history(identifier=None, trend_id=None):

@@ -215,6 +215,7 @@
                             <div class="flex items-center justify-end gap-2" id="radar-cell-${r.id}">
                                 <span class="bg-green-900 text-green-300 px-3 py-1 rounded border border-green-700 font-mono text-xs">ID: ${r.radar_tweet_id}</span>
                                 <button onclick="editRadarTweetId(${r.id}, '${r.radar_tweet_id}')" class="text-blue-400 hover:text-blue-300 text-xs underline">Edit</button>
+                                <button onclick="cancelRadarMission(${r.id})" class="text-red-400 hover:text-red-300 text-xs underline ml-3" title="Cancel Mission">❌ Remove</button>
                             </div>
                         `;
                     } else {
@@ -222,6 +223,7 @@
                             <div class="flex items-center justify-end gap-2" id="radar-cell-${r.id}">
                                 <input type="text" id="radar-input-${r.id}" placeholder="Enter Tweet ID" class="w-32 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-xs focus:border-blue-500 focus:outline-none">
                                 <button onclick="saveRadarTweetId(${r.id})" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded transition-colors shadow">Save ID</button>
+                                <button onclick="cancelRadarMission(${r.id})" class="bg-red-900/50 hover:bg-red-800 text-red-300 text-xs px-2 py-1 rounded transition-colors shadow ml-2" title="Cancel Mission">❌</button>
                             </div>
                         `;
                     }
@@ -269,6 +271,25 @@
             } catch(e) {
                 console.error(e);
                 alert('Failed to save Tweet ID.');
+            }
+        }
+
+        async function cancelRadarMission(trendId) {
+            if(!confirm('Are you sure you want to cancel and remove this radar mission?')) return;
+            
+            try {
+                const res = await fetch(`/api/admin/x-radars/${trendId}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if(data.status === 'success') {
+                    loadActiveRadars();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) {
+                console.error(e);
+                alert('Failed to cancel radar mission.');
             }
         }
 
