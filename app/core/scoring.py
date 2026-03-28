@@ -81,7 +81,15 @@ class TPSCalculator:
             return 100.0  # Instant max velocity for editorial news
         
         source_count = len(arrivals)
-        if source_count <= 1: return 15.0 # امتیاز پایه برای اولین حضور
+        
+        # --- NEW: Cross-Validation Velocity Shock ---
+        trend = self.db.query(Trend).get(trend_id)
+        is_cross_validated = trend and trend.entities and trend.entities.get("cross_validated", False)
+        
+        if source_count <= 1: 
+            # If AI verified X Trend matches Google News, give it a massive jump-start (base 35 instead of 15)
+            # This ensures it instantly hits the >30.0 threshold for the X_Worker Radar Phase
+            return 38.0 if is_cross_validated else 15.0
         
         first_time = arrivals[0].timestamp
         last_time = arrivals[-1].timestamp
@@ -95,7 +103,6 @@ class TPSCalculator:
             duration_mins = 5.0
         
         # For sports, sustained updates are common, so we compress time to boost velocity
-        trend = self.db.query(Trend).get(trend_id)
         if trend and trend.category == "Spor":
             duration_mins *= 0.6
         

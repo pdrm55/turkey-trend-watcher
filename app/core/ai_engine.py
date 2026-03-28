@@ -114,6 +114,40 @@ class AIEngine:
             logger.error(f"Local LLM Verification Failed: {e}")
             return False 
 
+    def verify_cross_trend(self, x_trend: str, google_title: str) -> bool:
+        """
+        AI verifies if the Twitter (X) trend logically matches and is explained by the Google News headline.
+        """
+        prompt = f"""
+        Act as a strict news verification AI.
+        Twitter (X) Trend: "{x_trend}"
+        Google News Headline: "{google_title}"
+        
+        Does this news headline explicitly explain or relate directly to the Twitter trend?
+        - Answer 'true' if the headline is clearly the reason why this word is trending.
+        - Answer 'false' if they are unrelated, or if the trend is just a generic spam/daily word not uniquely explained by the headline.
+        
+        OUTPUT FORMAT: Return ONLY a raw JSON object. Do NOT use markdown formatting.
+        Example: {{"match": true}}
+        """
+        payload = {
+            "model": LOCAL_MODEL_NAME, "prompt": prompt, "stream": False, "format": "json",
+            "options": {"temperature": 0.0, "num_ctx": 1024}
+        }
+        try:
+            response = requests.post(OLLAMA_API_URL, json=payload, timeout=8)
+            result = response.json()
+            raw_text = result.get('response', '{}').strip()
+            
+            raw_text = raw_text.strip("` \n")
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:].strip()
+                
+            return json.loads(raw_text).get("match", False)
+        except Exception as e:
+            logger.error(f"Cross-Trend Verification Failed: {e}")
+            return False
+
     def moderate_comment(self, text: str) -> str:
         """AI Auto-Moderation for user comments using local Qwen model"""
         # 0. Basic Blacklist Check (Fallback & Speed)

@@ -185,6 +185,10 @@ class SocialWorker:
                             # --- NEW: Fetch Real-World Context ---
                             best_title, enriched_content, ai_clustering_text = self.fetch_google_context(name)
 
+                            # --- NEW: Semantic Cross-Validation ---
+                            is_validated = ai_engine.verify_cross_trend(name, best_title)
+                            trend_entities = {"cross_validated": True} if is_validated else {}
+
                             # Check if exists
                             existing = db.query(RawNews).filter(RawNews.external_id == url).first()
                             if existing: continue
@@ -200,6 +204,11 @@ class SocialWorker:
                                 trend.message_count += 1
                                 trend.last_updated = max(trend.last_updated, current_time_utc)
                                 trend.needs_scoring = True
+                                # Add validation flag if it wasn't there
+                                if is_validated:
+                                    current_entities = dict(trend.entities or {})
+                                    current_entities["cross_validated"] = True
+                                    trend.entities = current_entities
                             else:
                                 # Use the pure AI text for initial classification to avoid bias
                                 initial_category = fast_classify(ai_clustering_text)
@@ -211,7 +220,8 @@ class SocialWorker:
                                     category=initial_category,
                                     first_seen=current_time_utc,
                                     last_updated=current_time_utc,
-                                    needs_scoring=True
+                                    needs_scoring=True,
+                                    entities=trend_entities # <--- Inject the golden label here
                                 )
                                 db.add(trend)
                                 db.flush()
