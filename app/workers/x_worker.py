@@ -46,11 +46,14 @@ def run_worker():
             # ==========================================
             # PHASE 1: RADAR (Early Signals)
             # ==========================================
+            # Subquery to check for existing radar drafts (draft, sent, or discarded)
+            radar_draft_subquery = db.query(XDraft.trend_id).filter(XDraft.draft_type == 'radar')
+            
             radar_candidates = db.query(Trend).filter(
                 Trend.is_active == True,
                 Trend.final_tps >= radar_threshold,
                 Trend.final_tps < confirm_threshold,
-                Trend.radar_phase_triggered == False
+                ~Trend.id.in_(radar_draft_subquery)
             ).order_by(desc(Trend.final_tps)).limit(2).all()
 
             for trend in radar_candidates:
@@ -133,12 +136,13 @@ def run_worker():
             # ==========================================
             # PHASE 2: CONFIRMED (High Score)
             # ==========================================
-            confirmed_draft_ids = db.query(XDraft.trend_id).filter(XDraft.draft_type == 'confirmed')
+            # Subquery to check for existing confirmed drafts
+            confirmed_draft_subquery = db.query(XDraft.trend_id).filter(XDraft.draft_type == 'confirmed')
             
             confirmed_candidates = db.query(Trend).filter(
                 Trend.is_active == True,
                 Trend.final_tps >= confirm_threshold,
-                ~Trend.id.in_(confirmed_draft_ids)
+                ~Trend.id.in_(confirmed_draft_subquery)
             ).order_by(desc(Trend.final_tps)).limit(2).all()
 
             for trend in confirmed_candidates:

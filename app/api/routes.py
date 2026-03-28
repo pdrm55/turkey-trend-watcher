@@ -889,6 +889,23 @@ def action_x_draft(draft_id):
 
         elif action == 'discard':
             draft.status = 'discarded'
+            
+            # If we discard a radar draft, we must also remove it from the "Active Radars" UI
+            if draft.draft_type == 'radar':
+                trend = db.query(Trend).filter(Trend.id == draft.trend_id).first()
+                if trend:
+                    trend.radar_phase_triggered = False
+                    trend.radar_tweet_id = None
+                    
+            # Delete the physical image file to save space, just like in 'mark_sent'
+            if draft.image_path:
+                try:
+                    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    file_path = os.path.join(base_dir, draft.image_path.lstrip('/'))
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    logger.error(f"Failed to delete discarded image: {e}")
         else:
             return jsonify({"error": "Invalid action"}), 400
             

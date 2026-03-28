@@ -440,6 +440,9 @@
                                 <button onclick="markDraftSent(${d.draft_id})" class="w-full bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm mt-4">
                                     ✅ Mark Sent & Delete
                                 </button>
+                                <button onclick="discardDraft(${d.draft_id})" class="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs font-bold px-3 py-2 rounded border border-red-800/50 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2">
+                                    🗑️ Discard Draft
+                                </button>
                             </td>
                         </tr>
                     `;
@@ -505,6 +508,28 @@
             } catch(e) { 
                 console.error(e);
                 alert('Error updating status'); 
+            }
+        }
+
+        async function discardDraft(id) {
+            if(!confirm('Are you sure you want to discard this draft? It will be removed from this list and WILL NOT be auto-generated again for this phase.')) return;
+            
+            try {
+                const res = await fetch(`/api/admin/x-drafts/${id}/action`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ action: 'discard' })
+                });
+                const data = await res.json();
+                if(data.status === 'success') {
+                    loadXDrafts();
+                    loadActiveRadars(); // Refresh active radars in case a radar draft was discarded
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) { 
+                console.error(e);
+                alert('Error discarding draft'); 
             }
         }
     </script>
