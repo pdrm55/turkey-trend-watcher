@@ -1002,7 +1002,7 @@ def generate_x_draft_by_id():
 
         # Generate Content
         context_text = trend.summary if trend.summary else trend.title
-        ai_data = generate_x_content(trend.title, context_text, trend.category)
+        ai_data = generate_x_content(trend.title, context_text, trend.category, phase_type=phase_type)
         
         if not ai_data:
             return jsonify({"error": "AI content generation failed"}), 500

@@ -75,7 +75,7 @@ def run_worker():
                     
                     # Generate Content
                     context_text = trend.summary if trend.summary else trend.title
-                    ai_data = generate_x_content(trend.title, context_text, trend.category)
+                    ai_data = generate_x_content(trend.title, context_text, trend.category, phase_type='radar')
                     
                     if not ai_data: continue
 
@@ -162,7 +162,7 @@ def run_worker():
                     logger.info(f"🚨 Processing Phase 2 (Confirmed) for Trend {trend.id}: {trend.title}")
                     
                     context_text = trend.summary if trend.summary else trend.title
-                    ai_data = generate_x_content(trend.title, context_text, trend.category)
+                    ai_data = generate_x_content(trend.title, context_text, trend.category, phase_type='confirmed')
                     
                     if not ai_data: continue
 

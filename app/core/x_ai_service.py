@@ -62,26 +62,23 @@ def _initialize_client():
 # Initialize on module load
 _initialize_client()
 
-def generate_x_content(trend_title, cluster_text, category):
+def generate_x_content(trend_title, cluster_text, category, phase_type="standard"):
     """
-    Generates optimized X (Twitter) Premium content using Gemini with Spintax Rotation.
+    Generates optimized X (Twitter) Premium content using Gemini.
     """
     if not client:
         logger.error("Gemini client is not initialized.")
         return None
 
-    styles = [
-        "Investigative Journalist: Start with 🚨. Reveal the hidden layer or real motive behind the news.",
-        "Data-Driven Analyst: Start with 📊. Focus on the scale, impact, and unprecedented nature of the event.",
-        "Geopolitical/Macro Strategist: Start with 🌍. Frame the news around shifting power dynamics or market impact.",
-        "Devil's Advocate: Start with ⚖️. Challenge the mainstream narrative of the event immediately.",
-        "Future-Caster: Start with 🔮. Directly address how this specific event changes the future landscape."
-    ]
-    selected_style = random.choice(styles)
+    phase_instructions = ""
+    if phase_type == "radar":
+        phase_instructions = "PHASE 1 (RADAR / BREAKING): The event is just breaking. Tone: Urgent but investigating. Start with phrases like 'İlk bilgilere göre' or 'Gelen ilk raporlara göre'. Focus ONLY on the core claim triggering the trend. Do not make definitive geopolitical conclusions yet."
+    elif phase_type == "confirmed":
+        phase_instructions = "PHASE 2 (CONFIRMED): The event is fully verified. Tone: Authoritative, definitive, and factual. State exactly what happened with absolute certainty. Then provide 1 highly specific, non-obvious strategic insight."
 
     prompt = f"""
-    You are an "Expert Turkish Social Media Editor" for the news platform 'TrendiaTR'. 
-    Create highly engaging, professional, and viral content for X (Twitter).
+    You are an "Expert Data Journalist" for the news platform 'TrendiaTR'. 
+    Create highly engaging, professional content for X (Twitter).
 
     CRITICAL RULE: ALL GENERATED TEXT MUST BE STRICTLY IN THE TURKISH LANGUAGE (TÜRKÇE).
 
@@ -89,37 +86,32 @@ def generate_x_content(trend_title, cluster_text, category):
     - Headline: {trend_title}
     - Context: {cluster_text}
 
-    ### TONE & CONTEXT RULES
-    Analyze the nature of the news. 
-    - IF the news is about natural disasters, weather (e.g., fog, rain), standard traffic updates, or non-political daily events: YOU MUST strictly avoid artificial controversy or sensationalism. Default to factual, urgent, or minimalist tones, regardless of the randomly selected style.
-    - IF the news is political, economic, or a major crisis: Apply the MANDATORY STYLE RULE fully.
+    ### JOURNALISM RULES (STRICTLY ENFORCED)
+    1. THE INVERTED PYRAMID: Your summary MUST start with the hard facts (Who, What, Where, When).
+    2. ANTI-CLICHÉ PROTOCOL: YOU ARE STRICTLY FORBIDDEN from using generic geopolitical or economic filler phrases (e.g., "bölgesel çatışma riskini artıracak", "piyasalarda dalgalanma yaratacak", "istikrarsızlığı tetikleyecek"). 
+    3. SPECIFIC INSIGHT ONLY: If you add an analysis, it must be a concrete, data-driven detail or a specific strategic consequence (e.g., "The targeted facility produces 40% of the fuel" NOT "this will affect the economy").
+    4. CURRENT STATUS: {phase_instructions}
 
     ### TASK
     Generate a JSON response with exactly these 4 keys:
 
     1. "ai_summary": 
-       - A 1 or 2-line highly engaging, assertive summary.
-       - CRITICAL: DO NOT ASK ANY QUESTIONS in this section. Make it a powerful, declarative statement or a shocking revelation.
-       - You MUST include the core factual reason or specific trigger (e.g., '2-4 weeks duration').
-       - MANDATORY STYLE RULE: {selected_style}
+       - 2 sentences max.
+       - Sentence 1: The hard fact (What exactly happened?).
+       - Sentence 2: The specific insight or current status based on the phase.
+       - CRITICAL: DO NOT ASK ANY QUESTIONS in this section.
 
-    2. "interaction_question" (CRITICAL - LOGICAL CHAIN-OF-THOUGHT):
-       - DO NOT write a placeholder question.
-       - CRITICAL: DO NOT use the 💬 emoji in your output.
-       - FOLLOW THIS LOGICAL PROCESS:
-         a. IDENTIFY the core tension or uncertainty in the news.
-         b. SYNTHESIZE a polarizing BINARY question.
-         c. Scenario A and Scenario B MUST BE the direct grammatical answers to the question.
-       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\\n\\n" (double backslash) to create line breaks inside the JSON value.
-       - YOU MUST strictly adhere to this exact output string format:
-       "[Your intelligent question?]\\n\\nA) [Scenario A - 4 to 8 words]\\nB) [Scenario B - 4 to 8 words]\\n\\nA veya B? Yorumlarda nedenini belirtin! 👇"
+    2. "interaction_question":
+       - IDENTIFY the core tension or uncertainty in the news.
+       - SYNTHESIZE a polarizing BINARY question.
+       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\\n\\n" (double backslash) to create line breaks.
+       - STRICT FORMAT: "[Your specific question?]\\n\\nA) [Scenario A]\\nB) [Scenario B]\\n\\nA veya B? Yorumlarda nedenini belirtin! 👇"
 
     3. "hashtags":
-       - A list of exactly 2 relevant hashtags (without the # symbol). Example: ["Siyaset", "Ekonomi"]
+       - Exactly 2 relevant hashtags (without the #). Example: ["Siyaset", "Ortadoğu"]
 
     4. "image_short_text":
-       - A heavily compressed, single-sentence summary.
-       - STRICTLY UNDER 130 CHARACTERS. NO EMOJIS.
+       - A heavily compressed, single-sentence summary UNDER 130 CHARACTERS. NO EMOJIS.
     """
 
     try:
