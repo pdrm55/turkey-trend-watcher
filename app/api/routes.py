@@ -954,6 +954,7 @@ def update_x_settings():
 def generate_x_draft_by_id():
     data = request.json or {}
     trend_id = data.get('trend_id')
+    phase_type = data.get('phase_type', 'standard')
     
     if not trend_id:
         return jsonify({"error": "trend_id is required"}), 400
@@ -965,7 +966,7 @@ def generate_x_draft_by_id():
             return jsonify({"error": "Trend not found"}), 404
             
         # Check if draft exists and REPLACE it to avoid UniqueConstraint errors
-        existing = db.query(XDraft).filter(XDraft.trend_id == trend.id).first()
+        existing = db.query(XDraft).filter(XDraft.trend_id == trend.id, XDraft.draft_type == phase_type).first()
         if existing:
             # Delete physical image to save space
             if existing.image_path:
@@ -1011,7 +1012,9 @@ def generate_x_draft_by_id():
             confidence_val = 0.85
         confidence_pct = int(confidence_val * 100)
         
-        if confidence_pct >= 90:
+        if phase_type == 'radar':
+            conf_label = "⏳ İnceleniyor - İlk Sinyaller"
+        elif confidence_pct >= 90:
             conf_label = "Teyitli Kaynaklar"
         elif confidence_pct >= 75:
             conf_label = "Güvenilir Veri"
@@ -1037,6 +1040,12 @@ def generate_x_draft_by_id():
             f"#{hash1} #{hash2} #TrendiaTR"
         )
         
+        if phase_type == 'radar':
+            main_tweet = "📡 **Sinyal Algılandı...**\n💬 **Bu neden trend?** Son dakikalarda X Türkiye'de ani bir etkileşim patlaması yaşanıyor.\n\n" + main_tweet
+            trend.radar_phase_triggered = True
+        elif phase_type == 'confirmed':
+            main_tweet = "🚨 **DOĞRULANDI (Sistem Güncellemesi):**\n\n" + main_tweet
+
         reply_tweet = f"Olayın tüm detayları, resmi açıklamalar ve güncel gelişmeler için: 👇 🔗\n{full_link}"
         
         caption = f"{main_tweet}\n\n====REPLY====\n\n{reply_tweet}"
@@ -1049,12 +1058,17 @@ def generate_x_draft_by_id():
             image_short_text=ai_data['image_short_text'],
             tps_score=tps_val,
             image_path=image_path,
-            status='draft'
+            status='draft',
+            draft_type=phase_type
         )
+        
+        if phase_type == 'confirmed' and trend.radar_tweet_id:
+            draft.reply_to_tweet_id = trend.radar_tweet_id
+
         db.add(draft)
         db.commit()
         
-        notify_admin_x_draft(trend.title, tps_val, "Manual ID")
+        notify_admin_x_draft(trend.title, tps_val, f"Manual ID ({phase_type.capitalize()})")
         
         return jsonify({"status": "success", "draft_id": draft.id})
     except Exception as e:
@@ -1172,6 +1186,48 @@ def generate_x_thread_by_id():
     except Exception as e:
         db.rollback()
         logger.error(f"Manual X Thread Generation Error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/x-radars/active', methods=['GET'])
+@requires_auth
+def get_active_radars():
+    db = SessionLocal()
+    try:
+        radars = db.query(Trend).filter(Trend.radar_phase_triggered == True).order_by(desc(Trend.last_updated)).all()
+        results = []
+        for r in radars:
+            results.append({
+                "id": r.id,
+                "title": r.title,
+                "final_tps": round(r.final_tps, 1) if r.final_tps else 0.0,
+                "radar_tweet_id": r.radar_tweet_id
+            })
+        return jsonify(results)
+    finally:
+        db.close()
+
+@api_bp.route('/api/admin/x-radars/<int:trend_id>/set-tweet-id', methods=['POST'])
+@requires_auth
+def set_radar_tweet_id(trend_id):
+    data = request.json or {}
+    tweet_id = data.get('tweet_id')
+    
+    if not tweet_id:
+        return jsonify({"error": "tweet_id is required"}), 400
+        
+    db = SessionLocal()
+    try:
+        trend = db.query(Trend).filter(Trend.id == trend_id).first()
+        if not trend:
+            return jsonify({"error": "Trend not found"}), 404
+            
+        trend.radar_tweet_id = str(tweet_id)
+        db.commit()
+        return jsonify({"status": "success", "radar_tweet_id": trend.radar_tweet_id})
+    except Exception as e:
+        db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         db.close()

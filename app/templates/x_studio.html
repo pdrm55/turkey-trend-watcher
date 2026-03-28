@@ -57,8 +57,11 @@
                         <input type="number" id="manualTrendId" placeholder="e.g. 12345"
                                class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:outline-none">
                     </div>
-                    <button onclick="generateById()" id="btnGenerateId" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md">
-                        ⚡ Generate by ID
+                    <button onclick="generateById('radar')" id="btnGenRadar" class="bg-orange-600 hover:bg-orange-500 text-white font-bold px-6 py-3 rounded-lg shadow-md transition-colors">
+                        📡 Generate Radar (Phase 1)
+                    </button>
+                    <button onclick="generateById('confirmed')" id="btnGenConfirm" class="bg-red-600 hover:bg-red-500 text-white font-bold px-6 py-3 rounded-lg shadow-md transition-colors">
+                        🚨 Generate Confirmed (Phase 2)
                     </button>
                     <button onclick="generateThreadById()" id="btnGenerateThread" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md">
                         🧵 Generate Analytical Thread
@@ -67,6 +70,28 @@
                 <p class="text-xs text-slate-500 mt-1">
                     <span class="font-bold text-purple-400">Note:</span> Analytical threads take longer to generate as the AI analyzes the full timeline and related dependent news.
                 </p>
+            </div>
+        </section>
+
+        <!-- Active Radar Missions -->
+        <section class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-lg mb-8">
+            <div class="p-6 border-b border-slate-700">
+                <h2 class="text-xl font-bold flex items-center gap-2">📡 Active Radar Missions (Awaiting Confirmation)</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-900/50 text-slate-400 uppercase text-xs">
+                        <tr>
+                            <th class="p-4 w-24">Trend ID</th>
+                            <th class="p-4">Title</th>
+                            <th class="p-4 w-24 text-center">TPS</th>
+                            <th class="p-4 w-72 text-right">X Tweet ID</th>
+                        </tr>
+                    </thead>
+                    <tbody id="radarsTableBody" class="divide-y divide-slate-700">
+                        <tr><td colspan="4" class="p-8 text-center text-slate-500">Loading radars...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </section>
 
@@ -105,6 +130,7 @@
             if(thInput) thInput.value = thresholdVal;
             
             loadXDrafts();
+            loadActiveRadars();
         });
 
         async function saveXSettings() {
@@ -136,11 +162,13 @@
             }
         }
 
-        async function generateById() {
+        async function generateById(phaseType) {
             const id = document.getElementById('manualTrendId').value;
             if(!id) return alert('Please enter a Trend ID');
             
-            const btn = document.getElementById('btnGenerateId');
+            const btnId = phaseType === 'radar' ? 'btnGenRadar' : 'btnGenConfirm';
+            const btn = document.getElementById(btnId);
+            const originalText = btn.innerText;
             btn.disabled = true;
             btn.innerText = 'Generating...';
             
@@ -148,7 +176,7 @@
                 const res = await fetch('/api/admin/x-drafts/generate-by-id', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ trend_id: id })
+                    body: JSON.stringify({ trend_id: id, phase_type: phaseType })
                 });
                 const data = await res.json();
                 if(data.status === 'success') {
@@ -163,7 +191,84 @@
                 alert('Failed to generate draft.');
             } finally {
                 btn.disabled = false;
-                btn.innerText = '⚡ Generate by ID';
+                btn.innerText = originalText;
+            }
+        }
+
+        async function loadActiveRadars() {
+            const tbody = document.getElementById('radarsTableBody');
+            tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-500">Loading radars...</td></tr>';
+            
+            try {
+                const res = await fetch('/api/admin/x-radars/active');
+                const radars = await res.json();
+                
+                if (radars.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-500">No active radar missions found.</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = radars.map(r => {
+                    let actionHtml = '';
+                    if (r.radar_tweet_id) {
+                        actionHtml = `
+                            <div class="flex items-center justify-end gap-2" id="radar-cell-${r.id}">
+                                <span class="bg-green-900 text-green-300 px-3 py-1 rounded border border-green-700 font-mono text-xs">ID: ${r.radar_tweet_id}</span>
+                                <button onclick="editRadarTweetId(${r.id}, '${r.radar_tweet_id}')" class="text-blue-400 hover:text-blue-300 text-xs underline">Edit</button>
+                            </div>
+                        `;
+                    } else {
+                        actionHtml = `
+                            <div class="flex items-center justify-end gap-2" id="radar-cell-${r.id}">
+                                <input type="text" id="radar-input-${r.id}" placeholder="Enter Tweet ID" class="w-32 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-xs focus:border-blue-500 focus:outline-none">
+                                <button onclick="saveRadarTweetId(${r.id})" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded transition-colors shadow">Save ID</button>
+                            </div>
+                        `;
+                    }
+
+                    return `
+                        <tr class="hover:bg-slate-700/50 transition-colors">
+                            <td class="p-4 font-mono text-slate-400">#${r.id}</td>
+                            <td class="p-4 font-bold text-white">${r.title}</td>
+                            <td class="p-4 text-center"><span class="bg-slate-700 text-orange-400 px-2 py-0.5 rounded text-xs font-mono border border-slate-600">${r.final_tps}</span></td>
+                            <td class="p-4">${actionHtml}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-400">Failed to load active radars</td></tr>';
+            }
+        }
+
+        function editRadarTweetId(trendId, currentId) {
+            const cell = document.getElementById(`radar-cell-${trendId}`);
+            cell.innerHTML = `
+                <input type="text" id="radar-input-${trendId}" value="${currentId}" class="w-32 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-xs focus:border-blue-500 focus:outline-none">
+                <button onclick="saveRadarTweetId(${trendId})" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded transition-colors shadow">Save</button>
+            `;
+        }
+
+        async function saveRadarTweetId(trendId) {
+            const input = document.getElementById(`radar-input-${trendId}`);
+            const tweetId = input.value.trim();
+            if (!tweetId) return alert('Please enter a valid Tweet ID.');
+            
+            try {
+                const res = await fetch(`/api/admin/x-radars/${trendId}/set-tweet-id`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ tweet_id: tweetId })
+                });
+                const data = await res.json();
+                if(data.status === 'success') {
+                    loadActiveRadars();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch(e) {
+                console.error(e);
+                alert('Failed to save Tweet ID.');
             }
         }
 

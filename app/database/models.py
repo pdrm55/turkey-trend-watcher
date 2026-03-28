@@ -87,13 +87,16 @@ class Trend(Base):
     tags = Column(JSON, nullable=True)
     entities = Column(JSON, nullable=True)
     last_summary_msg_count = Column(Integer, default=0)
+    radar_phase_triggered = Column(Boolean, default=False)
+    radar_tweet_id = Column(String(255), nullable=True)
     
     # روابط دیتابیسی
     news_items = relationship("RawNews", backref="trend")
     arrival_history = relationship("TrendArrivals", backref="trend", cascade="all, delete-orphan")
     
     # رابطه با پیش‌نویس X (توییتر)
-    x_draft = relationship("XDraft", backref="trend", uselist=False)
+    # uselist=False removed to support one-to-many relationship
+    x_drafts = relationship("XDraft", backref="trend")
     
     # رابطه با نظرات
     comments = relationship("Comment", backref="trend", cascade="all, delete-orphan")
@@ -160,7 +163,8 @@ class XDraft(Base):
     """پیش‌نویس‌های تولید شده برای انتشار در شبکه اجتماعی X (توییتر)"""
     __tablename__ = "x_drafts"
     id = Column(Integer, primary_key=True, index=True)
-    trend_id = Column(Integer, ForeignKey('trends.id'), unique=True, nullable=False)
+    # CRITICAL FIX: unique=True removed to allow multiple drafts (Radar/Confirmed) per trend
+    trend_id = Column(Integer, ForeignKey('trends.id'), nullable=False)
     hook_text = Column(String(500))
     long_caption = Column(Text)
     image_short_text = Column(String(255))
@@ -169,6 +173,9 @@ class XDraft(Base):
     status = Column(String(20), default="draft")
     created_at = Column(DateTime, default=utc_now)
     sent_at = Column(DateTime, nullable=True)
+    draft_type = Column(String(50), default="standard")
+    reply_to_tweet_id = Column(String(255), nullable=True)
+    tweet_id = Column(String(255), nullable=True)
 
 class Comment(Base):
     """نظرات کاربران با پشتیبانی از Shadow Ban و AI Moderation"""
