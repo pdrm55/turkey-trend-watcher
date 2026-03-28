@@ -109,7 +109,7 @@ def run_worker():
                     clean_question = ai_data.get('interaction_question', '').replace("💬", "").strip()
 
                     main_tweet = (
-                        f" **Bu neden trend?**\n\n"
+                        f"💬 Bu neden trend?\n\n"
                         f"{ai_data['ai_summary']}\n\n"
                         f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
                         f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
@@ -199,7 +199,7 @@ def run_worker():
                     clean_question = ai_data.get('interaction_question', '').replace("💬", "").strip()
 
                     main_tweet = (
-                        f"🚨 **DOĞRULANDI (Sistem Güncellemesi):**\n\n"
+                        f"🚨 DOĞRULANDI (Sistem Güncellemesi):\n\n"
                         f"{ai_data['ai_summary']}\n\n"
                         f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
                         f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
