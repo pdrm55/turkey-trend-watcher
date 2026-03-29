@@ -216,7 +216,7 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
             config=types.GenerateContentConfig(
                 response_mime_type='application/json',
                 temperature=0.15,
-                max_output_tokens=8192, # 🚀 Max limit to strictly prevent truncation on long news
+                max_output_tokens=8192,
             )
         )
         duration = time.time() - req_start
@@ -225,7 +225,7 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
         in_tok = meta.prompt_token_count if meta else 0
         out_tok = meta.candidates_token_count if meta else 0
         
-        # --- Robust JSON Parsing & Auto-Recovery ---
+        # --- Bulletproof JSON Parsing & Auto-Recovery ---
         raw_text = response.text.strip()
         
         # Strip markdown code blocks if AI hallucinated them despite mime_type
@@ -239,6 +239,10 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
             
         raw_text = raw_text.strip()
         
+        # Fix trailing commas
+        raw_text = re.sub(r',\s*}', '}', raw_text)
+        raw_text = re.sub(r',\s*\]', ']', raw_text)
+
         # Auto-recovery for slight truncations
         if raw_text.startswith("{") and not raw_text.endswith("}"):
             raw_text += "}"
