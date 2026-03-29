@@ -216,7 +216,7 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
             config=types.GenerateContentConfig(
                 response_mime_type='application/json',
                 temperature=0.15,
-                max_output_tokens=2500, # 🚀 Increased from 1000 to prevent JSON truncation
+                max_output_tokens=8192, # 🚀 Max limit to strictly prevent truncation on long news
             )
         )
         duration = time.time() - req_start
@@ -225,8 +225,10 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
         in_tok = meta.prompt_token_count if meta else 0
         out_tok = meta.candidates_token_count if meta else 0
         
-        # Safe JSON Parsing: Clean up potential Markdown formatting or trailing artifacts
+        # --- Robust JSON Parsing & Auto-Recovery ---
         raw_text = response.text.strip()
+        
+        # Strip markdown code blocks if AI hallucinated them despite mime_type
         if raw_text.startswith("```json"):
             raw_text = raw_text[7:]
         elif raw_text.startswith("```"):
@@ -237,6 +239,12 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
             
         raw_text = raw_text.strip()
         
+        # Auto-recovery for slight truncations
+        if raw_text.startswith("{") and not raw_text.endswith("}"):
+            raw_text += "}"
+        elif raw_text.startswith("[") and not raw_text.endswith("]"):
+            raw_text += "]"
+            
         raw_result = json.loads(raw_text)
         if isinstance(raw_result, list) and len(raw_result) > 0:
             ai_data = raw_result[0]
