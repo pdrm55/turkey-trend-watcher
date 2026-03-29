@@ -89,7 +89,7 @@ class TPSCalculator:
         if source_count <= 1: 
             # If AI verified X Trend matches Google News, give it a massive jump-start (base 35 instead of 15)
             # This ensures it instantly hits the >30.0 threshold for the X_Worker Radar Phase
-            return 38.0 if is_cross_validated else 15.0
+            return 42.0 if is_cross_validated else 15.0
         
         first_time = arrivals[0].timestamp
         last_time = arrivals[-1].timestamp

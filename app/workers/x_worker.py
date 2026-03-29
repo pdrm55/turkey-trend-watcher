@@ -41,7 +41,7 @@ def run_worker():
             except ValueError:
                 confirm_threshold = 70.0
                 
-            radar_threshold = 30.0
+            radar_threshold = 40.0
 
             # ==========================================
             # CLEANUP: Remove Dead Radars (TPS < 10)
