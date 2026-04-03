@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 # اضافه کردن مسیر ریشه پروژه به sys.path برای دسترسی به ماژول‌های داخلی
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-from app.database.models import SessionLocal, Trend
+from app.database.models import SessionLocal, Trend, RawNews
 from app.core.scoring import TPSCalculator
 
 # تنظیمات لاگینگ
@@ -29,6 +29,57 @@ CATEGORY_DECAY_FACTORS = {
 MIN_TPS_THRESHOLD = 3.0
 DECAY_CHECK_INTERVAL = 1800  # هر ۳۰ دقیقه برای Gravity
 SCORING_CHECK_INTERVAL = 5   # هر ۵ ثانیه برای امتیازدهی اخبار جدید (Async)
+GC_CHECK_INTERVAL = 21600    # هر ۶ ساعت برای پاکسازی فایل‌های مدیا (Garbage Collection)
+
+def cleanup_inactive_media():
+    """
+    Garbage Collection: Delete physical video files of inactive trends to save disk space.
+    """
+    db = SessionLocal()
+    try:
+        inactive_video_trends = db.query(Trend).filter(
+            Trend.is_active == False,
+            Trend.video_path.isnot(None)
+        ).all()
+
+        if not inactive_video_trends:
+            return
+
+        logger.info(f"🧹 [GC] Found {len(inactive_video_trends)} inactive trends with videos. Starting cleanup...")
+        
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cleaned_count = 0
+
+        for trend in inactive_video_trends:
+            if trend.video_path:
+                file_path = os.path.join(base_dir, 'static', trend.video_path.lstrip('/'))
+                
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.info(f"🗑️ [GC] Deleted video file: {file_path}")
+                    else:
+                        logger.warning(f"⚠️ [GC] Video file not found: {file_path}")
+                except Exception as e:
+                    logger.error(f"❌ [GC] Failed to delete file {file_path}: {e}")
+
+                # Set RawNews video_path to None as well
+                raw_news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).all()
+                for news in raw_news_items:
+                    if news.video_path == trend.video_path:
+                        news.video_path = None
+
+                trend.video_path = None
+                cleaned_count += 1
+
+        db.commit()
+        logger.info(f"✅ [GC] Cleanup finished. Removed videos from {cleaned_count} trends.")
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [GC] Database error during cleanup: {e}")
+    finally:
+        db.close()
 
 def process_pending_scores():
     """
@@ -134,6 +185,7 @@ def main():
     logger.info("🪐 TrendiaTR Calculation Worker (Async Scoring + Gravity 2.0) Started.")
     
     last_decay_time = time.time()
+    last_gc_time = time.time()
     
     while True:
         try:
@@ -145,6 +197,11 @@ def main():
             if current_time - last_decay_time > DECAY_CHECK_INTERVAL:
                 apply_gravity_decay()
                 last_decay_time = current_time
+                
+            # ۳. Garbage Collection: Media Cleanup
+            if current_time - last_gc_time > GC_CHECK_INTERVAL:
+                cleanup_inactive_media()
+                last_gc_time = current_time
             
             # مدیریت هوشمند خواب: اگر کار بود فقط ۱ ثانیه، اگر نبود ۵ ثانیه صبر کن
             sleep_time = 1 if did_work else SCORING_CHECK_INTERVAL
