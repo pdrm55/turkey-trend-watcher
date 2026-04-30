@@ -7,6 +7,7 @@ import csv
 from datetime import datetime, timezone
 from google import genai
 from google.genai import types
+from google.api_core import exceptions as google_exceptions
 
 # Add project root to sys path for internal imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -23,8 +24,16 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     print("❌ Error: GOOGLE_API_KEY not found in .env. LLM operations will fail.")
 
+# --- NEW: Robust API Calling State ---
 client = None
-MODEL_NAME = None 
+PRIMARY_MODEL_NAME = None
+FALLBACK_MODEL_NAME = "gemini-1.5-flash-001" # Stable fallback model
+CURRENT_MODEL_NAME = None
+FAILOVER_ACTIVE = False
+SUCCESSFUL_CYCLES_SINCE_FAILOVER = 0
+FAILOVER_RESET_THRESHOLD = 5 # Attempt to reset to primary model after 5 successful fallback calls
+
+# --- Monitoring & System Configuration ---
 LOG_FILE = "ai_monitor_data.csv"
 
 # دریافت آدرس سایت از محیط؛ در صورت عدم وجود از دامنه واقعی استفاده می‌شود تا تلگرام خطا ندهد
@@ -94,8 +103,9 @@ def get_best_available_model(client):
 if GOOGLE_API_KEY:
     try:
         client = genai.Client(api_key=GOOGLE_API_KEY)
-        MODEL_NAME = get_best_available_model(client)
-        print(f"✅ AI Context Ready: Using {MODEL_NAME}")
+        PRIMARY_MODEL_NAME = get_best_available_model(client)
+        CURRENT_MODEL_NAME = PRIMARY_MODEL_NAME
+        print(f"✅ AI Context Ready. Primary model: {PRIMARY_MODEL_NAME}")
     except Exception as e:
         print(f"❌ Gemini Initialization Error: {e}")
 
@@ -116,8 +126,11 @@ def generate_unique_slug(db, base_title, trend_id):
 # ==========================================
 
 def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None):
-    """Executes the summarization call to the Gemini API with structured response"""
-    if not client or not MODEL_NAME: return None, 0, 0, 0 
+    """Executes the summarization call to the Gemini API with robust failover and recovery logic."""
+    global CURRENT_MODEL_NAME, FAILOVER_ACTIVE, SUCCESSFUL_CYCLES_SINCE_FAILOVER
+
+    if not client or not PRIMARY_MODEL_NAME:
+        return None, 0, 0, 0, "No-Client"
 
     umbrella_instruction = ""
     if is_umbrella and old_title:
@@ -208,10 +221,22 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
     {text_cluster}
     """
 
+    # --- Smart Failover & Recovery Logic ---
+    # 1. Check if we should try to reset from failover mode
+    if FAILOVER_ACTIVE and SUCCESSFUL_CYCLES_SINCE_FAILOVER >= FAILOVER_RESET_THRESHOLD:
+        print("🔄 Failover reset threshold reached. Attempting to revert to primary model...")
+        CURRENT_MODEL_NAME = PRIMARY_MODEL_NAME
+        FAILOVER_ACTIVE = False
+        SUCCESSFUL_CYCLES_SINCE_FAILOVER = 0
+        print(f"✅ Model reset to primary: {CURRENT_MODEL_NAME}")
+
+    model_to_use = CURRENT_MODEL_NAME
+
     try:
+        # 2. Main API call attempt
         req_start = time.time()
         response = client.models.generate_content(
-            model=MODEL_NAME,
+            model=model_to_use,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type='application/json',
@@ -255,10 +280,51 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
         else:
             ai_data = raw_result
 
-        return ai_data, in_tok, out_tok, duration
+        # 3. If successful while in failover, increment the recovery counter
+        if FAILOVER_ACTIVE:
+            SUCCESSFUL_CYCLES_SINCE_FAILOVER += 1
+
+        return ai_data, in_tok, out_tok, duration, model_to_use
+
+    except google_exceptions.ResourceExhausted as e:
+        print(f"   ⚠️ Rate limit (429) hit with model {model_to_use}. Triggering failover...")
+
+        # If we are already on the fallback model, it's a hard failure for this cycle.
+        if model_to_use == FALLBACK_MODEL_NAME:
+            print(f"   ❌ Fallback model {FALLBACK_MODEL_NAME} also rate-limited. Aborting cycle.")
+            return None, 0, 0, 0, model_to_use
+
+        # Switch to fallback model
+        FAILOVER_ACTIVE = True
+        SUCCESSFUL_CYCLES_SINCE_FAILOVER = 0
+        CURRENT_MODEL_NAME = FALLBACK_MODEL_NAME
+        model_to_use = CURRENT_MODEL_NAME
+        print(f"   ↪️ Switched to fallback model: {model_to_use}")
+
+        # 4. Retry the call with the fallback model
+        try:
+            time.sleep(5)  # Add a small delay before retrying
+            req_start = time.time()
+            response = client.models.generate_content(
+                model=model_to_use,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type='application/json', temperature=0.15, max_output_tokens=8192)
+            )
+            duration = time.time() - req_start
+            # (Re-implement parsing logic for the fallback response)
+            meta = response.usage_metadata
+            in_tok, out_tok = (meta.prompt_token_count, meta.candidates_token_count) if meta else (0, 0)
+            raw_text = response.text.strip()
+            raw_text = re.sub(r',\s*}', '}', re.sub(r',\s*\]', ']', raw_text)) # Clean trailing commas
+            ai_data = json.loads(raw_text)
+            SUCCESSFUL_CYCLES_SINCE_FAILOVER += 1 # First successful call after failover
+            return ai_data, in_tok, out_tok, duration, model_to_use
+        except Exception as fallback_e:
+            print(f"   ❌ Fallback model also failed: {fallback_e}")
+            return None, 0, 0, 0, model_to_use
     except Exception as e:
-        print(f"   ❌ LLM Execution Error: {e}")
-        return None, 0, 0, 0
+        print(f"   ❌ Unhandled LLM Execution Error on {model_to_use}: {e}")
+        return None, 0, 0, 0, model_to_use
 
 # ==========================================
 # FIXED LOGIC: Smart Action Filtering
@@ -355,13 +421,16 @@ def process_pending_trends():
                 else:
                     cluster_text = "\n".join([f"- {n.content[:500]}" for n in news_items])
 
-                ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text, is_umbrella=is_umbrella, old_title=trend.title)
+                # --- Rate Limit & Burst Protection ---
+                time.sleep(1.0)
+
+                ai_result, in_tok, out_tok, duration, model_used = generate_summary_with_gemini(cluster_text, is_umbrella=is_umbrella, old_title=trend.title)
                 
-                # NEW: Protect against 429 Rate Limit Errors
+                # Protect against API errors (failover is now handled inside the function)
                 if ai_result is None:
-                    print(f"   ⏳ API Limit Reached for Trend {trend.id}. Pausing for 15 seconds...")
-                    time.sleep(15) # Cooldown before next loop
-                    continue # Skip without discarding the trend
+                    print(f"   ❌ API call failed even after retries for Trend {trend.id}. Pausing worker for 15s.")
+                    time.sleep(15)
+                    continue
                     
                 # Add a natural anti-spam delay between successful API calls
                 time.sleep(3)
@@ -413,7 +482,7 @@ def process_pending_trends():
                     if not trend.slug: print(f"   🚀 SEO Slug: /trend/{trend.slug}")
                     
                     # Save and Log Stats
-                    log_to_csv(trend.id, MODEL_NAME, in_tok, out_tok, duration, trend.category, "Success")
+                    log_to_csv(trend.id, model_used, in_tok, out_tok, duration, trend.category, "Success")
                     db.commit() # Save content immediately
                 else:
                     # Mark irrelevant or failed content as inactive
@@ -470,7 +539,7 @@ def process_pending_trends():
 
 def main():
     """Continuous worker loop for AI Summarization Service"""
-    print(f"🤖 TrendiaTR AI Summary Worker Active. Current Model: {MODEL_NAME}")
+    print(f"🤖 TrendiaTR AI Summary Worker Active. Primary Model: {PRIMARY_MODEL_NAME}")
     while True:
         try:
             has_work = process_pending_trends()
