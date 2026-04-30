@@ -107,10 +107,14 @@ def get_best_available_model(client):
         elif not primary:
             return 'gemini-2.0-flash-lite-preview-09-2025', 'gemini-1.5-flash'
             
-        # Priority for fallback: Standard flash without lite
-        for c in candidates:
-            if c != primary and 'lite' not in c.lower():
-                fallback = c
+        # Priority for fallback: Cheaper models first
+        fallback_priorities = ['8b', '1.5-flash', '2.0-flash', '2.5-flash']
+        for priority in fallback_priorities:
+            for c in candidates:
+                if c != primary and priority in c.lower():
+                    fallback = c
+                    break
+            if fallback:
                 break
         
         if not fallback:
