@@ -27,7 +27,7 @@ if not GOOGLE_API_KEY:
 # --- NEW: Robust API Calling State ---
 client = None
 PRIMARY_MODEL_NAME = None
-FALLBACK_MODEL_NAME = "gemini-1.5-flash" # Stable fallback model
+FALLBACK_MODEL_NAME = "gemini-1.5-flash-8b" # Stable fallback model
 CURRENT_MODEL_NAME = None
 FAILOVER_ACTIVE = False
 SUCCESSFUL_CYCLES_SINCE_FAILOVER = 0
