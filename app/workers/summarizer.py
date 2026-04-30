@@ -27,7 +27,7 @@ if not GOOGLE_API_KEY:
 # --- NEW: Robust API Calling State ---
 client = None
 PRIMARY_MODEL_NAME = None
-FALLBACK_MODEL_NAME = "gemini-1.5-flash-8b" # Stable fallback model
+FALLBACK_MODEL_NAME = None
 CURRENT_MODEL_NAME = None
 FAILOVER_ACTIVE = False
 SUCCESSFUL_CYCLES_SINCE_FAILOVER = 0
@@ -75,37 +75,67 @@ def log_to_csv(trend_id, model, in_tok, out_tok, duration, category, status):
         print(f"⚠️ Monitoring Log Error: {e}")
 
 def get_best_available_model(client):
-    """Dynamically identifies the best available Gemini model from the API list"""
-    print("🔍 Probing for best Gemini model in the current region...")
+    """Dynamically identifies the best available Gemini models from the API list"""
+    print("🔍 Probing for best Gemini models in the current region...")
     try:
         candidates = []
         for m in client.models.list():
             name = m.name.replace('models/', '') 
             # Filter for text-generation flash models
-            if 'flash' in name.lower() and 'image' not in name.lower() and 'audio' not in name.lower():
+            name_lower = name.lower()
+            if 'flash' in name_lower and 'image' not in name_lower and 'audio' not in name_lower and 'embedding' not in name_lower:
                 candidates.append(name)
         
-        # Priority 1: Flash Lite (Best value/performance)
-        for c in candidates:
-            if 'lite' in c and 'flash' in c: return c
-        # Priority 2: Stable 1.5 Flash
-        for c in candidates:
-            if '1.5-flash' in c and 'latest' not in c: return c
+        primary = None
+        fallback = None
         
-        if candidates: return candidates[0]
-        return 'gemini-2.0-flash-lite-preview-09-2025'
+        # Priority 1: Flash Lite (Best value/performance) for Primary
+        for c in candidates:
+            if 'lite' in c.lower():
+                primary = c
+                break
+        
+        # Priority 2: Stable 1.5 Flash for Primary
+        if not primary:
+            for c in candidates:
+                if '1.5-flash' in c.lower() and 'latest' not in c.lower():
+                    primary = c
+                    break
+        
+        if not primary and candidates: 
+            primary = candidates[0]
+        elif not primary:
+            return 'gemini-2.0-flash-lite-preview-09-2025', 'gemini-1.5-flash'
+            
+        # Priority for fallback: Standard flash without lite
+        for c in candidates:
+            if c != primary and 'lite' not in c.lower():
+                fallback = c
+                break
+        
+        if not fallback:
+            for c in candidates:
+                if c != primary:
+                    fallback = c
+                    break
+                    
+        # If only one model is available, use it for both
+        if not fallback:
+            fallback = primary
+            
+        return primary, fallback
         
     except Exception as e:
         print(f"⚠️ Model Discovery Failed: {e}. Using hardcoded fallback.")
-        return 'gemini-2.0-flash-lite-preview-09-2025'
+        return 'gemini-2.0-flash-lite-preview-09-2025', 'gemini-1.5-flash'
 
 # Initialize the Gemini Client
 if GOOGLE_API_KEY:
     try:
         client = genai.Client(api_key=GOOGLE_API_KEY)
-        PRIMARY_MODEL_NAME = get_best_available_model(client)
+        PRIMARY_MODEL_NAME, FALLBACK_MODEL_NAME = get_best_available_model(client)
         CURRENT_MODEL_NAME = PRIMARY_MODEL_NAME
-        print(f"✅ AI Context Ready. Primary model: {PRIMARY_MODEL_NAME}")
+        print(f"✅ AI Context Ready. Primary: {PRIMARY_MODEL_NAME} | Fallback: {FALLBACK_MODEL_NAME}")
     except Exception as e:
         print(f"❌ Gemini Initialization Error: {e}")
 
