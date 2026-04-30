@@ -286,45 +286,28 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
 
         return ai_data, in_tok, out_tok, duration, model_to_use
 
-    except google_exceptions.ResourceExhausted as e:
-        print(f"   ⚠️ Rate limit (429) hit with model {model_to_use}. Triggering failover...")
-
-        # If we are already on the fallback model, it's a hard failure for this cycle.
-        if model_to_use == FALLBACK_MODEL_NAME:
-            print(f"   ❌ Fallback model {FALLBACK_MODEL_NAME} also rate-limited. Aborting cycle.")
-            return None, 0, 0, 0, model_to_use
-
-        # Switch to fallback model
-        FAILOVER_ACTIVE = True
-        SUCCESSFUL_CYCLES_SINCE_FAILOVER = 0
-        CURRENT_MODEL_NAME = FALLBACK_MODEL_NAME
-        model_to_use = CURRENT_MODEL_NAME
-        print(f"   ↪️ Switched to fallback model: {model_to_use}")
-
-        # 4. Retry the call with the fallback model
-        try:
-            time.sleep(5)  # Add a small delay before retrying
-            req_start = time.time()
-            response = client.models.generate_content(
-                model=model_to_use,
-                contents=prompt,
-                config=types.GenerateContentConfig(response_mime_type='application/json', temperature=0.15, max_output_tokens=8192)
-            )
-            duration = time.time() - req_start
-            # (Re-implement parsing logic for the fallback response)
-            meta = response.usage_metadata
-            in_tok, out_tok = (meta.prompt_token_count, meta.candidates_token_count) if meta else (0, 0)
-            raw_text = response.text.strip()
-            raw_text = re.sub(r',\s*}', '}', re.sub(r',\s*\]', ']', raw_text)) # Clean trailing commas
-            ai_data = json.loads(raw_text)
-            SUCCESSFUL_CYCLES_SINCE_FAILOVER += 1 # First successful call after failover
-            return ai_data, in_tok, out_tok, duration, model_to_use
-        except Exception as fallback_e:
-            print(f"   ❌ Fallback model also failed: {fallback_e}")
-            return None, 0, 0, 0, model_to_use
     except Exception as e:
-        print(f"   ❌ Unhandled LLM Execution Error on {model_to_use}: {e}")
-        return None, 0, 0, 0, model_to_use
+        error_str = str(e)
+        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str.upper():
+            print(f"   ⚠️ Rate limit (429) hit with model {model_to_use}. Triggering failover...")
+
+            # If we are already on the fallback model, it's a hard failure for this cycle.
+            if model_to_use == FALLBACK_MODEL_NAME:
+                print(f"   ❌ Fallback model {FALLBACK_MODEL_NAME} also rate-limited. Aborting cycle.")
+                return None, 0, 0, 0, model_to_use
+
+            # Switch to fallback model
+            FAILOVER_ACTIVE = True
+            SUCCESSFUL_CYCLES_SINCE_FAILOVER = 0
+            CURRENT_MODEL_NAME = FALLBACK_MODEL_NAME
+            print(f"   ↪️ Switched to fallback model: {CURRENT_MODEL_NAME}")
+
+            # Recursive retry with the new model
+            time.sleep(2)
+            return generate_summary_with_gemini(text_cluster, is_umbrella=is_umbrella, old_title=old_title)
+        else:
+            print(f"   ❌ Unhandled LLM Execution Error on {model_to_use}: {e}")
+            return None, 0, 0, 0, model_to_use
 
 # ==========================================
 # FIXED LOGIC: Smart Action Filtering
