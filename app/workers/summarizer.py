@@ -83,32 +83,34 @@ def get_best_available_model(client):
             name = m.name.replace('models/', '') 
             # Filter for text-generation flash models
             name_lower = name.lower()
+            
+            # Blacklist specific restricted models
+            if name_lower in ['gemini-2.0-flash', 'gemini-2.0-flash-001']:
+                continue
+                
             if 'flash' in name_lower and 'image' not in name_lower and 'audio' not in name_lower and 'embedding' not in name_lower:
                 candidates.append(name)
         
         primary = None
         fallback = None
         
-        # Priority 1: Flash Lite (Best value/performance) for Primary
-        for c in candidates:
-            if 'lite' in c.lower():
-                primary = c
-                break
-        
-        # Priority 2: Stable 1.5 Flash for Primary
-        if not primary:
+        # Priority for Primary: Specific lite versions
+        primary_priorities = ['2.5-flash-lite', '2.0-flash-lite', 'flash-lite-latest']
+        for priority in primary_priorities:
             for c in candidates:
-                if '1.5-flash' in c.lower() and 'latest' not in c.lower():
+                if priority in c.lower():
                     primary = c
                     break
+            if primary:
+                break
         
         if not primary and candidates: 
             primary = candidates[0]
         elif not primary:
             return 'gemini-2.0-flash-lite-preview-09-2025', 'gemini-1.5-flash'
             
-        # Priority for fallback: Cheaper models first
-        fallback_priorities = ['8b', '1.5-flash', '2.0-flash', '2.5-flash']
+        # Priority for fallback: Environment stable models
+        fallback_priorities = ['flash-latest', '2.5-flash', '3-flash-preview']
         for priority in fallback_priorities:
             for c in candidates:
                 if c != primary and priority in c.lower():
