@@ -357,7 +357,16 @@ def process_pending_trends():
 
                 ai_result, in_tok, out_tok, duration = generate_summary_with_gemini(cluster_text, is_umbrella=is_umbrella, old_title=trend.title)
                 
-                if ai_result and ai_result.get("is_relevant_to_turkey", True):
+                # NEW: Protect against 429 Rate Limit Errors
+                if ai_result is None:
+                    print(f"   ⏳ API Limit Reached for Trend {trend.id}. Pausing for 15 seconds...")
+                    time.sleep(15) # Cooldown before next loop
+                    continue # Skip without discarding the trend
+                    
+                # Add a natural anti-spam delay between successful API calls
+                time.sleep(3)
+                
+                if ai_result.get("is_relevant_to_turkey", True):
                     ai_cat = ai_result.get("category", "Gündem")
                     
                     if "category_reasoning" in ai_result:
