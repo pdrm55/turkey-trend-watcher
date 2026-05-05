@@ -77,6 +77,9 @@ def fetch_and_process_rss():
     
     new_trends_count = 0
     signal_updates_count = 0
+    batch_size = max(1, getattr(Config, "INGEST_WRITE_BATCH_SIZE", 25))
+    pending_writes = 0
+    pending_queue_jobs = []
 
     for source_name, url in rss_feeds.items():
         try:
@@ -180,17 +183,32 @@ def fetch_and_process_rss():
                     timestamp=actual_pub_time
                 )
                 db.add(arrival)
-                db.commit()
+                pending_writes += 1
 
                 queue_priority = ScoringQueue.BREAKING if source_tier <= 2 else ScoringQueue.NORMAL
-                if not scoring_queue.enqueue(trend.id, queue_priority):
-                    print(f"⚠️ Queue enqueue skipped for trend {trend.id} (RSS).")
+                pending_queue_jobs.append((trend.id, queue_priority))
+
+                if pending_writes >= batch_size:
+                    db.commit()
+                    for trend_id, priority in pending_queue_jobs:
+                        if not scoring_queue.enqueue(trend_id, priority):
+                            print(f"⚠️ Queue enqueue skipped for trend {trend_id} (RSS).")
+                    pending_queue_jobs.clear()
+                    pending_writes = 0
 
                 # فاز ۶.۲: حذف محاسبه همزمان TPS. ورکر پس‌زمینه این کار را انجام می‌دهد.
                 
         except Exception as e:
             db.rollback()
+            pending_queue_jobs.clear()
+            pending_writes = 0
             print(f"   ❌ Error processing feed {source_name}: {e}")
+
+    if pending_writes > 0:
+        db.commit()
+        for trend_id, priority in pending_queue_jobs:
+            if not scoring_queue.enqueue(trend_id, priority):
+                print(f"⚠️ Queue enqueue skipped for trend {trend_id} (RSS).")
 
     print(f"✅ RSS Cycle Finished: {new_trends_count} New Trends, {signal_updates_count} Signal Updates.")
     db.close()

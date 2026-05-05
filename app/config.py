@@ -66,6 +66,10 @@ class Config:
     HTTP_BACKOFF_MAX_SECONDS = float(os.getenv("HTTP_BACKOFF_MAX_SECONDS", "8"))
     HTTP_BACKOFF_JITTER_SECONDS = float(os.getenv("HTTP_BACKOFF_JITTER_SECONDS", "0.3"))
 
+    # --- Ingestion Write Path Optimization ---
+    INGEST_WRITE_BATCH_SIZE = int(os.getenv("INGEST_WRITE_BATCH_SIZE", "25"))
+    AI_FAST_DEDUP_TTL_SECONDS = int(os.getenv("AI_FAST_DEDUP_TTL_SECONDS", "180"))
+
     # --- تنظیمات هوش مصنوعی محلی (Ollama) ---
     OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
     LOCAL_MODEL_NAME = "qwen2.5:1.5b"

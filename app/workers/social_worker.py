@@ -220,6 +220,9 @@ class SocialWorker:
                     # Process trends
                     db = SessionLocal()
                     current_time_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                    batch_size = max(1, getattr(Config, "INGEST_WRITE_BATCH_SIZE", 25))
+                    pending_writes = 0
+                    pending_queue_jobs = []
                     
                     try:
                         new_count = 0
@@ -293,12 +296,26 @@ class SocialWorker:
                                 timestamp=current_time_utc
                             )
                             db.add(arrival)
-                            db.commit()
+                            pending_writes += 1
 
                             queue_priority = ScoringQueue.BREAKING if is_validated else ScoringQueue.NORMAL
-                            if not scoring_queue.enqueue(trend.id, queue_priority):
-                                logger.warning(f"⚠️ Queue enqueue skipped for trend {trend.id} (Social).")
+                            pending_queue_jobs.append((trend.id, queue_priority))
+
+                            if pending_writes >= batch_size:
+                                db.commit()
+                                for trend_id, priority in pending_queue_jobs:
+                                    if not scoring_queue.enqueue(trend_id, priority):
+                                        logger.warning(f"⚠️ Queue enqueue skipped for trend {trend_id} (Social).")
+                                pending_queue_jobs.clear()
+                                pending_writes = 0
                             
+                        if pending_writes > 0:
+                            db.commit()
+                            for trend_id, priority in pending_queue_jobs:
+                                if not scoring_queue.enqueue(trend_id, priority):
+                                    logger.warning(f"⚠️ Queue enqueue skipped for trend {trend_id} (Social).")
+                            pending_queue_jobs.clear()
+
                         logger.info(f"✅ Processed {len(trends)} X trends. New: {new_count}")
                         if new_count > 0:
                             next_sleep = min_interval

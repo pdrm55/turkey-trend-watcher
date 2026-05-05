@@ -6,6 +6,7 @@ import uuid
 import shutil
 import requests
 import json
+import hashlib
 from datetime import datetime, timedelta
 
 # 1. Enable system error tracking (for debugging SegFaults in Docker)
@@ -34,6 +35,7 @@ torch.set_num_threads(1)
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
+from app.config import Config
 
 # --- Connection Settings ---
 CHROMA_HOST = os.getenv("CHROMA_HOST", "ttw_chroma")
@@ -61,6 +63,9 @@ class AIEngine:
             print(f"✅ AI Engine Phase 3 Ready. Rolling Cache: Numeric Timestamps.", flush=True)
         except Exception as e:
             print(f"❌ ChromaDB Connection Error: {e}")
+
+        self.fast_dedup_ttl = max(10, getattr(Config, "AI_FAST_DEDUP_TTL_SECONDS", 180))
+        self.fast_dedup_cache = {}
 
     def get_embedding(self, text: str):
         """Convert text to numerical vector (Embedding)"""
@@ -230,11 +235,18 @@ class AIEngine:
         if not cleaned_text or len(cleaned_text) < 25: 
             return None, False
 
+        now_ts = datetime.now().timestamp()
+
+        # Fast-path dedup in ingest process memory to avoid repeated heavy AI calls.
+        text_hash = hashlib.sha1(cleaned_text.encode("utf-8")).hexdigest()
+        cache_entry = self.fast_dedup_cache.get(text_hash)
+        if cache_entry and cache_entry["expires_at"] > now_ts:
+            return cache_entry["cluster_id"], True
+
         vector = self.get_embedding(cleaned_text)
         
         # --- FIXED Phase 3: Rolling Cache (Numeric Unix Timestamp) ---
         # Current time as Unix timestamp (Float)
-        now_ts = datetime.now().timestamp()
         # Filter: only check clusters from the last 48 hours
         time_threshold_ts = (datetime.now() - timedelta(hours=48)).timestamp()
         
@@ -312,6 +324,11 @@ class AIEngine:
             }],
             ids=[str(uuid.uuid4())]
         )
+
+        self.fast_dedup_cache[text_hash] = {
+            "cluster_id": cluster_id,
+            "expires_at": now_ts + self.fast_dedup_ttl
+        }
         
         return cluster_id, is_duplicate
 
