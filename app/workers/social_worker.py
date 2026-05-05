@@ -18,6 +18,7 @@ from app.config import Config
 from app.database.models import SessionLocal, RawNews, Trend, TrendArrivals
 from app.core.text_utils import JUNK_KEYWORDS, slugify_turkish
 from app.core.ai_engine import ai_engine
+from app.core.scoring_queue import scoring_queue, ScoringQueue
 from app.core.classifier import fast_classify
 
 # Configure Logging
@@ -271,6 +272,10 @@ class SocialWorker:
                             )
                             db.add(arrival)
                             db.commit()
+
+                            queue_priority = ScoringQueue.BREAKING if is_validated else ScoringQueue.NORMAL
+                            if not scoring_queue.enqueue(trend.id, queue_priority):
+                                logger.warning(f"⚠️ Queue enqueue skipped for trend {trend.id} (Social).")
                             
                         logger.info(f"✅ Processed {len(trends)} X trends. New: {new_count}")
                         if new_count > 0:

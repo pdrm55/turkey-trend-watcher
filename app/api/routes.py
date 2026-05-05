@@ -26,6 +26,7 @@ from app.core.x_image_gen import generate_x_image
 from app.core.tg_notifier import notify_admin_x_draft
 from app.workers.summarizer import generate_summary_with_gemini
 from app.core.alert_service import alert_service
+from app.core.scoring_queue import scoring_queue, ScoringQueue
 
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
@@ -1766,6 +1767,9 @@ def admin_merge_trends():
         ai_engine.merge_clusters(source_trend.cluster_id, target_trend.cluster_id)
         
         db.commit()
+
+        # Push merged target trend into high-priority scoring lane.
+        scoring_queue.enqueue(target_trend.id, ScoringQueue.BREAKING)
         
         # 6. Clear Redis Cache (Aggressive Invalidation)
         if redis_client:

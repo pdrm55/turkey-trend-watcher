@@ -55,6 +55,11 @@ class Config:
     SOCIAL_PRIME_END_HOUR = int(os.getenv("SOCIAL_PRIME_END_HOUR", "23"))
     SOCIAL_PRIME_INTERVAL_SECONDS = int(os.getenv("SOCIAL_PRIME_INTERVAL_SECONDS", "180"))
 
+    # --- Async Scoring Queue (Priority + Backpressure) ---
+    SCORING_QUEUE_MAX_SIZE = int(os.getenv("SCORING_QUEUE_MAX_SIZE", "5000"))
+    SCORING_QUEUE_BATCH_SIZE = int(os.getenv("SCORING_QUEUE_BATCH_SIZE", "50"))
+    SCORING_QUEUE_MAX_RETRIES = int(os.getenv("SCORING_QUEUE_MAX_RETRIES", "2"))
+
     # --- تنظیمات هوش مصنوعی محلی (Ollama) ---
     OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
     LOCAL_MODEL_NAME = "qwen2.5:1.5b"

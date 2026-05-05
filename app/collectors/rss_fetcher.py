@@ -16,6 +16,7 @@ from app.config import Config
 from app.core.scoring import get_source_tier
 from app.core.text_utils import slugify_turkish
 from app.core.classifier import fast_classify
+from app.core.scoring_queue import scoring_queue, ScoringQueue
 
 # Path for RSS sources configuration
 RSS_FILE = os.path.join(os.path.dirname(__file__), 'rss_sources.txt')
@@ -180,6 +181,10 @@ def fetch_and_process_rss():
                 )
                 db.add(arrival)
                 db.commit()
+
+                queue_priority = ScoringQueue.BREAKING if source_tier <= 2 else ScoringQueue.NORMAL
+                if not scoring_queue.enqueue(trend.id, queue_priority):
+                    print(f"⚠️ Queue enqueue skipped for trend {trend.id} (RSS).")
 
                 # فاز ۶.۲: حذف محاسبه همزمان TPS. ورکر پس‌زمینه این کار را انجام می‌دهد.
                 

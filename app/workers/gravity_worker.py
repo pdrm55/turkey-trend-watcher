@@ -10,6 +10,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 from app.database.models import SessionLocal, Trend, RawNews
 from app.core.scoring import TPSCalculator
+from app.core.scoring_queue import scoring_queue
+from app.config import Config
 
 # تنظیمات لاگینگ
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -30,6 +32,7 @@ MIN_TPS_THRESHOLD = 3.0
 DECAY_CHECK_INTERVAL = 1800  # هر ۳۰ دقیقه برای Gravity
 SCORING_CHECK_INTERVAL = 5   # هر ۵ ثانیه برای امتیازدهی اخبار جدید (Async)
 GC_CHECK_INTERVAL = 21600    # هر ۶ ساعت برای پاکسازی فایل‌های مدیا (Garbage Collection)
+QUEUE_METRICS_LOG_INTERVAL = 60
 
 def cleanup_inactive_media():
     """
@@ -90,17 +93,39 @@ def process_pending_scores():
     tps_engine = TPSCalculator(db)
     
     try:
-        # دریافت ترندهایی که نیاز به امتیازدهی دارند (تا ۵۰ مورد در هر چرخه)
-        pending_trends = db.query(Trend).filter(
-            Trend.needs_scoring == True,
-            Trend.is_active == True
-        ).limit(50).all()
+        batch_size = max(1, getattr(Config, "SCORING_QUEUE_BATCH_SIZE", 50))
+        pending_trends = []
+
+        # Priority path: consume trend ids from Redis queue first.
+        queue_priority_by_id = {}
+        if scoring_queue.enabled:
+            for _ in range(batch_size):
+                queue_item = scoring_queue.pop()
+                if queue_item is None:
+                    break
+                trend_id, lane = queue_item
+                queue_priority_by_id[trend_id] = lane
+
+            queued_ids = list(queue_priority_by_id.keys())
+            if queued_ids:
+                pending_trends = db.query(Trend).filter(
+                    Trend.id.in_(queued_ids),
+                    Trend.is_active == True
+                ).all()
+
+        # Fallback path: old DB flag scan to avoid dropped jobs during outages.
+        if not pending_trends:
+            pending_trends = db.query(Trend).filter(
+                Trend.needs_scoring == True,
+                Trend.is_active == True
+            ).limit(batch_size).all()
 
         if not pending_trends:
             return False # کار خاصی انجام نشد
 
         count = len(pending_trends)
-        logger.info(f"🚀 [Async Scoring] Found {count} trends needing update...")
+        queue_size = scoring_queue.size() if scoring_queue.enabled else 0
+        logger.info(f"🚀 [Async Scoring] Found {count} trends needing update (queue_size={queue_size})...")
 
         for trend in pending_trends:
             try:
@@ -110,9 +135,16 @@ def process_pending_scores():
                 # پس از محاسبه موفق، پرچم را پایین بیاور
                 if new_score is not None:
                     trend.needs_scoring = False
+                    if scoring_queue.enabled:
+                        scoring_queue.clear_retry(trend.id)
+                else:
+                    if scoring_queue.enabled and trend.id in queue_priority_by_id:
+                        scoring_queue.retry_or_drop(trend.id, queue_priority_by_id[trend.id])
                     
             except Exception as inner_e:
                 logger.error(f"❌ Error scoring trend {trend.id}: {inner_e}")
+                if scoring_queue.enabled and trend.id in queue_priority_by_id:
+                    scoring_queue.retry_or_drop(trend.id, queue_priority_by_id[trend.id])
         
         db.commit()
         return True # کار انجام شد (برای مدیریت زمان خواب)
@@ -186,6 +218,7 @@ def main():
     
     last_decay_time = time.time()
     last_gc_time = time.time()
+    last_queue_metrics_time = time.time()
     
     while True:
         try:
@@ -202,6 +235,10 @@ def main():
             if current_time - last_gc_time > GC_CHECK_INTERVAL:
                 cleanup_inactive_media()
                 last_gc_time = current_time
+
+            if scoring_queue.enabled and (current_time - last_queue_metrics_time > QUEUE_METRICS_LOG_INTERVAL):
+                logger.info(f"📊 [Queue Metrics] scoring_pending={scoring_queue.size()}")
+                last_queue_metrics_time = current_time
             
             # مدیریت هوشمند خواب: اگر کار بود فقط ۱ ثانیه، اگر نبود ۵ ثانیه صبر کن
             sleep_time = 1 if did_work else SCORING_CHECK_INTERVAL
