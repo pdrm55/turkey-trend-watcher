@@ -41,6 +41,46 @@ except Exception as e:
     redis_client = None
     logger.error(f"❌ Redis Connection Failed: {e}")
 
+def invalidate_trend_caches(trends=None, clear_listing=True):
+    """Unified cache invalidation for trend detail/listing keys."""
+    if not redis_client:
+        return
+    try:
+        trends = trends or []
+        for t in trends:
+            if not t:
+                continue
+
+            trend_id = getattr(t, 'id', None)
+            slug = getattr(t, 'slug', None)
+            cluster_id = getattr(t, 'cluster_id', None)
+
+            identifiers = set()
+            if trend_id is not None:
+                identifiers.add(str(trend_id))
+            if slug:
+                identifiers.add(slug)
+            if trend_id is not None and slug:
+                identifiers.add(f"{trend_id}-{slug}")
+            if cluster_id:
+                identifiers.add(str(cluster_id))
+
+            keys_to_delete = set()
+            for identifier in identifiers:
+                keys_to_delete.add(f"ssr_trend_{identifier}")
+                keys_to_delete.add(f"detail_v2_{identifier}")
+                keys_to_delete.add(f"detail_v1_{identifier}")
+
+            for key in keys_to_delete:
+                redis_client.delete(key)
+
+        if clear_listing:
+            for pattern in ("trends_v2_*", "trends_v1_*"):
+                for key in redis_client.scan_iter(pattern):
+                    redis_client.delete(key)
+    except Exception as ex:
+        logger.error(f"Cache invalidation error: {ex}")
+
 # دسته‌بندی‌های مجاز برای سئو
 VALID_CATEGORIES = ["Siyaset", "Ekonomi", "Gündem", "Spor", "Teknoloji", "Sanat"]
 JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop']
@@ -1394,10 +1434,41 @@ def get_trends():
         else:
             trends = query.order_by(desc(Trend.first_seen)).offset(offset).limit(limit).all()
             
+        trend_ids = [t.id for t in trends]
+        latest_source_by_trend = {}
+        comments_count_by_trend = {}
+
+        if trend_ids:
+            latest_news_subq = db.query(
+                RawNews.trend_id.label("trend_id"),
+                func.max(RawNews.published_at).label("latest_published_at")
+            ).filter(
+                RawNews.trend_id.in_(trend_ids)
+            ).group_by(RawNews.trend_id).subquery()
+
+            latest_rows = db.query(
+                RawNews.trend_id,
+                RawNews.source_name
+            ).join(
+                latest_news_subq,
+                and_(
+                    RawNews.trend_id == latest_news_subq.c.trend_id,
+                    RawNews.published_at == latest_news_subq.c.latest_published_at
+                )
+            ).all()
+            latest_source_by_trend = {row.trend_id: row.source_name for row in latest_rows}
+
+            comment_rows = db.query(
+                Comment.trend_id,
+                func.count(Comment.id).label("comments_count")
+            ).filter(
+                Comment.trend_id.in_(trend_ids),
+                Comment.status == 'approved'
+            ).group_by(Comment.trend_id).all()
+            comments_count_by_trend = {row.trend_id: row.comments_count for row in comment_rows}
+
         results = []
         for t in trends:
-            last_news = db.query(RawNews).filter(RawNews.trend_id == t.id).order_by(desc(RawNews.published_at)).first()
-            comments_count = db.query(Comment).filter(Comment.trend_id == t.id, Comment.status == 'approved').count()
             results.append({
                 "id": t.cluster_id,
                 "trend_id": t.id, # شناسه عددی برای ساخت لینک‌های پایدار
@@ -1409,10 +1480,10 @@ def get_trends():
                 "category": t.category,
                 "first_seen": t.first_seen.isoformat() + 'Z' if t.first_seen else None,
                 "last_update": t.last_updated.isoformat() + 'Z' if t.last_updated else None, 
-                "source_sample": last_news.source_name if last_news else "Bilinmiyor",
+                "source_sample": latest_source_by_trend.get(t.id, "Bilinmiyor"),
                 "image": t.cover_image,
                 "video_path": t.video_path,
-                "comments_count": comments_count
+                "comments_count": comments_count_by_trend.get(t.id, 0)
             })
         
         response_json = json.dumps(results)
@@ -1719,6 +1790,7 @@ def admin_trend_action(trend_id):
             pass # نیاز به ایمپورت alert_service در routes دارد که فعلا انجام نمی‌دهیم تا پیچیده نشود
             
         db.commit()
+        invalidate_trend_caches([trend], clear_listing=True)
         return jsonify({"status": "success", "is_active": trend.is_active})
     finally:
         db.close()
@@ -1772,23 +1844,7 @@ def admin_merge_trends():
         scoring_queue.enqueue(target_trend.id, ScoringQueue.BREAKING)
         
         # 6. Clear Redis Cache (Aggressive Invalidation)
-        if redis_client:
-            # Clear specific trend pages
-            for t in [source_trend, target_trend]:
-                keys_to_delete = [
-                    f"ssr_trend_{t.id}", 
-                    f"ssr_trend_{t.slug}", 
-                    f"ssr_trend_{t.id}-{t.slug}",
-                    f"detail_v1_{t.id}", 
-                    f"detail_v1_{t.slug}", 
-                    f"detail_v1_{t.id}-{t.slug}"
-                ]
-                for k in keys_to_delete:
-                    redis_client.delete(k)
-            
-            # Clear homepage and category list caches so the UI updates instantly
-            for key in redis_client.scan_iter("trends_v1_*"):
-                redis_client.delete(key)
+        invalidate_trend_caches([source_trend, target_trend], clear_listing=True)
                 
         return jsonify({"status": "success", "target_id": target_trend.id})
     except Exception as e:
@@ -1822,6 +1878,7 @@ def admin_update_trend(trend_id):
             
         trend.last_updated = datetime.utcnow()
         db.commit()
+        invalidate_trend_caches([trend], clear_listing=True)
         return jsonify({"status": "success"})
     except Exception as e:
         db.rollback()
