@@ -60,6 +60,12 @@ class Config:
     SCORING_QUEUE_BATCH_SIZE = int(os.getenv("SCORING_QUEUE_BATCH_SIZE", "50"))
     SCORING_QUEUE_MAX_RETRIES = int(os.getenv("SCORING_QUEUE_MAX_RETRIES", "2"))
 
+    # --- Shared HTTP Resilience & Observability ---
+    HTTP_RETRY_ATTEMPTS = int(os.getenv("HTTP_RETRY_ATTEMPTS", "3"))
+    HTTP_BACKOFF_BASE_SECONDS = float(os.getenv("HTTP_BACKOFF_BASE_SECONDS", "0.7"))
+    HTTP_BACKOFF_MAX_SECONDS = float(os.getenv("HTTP_BACKOFF_MAX_SECONDS", "8"))
+    HTTP_BACKOFF_JITTER_SECONDS = float(os.getenv("HTTP_BACKOFF_JITTER_SECONDS", "0.3"))
+
     # --- تنظیمات هوش مصنوعی محلی (Ollama) ---
     OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
     LOCAL_MODEL_NAME = "qwen2.5:1.5b"

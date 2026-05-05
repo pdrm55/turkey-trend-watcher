@@ -1,7 +1,6 @@
 import math
 import logging
 import json
-import requests
 import os
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import func
@@ -10,6 +9,8 @@ from app.core.ai_engine import ai_engine
 from app.core.text_utils import normalize_turkish, JUNK_KEYWORDS
 from app.core.alert_service import alert_service
 from app.config import Config
+from app.core.http_resilience import request_with_retry
+from app.core.observability import traced_span, emit_metric
 
 # تنظیمات لاگر برای ردیابی دقیق فرآیند امتیازدهی
 logging.basicConfig(level=logging.INFO)
@@ -159,8 +160,16 @@ class TPSCalculator:
             "options": {"temperature": 0.0, "num_ctx": 2048}
         }
         try:
-            response = requests.post(OLLAMA_API_URL, json=payload, timeout=12)
+            with traced_span("scoring.llm_call", model=LOCAL_MODEL_NAME):
+                response = request_with_retry(
+                    "POST",
+                    OLLAMA_API_URL,
+                    json=payload,
+                    timeout=12,
+                    metric_name="scoring.ollama.http_ms"
+                )
             result_data = json.loads(response.json()['response'])
+            emit_metric("scoring.llm.success", 1, model=LOCAL_MODEL_NAME)
             return (
                 result_data.get("entity_score", 30),
                 result_data.get("criticality_score", 30),
@@ -168,6 +177,7 @@ class TPSCalculator:
             )
         except Exception as e:
             logger.error(f"⚠️ Local LLM Scoring Error: {e}")
+            emit_metric("scoring.llm.failure", 1, model=LOCAL_MODEL_NAME)
             return 30, 30, False
 
     def calculate_novelty(self, text: str) -> float:

@@ -3,7 +3,6 @@ import os
 import time
 import random
 import logging
-import requests
 import urllib.parse
 import feedparser
 import re
@@ -20,6 +19,8 @@ from app.core.text_utils import JUNK_KEYWORDS, slugify_turkish
 from app.core.ai_engine import ai_engine
 from app.core.scoring_queue import scoring_queue, ScoringQueue
 from app.core.classifier import fast_classify
+from app.core.http_resilience import request_with_retry
+from app.core.observability import traced_span, emit_metric
 
 # Configure Logging
 logging.basicConfig(
@@ -47,7 +48,14 @@ class SocialWorker:
             "parse_mode": "HTML"
         }
         try:
-            requests.post(url, json=payload, timeout=10)
+            request_with_retry(
+                "POST",
+                url,
+                json=payload,
+                timeout=10,
+                attempts=2,
+                metric_name="social.admin_alert.http_ms"
+            )
         except Exception as e:
             logger.error(f"❌ Failed to send admin alert: {e}")
 
@@ -119,9 +127,16 @@ class SocialWorker:
         valid_trends = []
         
         try:
-            # --- Attempt 1: GetDayTrends (Often has lower Cloudflare protection) ---
-            logger.info("📡 Attempt 1: Fetching from GetDayTrends...")
-            resp1 = requests.get("https://getdaytrends.com/turkey/", headers=headers, timeout=15)
+            with traced_span("social.fetch_trends"):
+                # --- Attempt 1: GetDayTrends (Often has lower Cloudflare protection) ---
+                logger.info("📡 Attempt 1: Fetching from GetDayTrends...")
+                resp1 = request_with_retry(
+                    "GET",
+                    "https://getdaytrends.com/turkey/",
+                    headers=headers,
+                    timeout=15,
+                    metric_name="social.getdaytrends.http_ms"
+                )
             if resp1.status_code == 200:
                 soup = BeautifulSoup(resp1.text, 'html.parser')
                 # Primary selector for getdaytrends
@@ -137,7 +152,13 @@ class SocialWorker:
             # --- Attempt 2: Trends24 (Fallback) ---
             if not valid_trends:
                 logger.info("📡 Attempt 2: Falling back to Trends24...")
-                resp2 = requests.get("https://trends24.in/turkey/", headers=headers, timeout=15)
+                resp2 = request_with_retry(
+                    "GET",
+                    "https://trends24.in/turkey/",
+                    headers=headers,
+                    timeout=15,
+                    metric_name="social.trends24.http_ms"
+                )
                 if resp2.status_code == 200:
                     soup = BeautifulSoup(resp2.text, 'html.parser')
                     trend_elements = soup.select('.trend-card:nth-of-type(1) li a') or soup.select('.trend-card__list li a')
@@ -151,6 +172,7 @@ class SocialWorker:
 
             if not valid_trends:
                 logger.error("❌ Both aggregators failed or returned empty lists. Cloudflare block is likely.")
+            emit_metric("social.trends.fetched_count", len(valid_trends))
                 
             return valid_trends
 
