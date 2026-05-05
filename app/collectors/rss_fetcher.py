@@ -1,8 +1,9 @@
 import sys
 import os
 import time
+import random
 import feedparser
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dateutil import parser as date_parser
 
 # Add project root to sys path
@@ -10,6 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 from app.database.models import SessionLocal, RawNews, Trend, TrendArrivals
 from app.core.ai_engine import ai_engine
+from app.config import Config
 # نکته مهم: ماژول scoring کامل حذف نشد، فقط get_source_tier نگه داشته شد، محاسبه‌گر TPS حذف شد
 from app.core.scoring import get_source_tier
 from app.core.text_utils import slugify_turkish
@@ -187,18 +189,54 @@ def fetch_and_process_rss():
 
     print(f"✅ RSS Cycle Finished: {new_trends_count} New Trends, {signal_updates_count} Signal Updates.")
     db.close()
+    return new_trends_count, signal_updates_count
 
 def main():
     """Main worker loop for the RSS Engine"""
     print("🧠 TrendiaTR RSS Fetcher Active (Async Mode).")
+    base_interval = max(5, getattr(Config, "RSS_POLL_INTERVAL_SECONDS", 180))
+    min_interval = max(5, getattr(Config, "RSS_MIN_POLL_INTERVAL_SECONDS", 45))
+    max_interval = max(base_interval, getattr(Config, "RSS_MAX_POLL_INTERVAL_SECONDS", 600))
+    next_sleep = max(min_interval, min(base_interval, max_interval))
+    jitter_ratio = min(0.5, max(0.0, getattr(Config, "RSS_POLL_JITTER_RATIO", 0.15)))
+    startup_stagger = max(0, getattr(Config, "RSS_STARTUP_STAGGER_SECONDS", 20))
+    prime_start = max(0, min(23, getattr(Config, "RSS_PRIME_START_HOUR", 7)))
+    prime_end = max(0, min(23, getattr(Config, "RSS_PRIME_END_HOUR", 23)))
+    prime_interval = max(min_interval, min(max_interval, getattr(Config, "RSS_PRIME_INTERVAL_SECONDS", 90)))
+
+    print(
+        f"⚙️ RSS Polling Config -> base={base_interval}s, prime={prime_interval}s, min={min_interval}s, max={max_interval}s, jitter={jitter_ratio}"
+    )
+    if startup_stagger > 0:
+        initial_delay = random.uniform(0, startup_stagger)
+        print(f"⏳ RSS startup stagger sleep: {initial_delay:.1f}s")
+        time.sleep(initial_delay)
+
     while True:
+        tr_hour = datetime.now(timezone(timedelta(hours=3))).hour
+        in_prime_hours = prime_start <= tr_hour <= prime_end
+        dynamic_base = prime_interval if in_prime_hours else base_interval
+
         try:
-            fetch_and_process_rss()
+            new_trends_count, signal_updates_count = fetch_and_process_rss()
+
+            # Adaptive polling: speed up immediately when fresh signals arrive.
+            if (new_trends_count + signal_updates_count) > 0:
+                next_sleep = min_interval
+            else:
+                next_sleep = min(max_interval, max(dynamic_base, int(next_sleep * 1.5)))
         except Exception as e:
             print(f"❌ Critical Error in RSS Loop: {e}")
+            # Back off slightly on critical loop failures to reduce thrashing.
+            next_sleep = min(max_interval, max(dynamic_base, int(next_sleep * 1.5)))
         
-        # Sleep for 10 minutes between cycles to respect source rate limits
-        time.sleep(600)
+        jitter_window = next_sleep * jitter_ratio
+        jittered_sleep = next_sleep + random.uniform(-jitter_window, jitter_window)
+        jittered_sleep = max(min_interval, min(max_interval, int(jittered_sleep)))
+        print(
+            f"🕒 RSS next cycle in {jittered_sleep}s (target={next_sleep}s, tr_hour={tr_hour}, prime={in_prime_hours})"
+        )
+        time.sleep(jittered_sleep)
 
 if __name__ == "__main__":
     main()

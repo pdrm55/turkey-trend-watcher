@@ -34,6 +34,27 @@ class Config:
     REDIS_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:6379/0"
     BASE_SITE_URL = os.getenv("BASE_SITE_URL", "https://trendiatr.com")
 
+    # --- تنظیمات Discovery Latency (Breaking-News Mode) ---
+    # RSS polling: faster base cycle with adaptive burst support in worker
+    RSS_POLL_INTERVAL_SECONDS = int(os.getenv("RSS_POLL_INTERVAL_SECONDS", "180"))
+    RSS_MIN_POLL_INTERVAL_SECONDS = int(os.getenv("RSS_MIN_POLL_INTERVAL_SECONDS", "45"))
+    RSS_MAX_POLL_INTERVAL_SECONDS = int(os.getenv("RSS_MAX_POLL_INTERVAL_SECONDS", "600"))
+    RSS_POLL_JITTER_RATIO = float(os.getenv("RSS_POLL_JITTER_RATIO", "0.15"))
+    RSS_STARTUP_STAGGER_SECONDS = int(os.getenv("RSS_STARTUP_STAGGER_SECONDS", "20"))
+    RSS_PRIME_START_HOUR = int(os.getenv("RSS_PRIME_START_HOUR", "7"))
+    RSS_PRIME_END_HOUR = int(os.getenv("RSS_PRIME_END_HOUR", "23"))
+    RSS_PRIME_INTERVAL_SECONDS = int(os.getenv("RSS_PRIME_INTERVAL_SECONDS", "90"))
+
+    # Social/X trend polling: shorter base cycle with adaptive slowdown on quiet periods
+    SOCIAL_POLL_INTERVAL_SECONDS = int(os.getenv("SOCIAL_POLL_INTERVAL_SECONDS", "300"))
+    SOCIAL_MIN_POLL_INTERVAL_SECONDS = int(os.getenv("SOCIAL_MIN_POLL_INTERVAL_SECONDS", "120"))
+    SOCIAL_MAX_POLL_INTERVAL_SECONDS = int(os.getenv("SOCIAL_MAX_POLL_INTERVAL_SECONDS", "1800"))
+    SOCIAL_POLL_JITTER_RATIO = float(os.getenv("SOCIAL_POLL_JITTER_RATIO", "0.15"))
+    SOCIAL_STARTUP_STAGGER_SECONDS = int(os.getenv("SOCIAL_STARTUP_STAGGER_SECONDS", "30"))
+    SOCIAL_PRIME_START_HOUR = int(os.getenv("SOCIAL_PRIME_START_HOUR", "8"))
+    SOCIAL_PRIME_END_HOUR = int(os.getenv("SOCIAL_PRIME_END_HOUR", "23"))
+    SOCIAL_PRIME_INTERVAL_SECONDS = int(os.getenv("SOCIAL_PRIME_INTERVAL_SECONDS", "180"))
+
     # --- تنظیمات هوش مصنوعی محلی (Ollama) ---
     OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
     LOCAL_MODEL_NAME = "qwen2.5:1.5b"
