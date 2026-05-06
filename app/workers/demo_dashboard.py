@@ -30,11 +30,25 @@ st.markdown("""
     <style>
     @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
     
-    /* اعمال راست‌چین و فونت روی تمام المان‌های پایه */
-    html, body, [class*="css"], [class*="st-"] {
+    /* تنظیمات کانتینر اصلی برای رفع مشکل چسبیدن به لبه‌ها */
+    .block-container {
         direction: rtl;
         text-align: right;
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 90% !important; /* ایجاد حاشیه مناسب از کناره‌ها */
+        margin: auto;
+    }
+    
+    /* اعمال فونت فقط روی متون، بدون تخریب آیکون‌ها */
+    html, body, p, div:not([class*="icon"]), span:not([class*="icon"]):not(.material-icons):not(.material-symbols-rounded), h1, h2, h3, h4, h5, h6, label, li {
         font-family: 'Vazirmatn', sans-serif !important;
+    }
+    
+    /* محافظت از آیکون‌های متریال استریم‌لیت (رفع مشکل نوشته شدن keyboard) */
+    .material-symbols-rounded, .material-icons {
+        font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
+        direction: ltr !important;
     }
     
     /* اصلاح تب‌ها برای نمایش صحیح راست‌به‌چپ */
@@ -43,11 +57,14 @@ st.markdown("""
         flex-direction: row-reverse;
     }
     
-    /* راست‌چین کردن متون داخل ویجت‌ها، متریک‌ها و دیتافریم‌ها */
-    p, div, span, h1, h2, h3, h4, h5, h6, label {
-        text-align: right !important;
+    /* اصلاح دکمه‌های آکاردئون (Expander) */
+    [data-testid="stExpander"] details summary {
+        flex-direction: row-reverse;
+        text-align: right;
     }
-    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
+    
+    /* راست‌چین کردن متون داخل ویجت‌ها، متریک‌ها و دیتافریم‌ها */
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"], [data-testid="stMetricDelta"] {
         text-align: right !important;
         direction: rtl;
     }
@@ -208,14 +225,41 @@ elif display_mode == "Replay (بازپخش)":
 
             with tab3:
                 st.markdown("##### 🕵️ اخبار تشکیل‌دهنده این کلاستر")
-                st.write("این لیست نشان می‌دهد سیستم چه اخباری را مشابه تشخیص داده است:")
-                raw_news_items = db.query(RawNews).filter(RawNews.trend_id == selected_trend_id).order_by(desc(RawNews.published_at)).limit(10).all()
                 
-                for idx, rn in enumerate(raw_news_items):
-                    with st.expander(f"خبر {idx+1} | منبع: {rn.source_name} | زمان: {rn.published_at.strftime('%H:%M')}"):
-                        st.write(rn.content)
-                        if rn.external_id:
-                            st.caption(f"لینک/آیدی مرجع: {rn.external_id}")
+                # دریافت تمام اخبار این ترند و مرتب‌سازی از قدیمی به جدید برای محاسبه زمان
+                raw_news_items = db.query(RawNews).filter(RawNews.trend_id == selected_trend_id).order_by(RawNews.published_at).all()
+                
+                if raw_news_items:
+                    earliest_news_time = raw_news_items[0].published_at
+                    discovery_time = selected_trend.first_seen
+                    publish_time = selected_trend.last_updated
+                    
+                    # محاسبه اختلاف زمان (به دقیقه)
+                    reaction_diff = (discovery_time - earliest_news_time).total_seconds() / 60
+                    publish_diff = (publish_time - discovery_time).total_seconds() / 60
+                    
+                    # نمایش متریک‌های زمانی برای مقایسه
+                    st.info("⏱️ **مقایسه سرعت عملکرد پلتفرم با خبرگزاری‌ها:**")
+                    time_col1, time_col2, time_col3 = st.columns(3)
+                    
+                    with time_col1:
+                        st.metric("۱. انتشار اولین خبر (خبرگزاری‌ها)", earliest_news_time.strftime('%H:%M:%S'))
+                    with time_col2:
+                        st.metric("۲. کشف و ساخت کلاستر (AI)", discovery_time.strftime('%H:%M:%S'), delta=f"{int(reaction_diff)} دقیقه پس از خبر اول", delta_color="inverse")
+                    with time_col3:
+                        st.metric("۳. انتشار نهایی در پلتفرم", publish_time.strftime('%H:%M:%S'), delta=f"{int(publish_diff)} دقیقه پردازش و خلاصه", delta_color="off")
+                        
+                    st.divider()
+                    st.write("لیست اخبار خام به ترتیب جدیدترین:")
+                    
+                    # نمایش لیست اخبار (از جدید به قدیم)
+                    for idx, rn in enumerate(reversed(raw_news_items)):
+                        with st.expander(f"خبر {len(raw_news_items)-idx} | منبع: {rn.source_name} | زمان انتشار مرجع: {rn.published_at.strftime('%Y-%m-%d %H:%M')}"):
+                            st.write(rn.content)
+                            if rn.external_id:
+                                st.caption(f"لینک/آیدی مرجع: {rn.external_id}")
+                else:
+                    st.warning("هیچ خبر خامی برای این کلاستر ثبت نشده است.")
 
             with tab4:
                 st.markdown("##### 🤖 پیش‌نویس‌های تولید شده برای شبکه X")
