@@ -40,13 +40,17 @@ st.markdown("""
         margin: auto;
     }
     
-    /* اعمال فونت فقط روی متون، بدون تخریب آیکون‌ها */
-    html, body, p, div:not([class*="icon"]), span:not([class*="icon"]):not(.material-icons):not(.material-symbols-rounded), h1, h2, h3, h4, h5, h6, label, li {
-        font-family: 'Vazirmatn', sans-serif !important;
+    /* اعمال فونت روی متون، با اولویت پایین‌تر تا آیکون‌ها خراب نشوند */
+    html, body, [class*="css"], p, h1, h2, h3, h4, h5, h6, label, li, span, div {
+        font-family: 'Vazirmatn', sans-serif;
     }
     
-    /* محافظت از آیکون‌های متریال استریم‌لیت (رفع مشکل نوشته شدن keyboard) */
-    .material-symbols-rounded, .material-icons {
+    /* محافظت قطعی از آیکون‌های متریال استریم‌لیت (رفع باگ نوشته شدن keyboard_arrow) */
+    .material-symbols-rounded, 
+    .material-icons, 
+    [data-testid="stIconMaterial"], 
+    [data-testid="stExpanderToggleIcon"],
+    i {
         font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
         direction: ltr !important;
     }
@@ -61,6 +65,10 @@ st.markdown("""
     [data-testid="stExpander"] details summary {
         flex-direction: row-reverse;
         text-align: right;
+    }
+    
+    [data-testid="stExpander"] details summary svg {
+        margin-left: 0.5rem;
     }
     
     /* راست‌چین کردن متون داخل ویجت‌ها، متریک‌ها و دیتافریم‌ها */
@@ -245,16 +253,21 @@ elif display_mode == "Replay (بازپخش)":
                     with time_col1:
                         st.metric("۱. انتشار اولین خبر (خبرگزاری‌ها)", earliest_news_time.strftime('%H:%M:%S'))
                     with time_col2:
-                        st.metric("۲. کشف و ساخت کلاستر (AI)", discovery_time.strftime('%H:%M:%S'), delta=f"{int(reaction_diff)} دقیقه پس از خبر اول", delta_color="inverse")
+                        st.metric("۲. کشف و ساخت کلاستر (AI)", discovery_time.strftime('%H:%M:%S'), delta=f"{int(reaction_diff)} دقیقه فاصله با اولین خبر", delta_color="inverse")
                     with time_col3:
                         st.metric("۳. انتشار نهایی در پلتفرم", publish_time.strftime('%H:%M:%S'), delta=f"{int(publish_diff)} دقیقه پردازش و خلاصه", delta_color="off")
                         
                     st.divider()
-                    st.write("لیست اخبار خام به ترتیب جدیدترین:")
+                    st.markdown(f"**لیست اخبار خام (تعداد {len(raw_news_items)} خبر در این کلاستر):**")
                     
-                    # نمایش لیست اخبار (از جدید به قدیم)
+                    # نمایش لیست اخبار (از جدید به قدیم) - همراه با اسنیپت متن برای اطمینان از مرتبط بودن
                     for idx, rn in enumerate(reversed(raw_news_items)):
-                        with st.expander(f"خبر {len(raw_news_items)-idx} | منبع: {rn.source_name} | زمان انتشار مرجع: {rn.published_at.strftime('%Y-%m-%d %H:%M')}"):
+                        # گرفتن 60 کاراکتر اول خبر برای نمایش در تیتر کشو
+                        content_snippet = (rn.content[:60] + "...") if rn.content else "متن خبر خالی است"
+                        
+                        with st.expander(f"📌 منبع: {rn.source_name} | {content_snippet}"):
+                            st.write(f"**زمان انتشار مرجع:** {rn.published_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                            st.markdown("---")
                             st.write(rn.content)
                             if rn.external_id:
                                 st.caption(f"لینک/آیدی مرجع: {rn.external_id}")
