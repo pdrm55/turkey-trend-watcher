@@ -11,7 +11,9 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 # ایمپورت‌های دیتابیس بر اساس models.py پروژه شما
-from app.database.models import SessionLocal, Trend, RawNews
+from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals
+from sqlalchemy import desc, func
+import pandas as pd
 
 # ==========================================
 # تنظیمات صفحه Streamlit
@@ -95,12 +97,77 @@ if display_mode == "Live (زنده)":
     st.header("📡 مانیتورینگ زنده (Live Feed)")
     st.info("در این بخش داده‌های دیتابیس را به صورت درلحظه واکشی کرده و نمایش می‌دهیم.")
     
-    # جایگاه برای کدهای گام بعدی (نمایش جدول ترندهای اخیر، نمودار TPS زنده و ...)
-    st.markdown("*اینجا محل قرارگیری لیست ترندهای داغ و چارت‌های Real-time خواهد بود.*")
+    db = get_db_session()
+    try:
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.subheader("🔥 ۱۰ ترند داغ اخیر")
+            # واکشی ۱۰ ترند برتر فعال بر اساس امتیاز TPS
+            recent_trends = db.query(Trend).filter(Trend.is_active == True).order_by(desc(Trend.final_tps)).limit(10).all()
+            
+            if recent_trends:
+                df_trends = pd.DataFrame([{
+                    "شناسه": t.id,
+                    "عنوان": t.title if t.title else "در حال تحلیل AI...",
+                    "دسته‌بندی": t.category,
+                    "امتیاز TPS": round(t.final_tps, 1),
+                    "حجم اخبار": t.message_count
+                } for t in recent_trends])
+                
+                # نمایش جدول تعاملی
+                st.dataframe(df_trends, use_container_width=True, hide_index=True)
+            else:
+                st.warning("هیچ ترندی یافت نشد.")
+
+        with col2:
+            st.subheader("📊 توزیع موضوعی")
+            # محاسبه تعداد ترندها در هر دسته‌بندی
+            category_counts = db.query(Trend.category, func.count(Trend.id)).group_by(Trend.category).all()
+            if category_counts:
+                df_cats = pd.DataFrame(category_counts, columns=["Category", "Count"]).set_index("Category")
+                st.bar_chart(df_cats, use_container_width=True)
+                
+    finally:
+        db.close()
 
 elif display_mode == "Replay (بازپخش)":
     st.header("⏪ بازپخش وقایع (Scenario Replay)")
-    st.warning("در این حالت می‌توانید یک شناسه ترند (Trend ID) را انتخاب کرده و نحوه رشد امتیاز TPS و تکامل آن را در طول زمان شبیه‌سازی کنید.")
+    st.warning("در این حالت می‌توانید یک رویداد خاص را انتخاب کرده و نحوه رشد و تکامل آن را در طول زمان (براساس ورود اخبار به کلاستر) بررسی کنید.")
     
-    # جایگاه برای کدهای گام بعدی (اسلایدر زمان، انتخابگر سناریو)
-    st.markdown("*اینجا محل قرارگیری تایم‌لاین (Time-slider) و ابزارهای کنترل زمان برای پرزنت خواهد بود.*")
+    db = get_db_session()
+    try:
+        # واکشی ۵ ترند برتر که دارای عنوان هستند برای لیست کشویی
+        top_trends = db.query(Trend).filter(Trend.title.isnot(None)).order_by(desc(Trend.final_tps)).limit(5).all()
+        
+        if top_trends:
+            trend_options = {f"[{t.id}] {t.title[:60]}... (TPS: {round(t.final_tps, 1)})": t.id for t in top_trends}
+            
+            selected_trend_label = st.selectbox("یک رویداد را برای آنالیز زمانی انتخاب کنید:", list(trend_options.keys()))
+            selected_trend_id = trend_options[selected_trend_label]
+            
+            # واکشی تاریخچه ورود اخبار (سیگنال‌ها) به این ترند
+            trend_arrivals = db.query(TrendArrivals).filter(TrendArrivals.trend_id == selected_trend_id).order_by(TrendArrivals.timestamp).all()
+            
+            if trend_arrivals:
+                st.markdown("### 📈 خط زمانی رشد خبر (Timeline Velocity)")
+                
+                # تبدیل داده‌ها به فرمت مناسب تایم‌لاین تجمعی
+                df_timeline = pd.DataFrame([{
+                    "زمان": arrival.timestamp,
+                    "حجم اخبار ادغام شده": i + 1
+                } for i, arrival in enumerate(trend_arrivals)])
+                
+                df_timeline = df_timeline.set_index("زمان")
+                
+                # رسم نمودار خطی
+                st.line_chart(df_timeline, use_container_width=True)
+                
+                st.success(f"🎯 هوش مصنوعی تا این لحظه **{len(trend_arrivals)}** خبر پراکنده را تشخیص داده و به این رویداد متصل (Merge) کرده است.")
+            else:
+                st.info("تاریخچه زمانی (Arrivals) برای این ترند ثبت نشده است.")
+        else:
+            st.info("ترند مناسبی برای بازپخش یافت نشد.")
+            
+    finally:
+        db.close()
