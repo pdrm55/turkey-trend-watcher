@@ -24,6 +24,40 @@ st.set_page_config(
 )
 
 # ==========================================
+# تزریق CSS برای راست‌چین (RTL) و فونت فارسی
+# ==========================================
+st.markdown("""
+    <style>
+    @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
+    
+    /* اعمال راست‌چین و فونت روی تمام المان‌های پایه */
+    html, body, [class*="css"], [class*="st-"] {
+        direction: rtl;
+        text-align: right;
+        font-family: 'Vazirmatn', sans-serif !important;
+    }
+    
+    /* اصلاح تب‌ها برای نمایش صحیح راست‌به‌چپ */
+    .stTabs [data-baseweb="tab-list"] {
+        justify-content: flex-start;
+        flex-direction: row-reverse;
+    }
+    
+    /* راست‌چین کردن متون داخل ویجت‌ها، متریک‌ها و دیتافریم‌ها */
+    p, div, span, h1, h2, h3, h4, h5, h6, label {
+        text-align: right !important;
+    }
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
+        text-align: right !important;
+        direction: rtl;
+    }
+    .stDataFrame {
+        direction: rtl;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # توابع اتصال به دیتابیس
 # ==========================================
 @st.cache_resource(ttl=60)
@@ -106,7 +140,9 @@ if display_mode == "Live (زنده)":
                     "عنوان": t.title if t.title else "در حال تحلیل AI...",
                     "دسته‌بندی": t.category,
                     "امتیاز TPS": round(t.final_tps, 1),
-                    "حجم اخبار": t.message_count
+                    "حجم اخبار": t.message_count,
+                    "زمان کشف (First Seen)": t.first_seen.strftime('%Y-%m-%d %H:%M') if t.first_seen else '-',
+                    "آخرین آپدیت": t.last_updated.strftime('%H:%M:%S') if t.last_updated else '-'
                 } for t in recent_trends])
                 
                 st.dataframe(df_trends, use_container_width=True, hide_index=True)
