@@ -113,8 +113,16 @@ if display_mode == "Live (زنده)":
         st.subheader("📊 توزیع موضوعی هفته")
         cats = db.query(Trend.category, func.count(Trend.id)).filter(Trend.first_seen >= last_week).group_by(Trend.category).all()
         if cats:
-            df_cats = pd.DataFrame(cats, columns=["دسته", "تعداد"]).set_index("دسته")
-            st.bar_chart(df_cats, use_container_width=True, height=300)
+            df_cats = pd.DataFrame(cats, columns=["دسته", "تعداد"])
+            
+            # 🌟 اصلاح نمودار توزیع موضوعی با Altair برای خوانایی محورها 🌟
+            bar_chart = alt.Chart(df_cats).mark_bar(color="#0f172a", cornerRadiusTopLeft=8, cornerRadiusTopRight=8).encode(
+                x=alt.X('دسته:N', title='دسته‌بندی موضوعی', axis=alt.Axis(labelAngle=0, labelPadding=10)),
+                y=alt.Y('تعداد:Q', title='تعداد رویدادها'),
+                tooltip=['دسته', 'تعداد']
+            ).properties(height=350)
+            
+            st.altair_chart(bar_chart, use_container_width=True)
     finally: db.close()
 
 elif display_mode == "Replay (بازپخش)":
@@ -144,7 +152,6 @@ elif display_mode == "Replay (بازپخش)":
                         log_placeholder = st.empty()
 
                         history_df = pd.DataFrame()
-                        # مقداردهی اولیه برای TPS حتی اگر دیتا نباشد
                         tps_df = pd.DataFrame({"زمان": [arrivals[0][0].timestamp], "نمره TPS": [0.0]})
                         sources = []
                         
@@ -160,10 +167,9 @@ elif display_mode == "Replay (بازپخش)":
                             
                             total_arrivals_final = len(arrivals)
                             
-                            # محاسبه سقف TPS برای نمودار
                             all_scores = [s.tps_score for s in score_history] + [trend_obj.final_tps]
                             max_tps_val = max(all_scores) if all_scores else 100.0
-                            if max_tps_val < 10.0: max_tps_val = 100.0 # سقف پیش فرض برای زیبایی نمودار
+                            if max_tps_val < 10.0: max_tps_val = 100.0 
 
                             arrival_count = 0
                             current_tps = 0.0
@@ -187,16 +193,14 @@ elif display_mode == "Replay (بازپخش)":
                                     m2.metric("نمره TPS فعلی", f"{round(current_tps, 1)}", delta=f"{arrival_count} خبر")
                                     m3.metric("قله نمره (Peak)", f"{round(peak_tps, 1)}")
 
-                                # ۱. گراف حجم کلاستر (بالایی)
                                 if not history_df.empty:
                                     c1 = alt.Chart(history_df).mark_line(point=True, color="#3b82f6").encode(
                                         x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), 
-                                                axis=alt.Axis(labels=False, title=None, ticks=True)), # نمایش تیک‌ها بدون لیبل برای تراز بودن
+                                                axis=alt.Axis(labels=False, title=None, ticks=True)),
                                         y=alt.Y('حجم اخبار:Q', scale=alt.Scale(domain=[0, total_arrivals_final + 1]), title='تعداد سیگنال')
                                     ).properties(height=180, title="رشد کلاستر خبری (ورود منابع)")
                                     chart_placeholder.altair_chart(c1, use_container_width=True)
 
-                                # ۲. گراف حرارت TPS (پایینی)
                                 if not tps_df.empty:
                                     c2 = alt.Chart(tps_df).mark_area(line={'color':'#ef4444'}, 
                                                                     color=alt.Gradient(gradient='linear', stops=[alt.GradientStop(color='#ef4444', offset=0), alt.GradientStop(color='white', offset=1)], x1=1, x2=1, y1=1, y2=0)).encode(
@@ -214,7 +218,7 @@ elif display_mode == "Replay (بازپخش)":
                             df_static = pd.DataFrame([{"زمان": s.timestamp, "TPS": s.tps_score} for s in score_history])
                             st.line_chart(df_static.set_index("زمان"), use_container_width=True, height=300)
                         else:
-                            st.warning("هنوز دیتای تاریخچه TPS برای این ترند ثبت نشده است. (سیستم از این پس شروع به لاگ‌گیری می‌کند)")
+                            st.warning("هنوز دیتای تاریخچه TPS برای این ترند ثبت نشده است.")
                 else: st.info("داده‌های ورودی یافت نشد.")
 
             with tab2:
