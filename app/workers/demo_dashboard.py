@@ -2,6 +2,7 @@ import streamlit as st
 import sys
 import os
 import pandas as pd
+import time
 
 # اضافه کردن مسیر ریشه پروژه به sys.path برای ایمپورت صحیح ماژول‌های app
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -236,16 +237,54 @@ elif display_mode == "Replay (بازپخش)":
             tab1, tab2, tab3, tab4 = st.tabs(["📈 گراف شتاب (Velocity)", "🧠 تحلیل محتوایی AI", "🔍 اخبار خام (Cluster)", "🐦 خروجی توییتر (X-Studio)"])
             
             with tab1:
-                trend_arrivals = db.query(TrendArrivals).filter(TrendArrivals.trend_id == selected_trend_id).order_by(TrendArrivals.timestamp).all()
-                if trend_arrivals:
-                    df_timeline = pd.DataFrame([{
-                        "زمان": arrival.timestamp,
-                        "تعداد اخبار ادغام شده": i + 1
-                    } for i, arrival in enumerate(trend_arrivals)])
-                    df_timeline = df_timeline.set_index("زمان")
+                # دریافت همزمان اطلاعات زمان ورود و نام منبع خبر (برای نمایش در جدول شبیه‌سازی)
+                arrivals_data = db.query(TrendArrivals, RawNews.source_name).outerjoin(
+                    RawNews, TrendArrivals.raw_news_id == RawNews.id
+                ).filter(TrendArrivals.trend_id == selected_trend_id).order_by(TrendArrivals.timestamp).all()
+                
+                if arrivals_data:
+                    start_replay = st.button("▶️ پخش سناریوی کشف ترند (Replay)", type="primary")
                     
-                    st.line_chart(df_timeline, use_container_width=True)
-                    st.success(f"الگوریتم شباهت‌سنجی (ChromaDB) موفق شد **{len(trend_arrivals)}** خبر تکراری از خبرگزاری‌های مختلف را در این کلاستر واحد ادغام کند.")
+                    if start_replay:
+                        st.info("💡 در حال شبیه‌سازی جریان ورود اخبار به کلاستر در طول زمان...")
+                        
+                        # ایجاد جایگاه‌های خالی (Placeholders) برای انیمیشن
+                        clock_placeholder = st.empty()
+                        chart_placeholder = st.empty()
+                        sources_placeholder = st.empty()
+                        
+                        history_df = pd.DataFrame()
+                        sources_list = []
+                        
+                        for i, (arrival, source_name) in enumerate(arrivals_data):
+                            # ۱. نمایش زمان مجازی و تعداد سیگنال
+                            clock_placeholder.warning(f"⏱️ زمان مجازی رویداد: **{arrival.timestamp.strftime('%Y-%m-%d %H:%M:%S')}** | سیگنال‌های دریافتی: {i + 1}")
+                            
+                            # ۲. رسم انیمیشنی نمودار خطی (Velocity)
+                            new_row = pd.DataFrame({"تعداد اخبار ادغام شده": [i + 1]}, index=[arrival.timestamp])
+                            history_df = pd.concat([history_df, new_row])
+                            chart_placeholder.line_chart(history_df, use_container_width=True)
+                            
+                            # ۳. بروزرسانی لیست منابع تایید کننده
+                            src = source_name if source_name else "سیستم / ناشناس"
+                            sources_list.insert(0, {"زمان دریافت": arrival.timestamp.strftime('%H:%M:%S'), "منبع تایید کننده": src})
+                            sources_placeholder.dataframe(pd.DataFrame(sources_list), use_container_width=True, hide_index=True)
+                            
+                            # تاخیر برای ایجاد حس انیمیشن (۰.۵ ثانیه)
+                            time.sleep(0.5)
+                            
+                        st.success(f"✅ پایان شبیه‌سازی: {len(arrivals_data)} خبر از منابع مختلف با موفقیت در یک کلاستر واحد (Trend) ادغام شدند.")
+                        
+                    else:
+                        # حالت پیش‌فرض (استاتیک)
+                        df_timeline = pd.DataFrame([{
+                            "زمان": arrival.timestamp,
+                            "تعداد اخبار ادغام شده": i + 1
+                        } for i, (arrival, _) in enumerate(arrivals_data)])
+                        df_timeline = df_timeline.set_index("زمان")
+                        
+                        st.line_chart(df_timeline, use_container_width=True)
+                        st.success(f"الگوریتم شباهت‌سنجی (ChromaDB) موفق شد **{len(arrivals_data)}** خبر تکراری از خبرگزاری‌های مختلف را در این کلاستر واحد ادغام کند.")
                 else:
                     st.info("داده‌های زمانی برای این ترند موجود نیست.")
 
