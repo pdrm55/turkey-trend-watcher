@@ -3,6 +3,7 @@ import sys
 import os
 import pandas as pd
 import time
+import altair as alt
 
 # اضافه کردن مسیر ریشه پروژه به sys.path برای ایمپورت صحیح ماژول‌های app
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -256,22 +257,47 @@ elif display_mode == "Replay (بازپخش)":
                         history_df = pd.DataFrame()
                         sources_list = []
                         
+                        # استخراج زمان شروع و پایان برای ثابت نگه داشتن محورها (جلوگیری از پرش و شکستگی نمودار)
+                        min_time = arrivals_data[0][0].timestamp
+                        max_time = arrivals_data[-1][0].timestamp
+                        if min_time == max_time:
+                            max_time = min_time + pd.Timedelta(minutes=1)
+                        max_count = len(arrivals_data)
+                        
                         for i, (arrival, source_name) in enumerate(arrivals_data):
                             # ۱. نمایش زمان مجازی و تعداد سیگنال
                             clock_placeholder.warning(f"⏱️ زمان مجازی رویداد: **{arrival.timestamp.strftime('%Y-%m-%d %H:%M:%S')}** | سیگنال‌های دریافتی: {i + 1}")
                             
-                            # ۲. رسم انیمیشنی نمودار خطی (Velocity)
-                            new_row = pd.DataFrame({"تعداد اخبار ادغام شده": [i + 1]}, index=[arrival.timestamp])
+                            new_row = pd.DataFrame({
+                                "زمان": [arrival.timestamp],
+                                "تعداد اخبار ادغام شده": [i + 1]
+                            })
                             history_df = pd.concat([history_df, new_row])
-                            chart_placeholder.line_chart(history_df, use_container_width=True)
+                            
+                            # ۲. رسم نمودار با Altair برای فیکس کردن ابعاد و ایجاد انیمیشن "رشد کننده" واقعی
+                            chart = alt.Chart(history_df).mark_line(
+                                point=True,
+                                color="#ef4444",
+                                strokeWidth=3
+                            ).encode(
+                                x=alt.X('زمان:T', 
+                                        scale=alt.Scale(domain=[min_time.isoformat(), max_time.isoformat()]),
+                                        title='زمان ورود خبر'),
+                                y=alt.Y('تعداد اخبار ادغام شده:Q', 
+                                        scale=alt.Scale(domain=[0, max_count + 1]),
+                                        title='حجم کلاستر')
+                            ).properties(
+                                height=350
+                            )
+                            chart_placeholder.altair_chart(chart, use_container_width=True)
                             
                             # ۳. بروزرسانی لیست منابع تایید کننده
                             src = source_name if source_name else "سیستم / ناشناس"
                             sources_list.insert(0, {"زمان دریافت": arrival.timestamp.strftime('%H:%M:%S'), "منبع تایید کننده": src})
                             sources_placeholder.dataframe(pd.DataFrame(sources_list), use_container_width=True, hide_index=True)
                             
-                            # تاخیر برای ایجاد حس انیمیشن (۰.۵ ثانیه)
-                            time.sleep(0.5)
+                            # تاخیر ۱ ثانیه‌ای بین هر فریم
+                            time.sleep(1.0) 
                             
                         st.success(f"✅ پایان شبیه‌سازی: {len(arrivals_data)} خبر از منابع مختلف با موفقیت در یک کلاستر واحد (Trend) ادغام شدند.")
                         
@@ -281,9 +307,20 @@ elif display_mode == "Replay (بازپخش)":
                             "زمان": arrival.timestamp,
                             "تعداد اخبار ادغام شده": i + 1
                         } for i, (arrival, _) in enumerate(arrivals_data)])
-                        df_timeline = df_timeline.set_index("زمان")
                         
-                        st.line_chart(df_timeline, use_container_width=True)
+                        # رسم نمودار نهایی با Altair برای یکپارچگی ظاهری
+                        chart = alt.Chart(df_timeline).mark_line(
+                            point=True,
+                            color="#ef4444",
+                            strokeWidth=3
+                        ).encode(
+                            x=alt.X('زمان:T', title='زمان ورود خبر'),
+                            y=alt.Y('تعداد اخبار ادغام شده:Q', title='حجم کلاستر')
+                        ).properties(
+                            height=350
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+                        
                         st.success(f"الگوریتم شباهت‌سنجی (ChromaDB) موفق شد **{len(arrivals_data)}** خبر تکراری از خبرگزاری‌های مختلف را در این کلاستر واحد ادغام کند.")
                 else:
                     st.info("داده‌های زمانی برای این ترند موجود نیست.")
