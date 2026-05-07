@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 # اضافه کردن مسیر ریشه پروژه به sys.path برای دسترسی به ماژول‌های داخلی
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-from app.database.models import SessionLocal, Trend, RawNews
+from app.database.models import SessionLocal, Trend, RawNews, TrendScoreHistory
 from app.core.scoring import TPSCalculator
 from app.core.scoring_queue import scoring_queue
 from app.config import Config
@@ -198,6 +198,14 @@ def apply_gravity_decay():
                     trend.is_active = False
                     deactivated_count += 1
                 
+                # --- Smart Score History Logging (Gravity) ---
+                history_entry = TrendScoreHistory(
+                    trend_id=trend.id,
+                    tps_score=new_score,
+                    timestamp=now,
+                    event_type='gravity'
+                )
+                db.add(history_entry)
                 decay_count += 1
 
         db.commit()

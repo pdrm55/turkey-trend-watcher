@@ -101,6 +101,9 @@ class Trend(Base):
     # رابطه با نظرات
     comments = relationship("Comment", backref="trend", cascade="all, delete-orphan")
 
+    # رابطه با تاریخچه امتیازات
+    score_history = relationship('TrendScoreHistory', backref='trend', cascade='all, delete-orphan')
+
 class TrendArrivals(Base):
     """
     ثبت دقیق لحظه ورود هر خبر به یک ترند.
@@ -116,6 +119,15 @@ class TrendArrivals(Base):
     __table_args__ = (
         Index('idx_trend_arrivals_trend_ts', 'trend_id', 'timestamp'),
     )
+
+class TrendScoreHistory(Base):
+    """تاریخچه تغییرات امتیاز ترندها برای ردیابی نوسانات (Trend Score History)"""
+    __tablename__ = "trend_score_history"
+    id = Column(Integer, primary_key=True, index=True)
+    trend_id = Column(Integer, ForeignKey('trends.id'), nullable=False)
+    tps_score = Column(Float)
+    timestamp = Column(DateTime, default=utc_now)
+    event_type = Column(String(50))
 
 class SystemSettings(Base):
     """تنظیمات داینامیک سیستم برای مدیریت از پنل ادمین"""

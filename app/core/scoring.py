@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import func
-from app.database.models import Trend, RawNews, TrendArrivals
+from app.database.models import Trend, RawNews, TrendArrivals, TrendScoreHistory
 from app.core.ai_engine import ai_engine
 from app.core.text_utils import normalize_turkish, JUNK_KEYWORDS
 from app.core.alert_service import alert_service
@@ -356,6 +356,31 @@ class TPSCalculator:
         trend.score = final_tps # همگام‌سازی برای کدهای قدیمی
         trend.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
         
+        # --- Smart Score History Logging ---
+        last_history_record = self.db.query(TrendScoreHistory).filter(
+            TrendScoreHistory.trend_id == trend_id
+        ).order_by(TrendScoreHistory.timestamp.desc()).first()
+
+        should_log = False
+        if not last_history_record:
+            should_log = True
+        else:
+            # Ensure last_history_record.tps_score is not None to avoid TypeError
+            last_score = last_history_record.tps_score if last_history_record.tps_score is not None else 0.0
+            time_since_last_log = datetime.now(timezone.utc).replace(tzinfo=None) - last_history_record.timestamp
+            score_diff = abs(final_tps - last_score)
+            
+            if score_diff >= 1.0 or time_since_last_log > timedelta(minutes=10):
+                should_log = True
+        
+        if should_log:
+            history_entry = TrendScoreHistory(
+                trend_id=trend_id,
+                tps_score=final_tps,
+                event_type='scoring'
+            )
+            self.db.add(history_entry)
+
         try:
             self.db.commit()
             logger.info(f"✅ [Async TPS] Trend {trend_id} Scored: {final_tps:.2f} | Accel: {trend.trajectory}")
