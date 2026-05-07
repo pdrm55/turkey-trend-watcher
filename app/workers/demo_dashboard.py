@@ -80,13 +80,13 @@ st.markdown("""
         direction: rtl;
     }
     
-    /* 🌟 فیکس جدید: چپ‌چین کردن باکس انتخاب خبر و پاپ‌آپ آن (چون تیترها ترکی و لاتین هستند) 🌟 */
+    /* فیکس: چپ‌چین کردن باکس انتخاب خبر و پاپ‌آپ آن */
     div[data-baseweb="select"], div[data-baseweb="popover"] {
         direction: ltr !important;
         text-align: left !important;
     }
     
-    /* لیبل بالای سلکت‌باکس ("رویداد مورد نظر را انتخاب کنید") همچنان راست‌چین بماند */
+    /* لیبل بالای سلکت‌باکس */
     label[data-testid="stWidgetLabel"] {
         direction: rtl !important;
         text-align: right !important;
@@ -118,8 +118,20 @@ def get_db_session():
 # ==========================================
 # سایدبار (Sidebar) - ساختار ناوبری
 # ==========================================
-st.sidebar.image("https://via.placeholder.com/300x100.png?text=TrendiaTR+Logo", use_container_width=True)
-st.sidebar.title("کنترل پنل پرزنت")
+# 🌟 فیکس 🌟: جایگزینی عکس معیوب با کدهای اصلی HTML/SVG لوگوی سایت
+st.sidebar.markdown("""
+    <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 25px; direction: ltr;">
+        <div style="background-color: #ef4444; border-radius: 14px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0;">
+            <svg viewBox="0 0 100 100" width="38" height="38" xmlns="http://www.w3.org/2000/svg">
+                <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-weight="800" font-size="62" fill="white">TT</text>
+            </svg>
+        </div>
+        <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">
+            <span style="color: #0f172a;">Trendia</span><span style="color: #ef4444;">TR</span>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
 st.sidebar.markdown("---")
 
 display_mode = st.sidebar.radio(
@@ -166,33 +178,34 @@ if display_mode == "Live (زنده)":
     
     db = get_db_session()
     try:
-        col1, col2 = st.columns([2, 1])
+        # 🌟 فیکس 🌟: حذف ساختار ۲ ستونه و استفاده از عرض کامل برای جدول
+        st.subheader("🔥 ۱۰ ترند داغ اخیر")
+        recent_trends = db.query(Trend).filter(Trend.is_active == True).order_by(desc(Trend.final_tps)).limit(10).all()
         
-        with col1:
-            st.subheader("🔥 ۱۰ ترند داغ اخیر")
-            recent_trends = db.query(Trend).filter(Trend.is_active == True).order_by(desc(Trend.final_tps)).limit(10).all()
+        if recent_trends:
+            df_trends = pd.DataFrame([{
+                "شناسه": t.id,
+                "عنوان": t.title if t.title else "در حال تحلیل AI...",
+                "دسته‌بندی": t.category,
+                "امتیاز TPS": round(t.final_tps, 1),
+                "حجم اخبار": t.message_count,
+                "زمان کشف (First Seen)": t.first_seen.strftime('%Y-%m-%d %H:%M') if t.first_seen else '-',
+                "آخرین آپدیت": t.last_updated.strftime('%H:%M:%S') if t.last_updated else '-'
+            } for t in recent_trends])
             
-            if recent_trends:
-                df_trends = pd.DataFrame([{
-                    "شناسه": t.id,
-                    "عنوان": t.title if t.title else "در حال تحلیل AI...",
-                    "دسته‌بندی": t.category,
-                    "امتیاز TPS": round(t.final_tps, 1),
-                    "حجم اخبار": t.message_count,
-                    "زمان کشف (First Seen)": t.first_seen.strftime('%Y-%m-%d %H:%M') if t.first_seen else '-',
-                    "آخرین آپدیت": t.last_updated.strftime('%H:%M:%S') if t.last_updated else '-'
-                } for t in recent_trends])
-                
-                st.dataframe(df_trends, use_container_width=True, hide_index=True)
-            else:
-                st.warning("هیچ ترندی یافت نشد.")
+            st.dataframe(df_trends, use_container_width=True, hide_index=True)
+        else:
+            st.warning("هیچ ترندی یافت نشد.")
 
-        with col2:
-            st.subheader("📊 توزیع موضوعی")
-            category_counts = db.query(Trend.category, func.count(Trend.id)).group_by(Trend.category).all()
-            if category_counts:
-                df_cats = pd.DataFrame(category_counts, columns=["Category", "Count"]).set_index("Category")
-                st.bar_chart(df_cats, use_container_width=True)
+        st.divider()
+
+        # 🌟 فیکس 🌟: نمایش گراف با عرض کامل و ارتفاع مناسب در زیر جدول
+        st.subheader("📊 توزیع موضوعی")
+        category_counts = db.query(Trend.category, func.count(Trend.id)).group_by(Trend.category).all()
+        if category_counts:
+            df_cats = pd.DataFrame(category_counts, columns=["دسته‌بندی", "تعداد ترندها"]).set_index("دسته‌بندی")
+            # تنظیم height روی 400 از افتادن عناوین روی گراف جلوگیری می‌کند
+            st.bar_chart(df_cats, use_container_width=True, height=400)
                 
     finally:
         db.close()
@@ -203,14 +216,11 @@ elif display_mode == "Replay (بازپخش)":
     
     db = get_db_session()
     try:
-        # 🌟 فیکس 🌟: اضافه شدن desc(Trend.id) برای جلوگیری از مرتب‌سازی تصادفیِ اخباری که TPS برابر دارند
         top_trends = db.query(Trend).filter(Trend.title.isnot(None)).order_by(desc(Trend.final_tps), desc(Trend.id)).limit(20).all()
         
         if top_trends:
-            # 🌟 فیکس 🌟: جداسازی کامل دیتای نمایشی از حافظه Streamlit
             trend_mapping = {t.id: f"{t.title[:90]}... (TPS: {round(t.final_tps, 1)}) [ID: {t.id}]" for t in top_trends}
             
-            # در اینجا استریم‌لیت فقط با ID ثابت کار می‌کند و گمراه نمی‌شود
             selected_trend_id = st.selectbox(
                 "🎯 رویداد مورد نظر را انتخاب کنید:",
                 options=[t.id for t in top_trends],
@@ -253,7 +263,6 @@ elif display_mode == "Replay (بازپخش)":
             with tab3:
                 st.markdown("##### 🕵️ اخبار تشکیل‌دهنده این کلاستر")
                 
-                # دریافت تمام اخبار این ترند و مرتب‌سازی از قدیمی به جدید برای محاسبه زمان
                 raw_news_items = db.query(RawNews).filter(RawNews.trend_id == selected_trend_id).order_by(RawNews.published_at).all()
                 
                 if raw_news_items:
@@ -261,11 +270,9 @@ elif display_mode == "Replay (بازپخش)":
                     discovery_time = selected_trend.first_seen
                     last_update_time = selected_trend.last_updated
                     
-                    # محاسبه اختلاف زمان (به دقیقه)
                     reaction_diff = (discovery_time - earliest_news_time).total_seconds() / 60
                     lifespan_diff = (last_update_time - discovery_time).total_seconds() / 60
                     
-                    # نمایش متریک‌های زمانی برای مقایسه
                     st.info("⏱️ **مقایسه سرعت عملکرد پلتفرم با خبرگزاری‌ها و چرخه عمر خبر:**")
                     time_col1, time_col2, time_col3 = st.columns(3)
                     
@@ -279,9 +286,7 @@ elif display_mode == "Replay (بازپخش)":
                     st.divider()
                     st.markdown(f"**لیست اخبار خام (تعداد {len(raw_news_items)} خبر در این کلاستر):**")
                     
-                    # نمایش لیست اخبار (از جدید به قدیم)
                     for idx, rn in enumerate(reversed(raw_news_items)):
-                        # گرفتن 60 کاراکتر اول خبر برای نمایش در تیتر کشو
                         content_snippet = (rn.content[:60] + "...") if rn.content else "متن خبر خالی است"
                         
                         with st.expander(f"📌 منبع: {rn.source_name} | {content_snippet}"):
