@@ -45,7 +45,7 @@ st.markdown("""
         font-family: 'Vazirmatn', sans-serif;
     }
     
-    /* محافظت قطعی از آیکون‌های متریال استریم‌لیت (رفع باگ نوشته شدن keyboard_arrow) */
+    /* محافظت قطعی از آیکون‌های متریال استریم‌لیت */
     .material-symbols-rounded, 
     .material-icons, 
     [data-testid="stIconMaterial"], 
@@ -78,6 +78,19 @@ st.markdown("""
     }
     .stDataFrame {
         direction: rtl;
+    }
+    
+    /* 🌟 فیکس جدید: چپ‌چین کردن باکس انتخاب خبر و پاپ‌آپ آن (چون تیترها ترکی و لاتین هستند) 🌟 */
+    div[data-baseweb="select"], div[data-baseweb="popover"] {
+        direction: ltr !important;
+        text-align: left !important;
+    }
+    
+    /* لیبل بالای سلکت‌باکس ("رویداد مورد نظر را انتخاب کنید") همچنان راست‌چین بماند */
+    label[data-testid="stWidgetLabel"] {
+        direction: rtl !important;
+        text-align: right !important;
+        width: 100%;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -190,14 +203,20 @@ elif display_mode == "Replay (بازپخش)":
     
     db = get_db_session()
     try:
-        # واکشی ۲۰ ترند برتر برای لیست کشویی تا انتخاب‌های بیشتری برای دمو داشته باشید
-        top_trends = db.query(Trend).filter(Trend.title.isnot(None)).order_by(desc(Trend.final_tps)).limit(20).all()
+        # 🌟 فیکس 🌟: اضافه شدن desc(Trend.id) برای جلوگیری از مرتب‌سازی تصادفیِ اخباری که TPS برابر دارند
+        top_trends = db.query(Trend).filter(Trend.title.isnot(None)).order_by(desc(Trend.final_tps), desc(Trend.id)).limit(20).all()
         
         if top_trends:
-            trend_options = {f"[{t.id}] {t.title[:80]}... (TPS: {round(t.final_tps, 1)})": t.id for t in top_trends}
+            # 🌟 فیکس 🌟: جداسازی کامل دیتای نمایشی از حافظه Streamlit
+            trend_mapping = {t.id: f"{t.title[:90]}... (TPS: {round(t.final_tps, 1)}) [ID: {t.id}]" for t in top_trends}
             
-            selected_trend_label = st.selectbox("🎯 رویداد مورد نظر را انتخاب کنید:", list(trend_options.keys()))
-            selected_trend_id = trend_options[selected_trend_label]
+            # در اینجا استریم‌لیت فقط با ID ثابت کار می‌کند و گمراه نمی‌شود
+            selected_trend_id = st.selectbox(
+                "🎯 رویداد مورد نظر را انتخاب کنید:",
+                options=[t.id for t in top_trends],
+                format_func=lambda x: trend_mapping[x]
+            )
+            
             selected_trend = db.query(Trend).filter(Trend.id == selected_trend_id).first()
             
             st.markdown(f"### {selected_trend.title}")
@@ -260,7 +279,7 @@ elif display_mode == "Replay (بازپخش)":
                     st.divider()
                     st.markdown(f"**لیست اخبار خام (تعداد {len(raw_news_items)} خبر در این کلاستر):**")
                     
-                    # نمایش لیست اخبار (از جدید به قدیم) - همراه با اسنیپت متن برای اطمینان از مرتبط بودن
+                    # نمایش لیست اخبار (از جدید به قدیم)
                     for idx, rn in enumerate(reversed(raw_news_items)):
                         # گرفتن 60 کاراکتر اول خبر برای نمایش در تیتر کشو
                         content_snippet = (rn.content[:60] + "...") if rn.content else "متن خبر خالی است"
