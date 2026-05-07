@@ -259,14 +259,14 @@ elif display_mode == "Replay (بازپخش)":
                 if raw_news_items:
                     earliest_news_time = raw_news_items[0].published_at
                     discovery_time = selected_trend.first_seen
-                    publish_time = selected_trend.last_updated
+                    last_update_time = selected_trend.last_updated
                     
                     # محاسبه اختلاف زمان (به دقیقه)
                     reaction_diff = (discovery_time - earliest_news_time).total_seconds() / 60
-                    publish_diff = (publish_time - discovery_time).total_seconds() / 60
+                    lifespan_diff = (last_update_time - discovery_time).total_seconds() / 60
                     
                     # نمایش متریک‌های زمانی برای مقایسه
-                    st.info("⏱️ **مقایسه سرعت عملکرد پلتفرم با خبرگزاری‌ها:**")
+                    st.info("⏱️ **مقایسه سرعت عملکرد پلتفرم با خبرگزاری‌ها و چرخه عمر خبر:**")
                     time_col1, time_col2, time_col3 = st.columns(3)
                     
                     with time_col1:
@@ -274,7 +274,7 @@ elif display_mode == "Replay (بازپخش)":
                     with time_col2:
                         st.metric("۲. کشف و ساخت کلاستر (AI)", discovery_time.strftime('%H:%M:%S'), delta=f"{int(reaction_diff)} دقیقه فاصله با اولین خبر", delta_color="inverse")
                     with time_col3:
-                        st.metric("۳. انتشار نهایی در پلتفرم", publish_time.strftime('%H:%M:%S'), delta=f"{int(publish_diff)} دقیقه پردازش و خلاصه", delta_color="off")
+                        st.metric("۳. آخرین آپدیت کلاستر", last_update_time.strftime('%H:%M:%S'), delta=f"تداوم جریان خبر: {int(lifespan_diff)} دقیقه", delta_color="off")
                         
                     st.divider()
                     st.markdown(f"**لیست اخبار خام (تعداد {len(raw_news_items)} خبر در این کلاستر):**")
