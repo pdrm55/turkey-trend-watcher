@@ -43,6 +43,9 @@ st.markdown("""
     [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { text-align: right !important; direction: rtl; }
     div[data-baseweb="select"], div[data-baseweb="popover"] { direction: ltr !important; text-align: left !important; }
     label[data-testid="stWidgetLabel"] { direction: rtl !important; text-align: right !important; width: 100%; }
+    
+    /* استایل اختصاصی برای جدا کردن دو نمودار همگام */
+    .stAltairChart { margin-bottom: -15px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -53,7 +56,6 @@ st.markdown("""
 def check_db_connection():
     db = SessionLocal()
     try:
-        # فیلتر یک هفته اخیر برای آمار کلی نیز اعمال می‌شود
         last_week = datetime.now() - timedelta(days=7)
         trends_count = db.query(Trend).filter(Trend.first_seen >= last_week).count()
         raw_news_count = db.query(RawNews).filter(RawNews.created_at >= last_week).count()
@@ -64,7 +66,7 @@ def check_db_connection():
 def get_db_session(): return SessionLocal()
 
 # ==========================================
-# سایدبار (Sidebar) - لوگوی اختصاصی TT
+# سایدبار (Sidebar)
 # ==========================================
 st.sidebar.markdown("""
     <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 25px; direction: ltr;">
@@ -102,29 +104,14 @@ if display_mode == "Live (زنده)":
     db = get_db_session()
     try:
         st.subheader("🔥 ۱۰ ترند داغ (۷ روز گذشته)")
-        recent = db.query(Trend).filter(
-            Trend.is_active == True,
-            Trend.first_seen >= last_week
-        ).order_by(desc(Trend.final_tps)).limit(10).all()
-        
+        recent = db.query(Trend).filter(Trend.is_active == True, Trend.first_seen >= last_week).order_by(desc(Trend.final_tps)).limit(10).all()
         if recent:
-            df = pd.DataFrame([{
-                "شناسه": t.id, 
-                "عنوان": t.title, 
-                "دسته": t.category, 
-                "TPS": round(t.final_tps, 1), 
-                "اخبار": t.message_count, 
-                "کشف": t.first_seen.strftime('%Y-%m-%d %H:%M')
-            } for t in recent])
+            df = pd.DataFrame([{"شناسه": t.id, "عنوان": t.title, "دسته": t.category, "TPS": round(t.final_tps, 1), "اخبار": t.message_count, "کشف": t.first_seen.strftime('%Y-%m-%d %H:%M')} for t in recent])
             st.dataframe(df, use_container_width=True, hide_index=True)
-        else:
-            st.warning("در هفته اخیر ترندی ثبت نشده است.")
+        else: st.warning("در هفته اخیر ترندی ثبت نشده است.")
         
         st.subheader("📊 توزیع موضوعی هفته")
-        cats = db.query(Trend.category, func.count(Trend.id)).filter(
-            Trend.first_seen >= last_week
-        ).group_by(Trend.category).all()
-        
+        cats = db.query(Trend.category, func.count(Trend.id)).filter(Trend.first_seen >= last_week).group_by(Trend.category).all()
         if cats:
             df_cats = pd.DataFrame(cats, columns=["دسته", "تعداد"]).set_index("دسته")
             st.bar_chart(df_cats, use_container_width=True, height=300)
@@ -134,11 +121,7 @@ elif display_mode == "Replay (بازپخش)":
     st.header("⏪ کالبدشکافی هوش مصنوعی (AI Autopsy)")
     db = get_db_session()
     try:
-        # فیلتر ۲۰ ترند برتر از هفته اخیر
-        top_trends = db.query(Trend).filter(
-            Trend.title.isnot(None),
-            Trend.first_seen >= last_week
-        ).order_by(desc(Trend.final_tps), desc(Trend.id)).limit(20).all()
+        top_trends = db.query(Trend).filter(Trend.title.isnot(None), Trend.first_seen >= last_week).order_by(desc(Trend.final_tps), desc(Trend.id)).limit(20).all()
         
         if top_trends:
             trend_mapping = {t.id: f"[{t.first_seen.strftime('%m-%d')}] {t.title[:70]}... (TPS: {round(t.final_tps, 1)})" for t in top_trends}
@@ -153,10 +136,8 @@ elif display_mode == "Replay (بازپخش)":
                 
                 if arrivals:
                     start_replay = st.button("▶️ پخش سناریوی کشف و نوسان TPS", type="primary")
-                    
                     if start_replay:
                         st.info("💡 در حال بازسازی تایم‌لاین ورود اخبار و تغییرات نمره داغ بودن...")
-                        
                         metric_placeholder = st.empty()
                         chart_placeholder = st.empty()
                         tps_chart_placeholder = st.empty()
@@ -177,7 +158,7 @@ elif display_mode == "Replay (بازپخش)":
                             if min_ts == max_ts: max_ts = min_ts + pd.Timedelta(minutes=1)
                             
                             total_arrivals_final = len(arrivals)
-                            max_tps_final = max([s.tps_score for s in score_history] + [trend_obj.final_tps])
+                            max_tps_val = max([s.tps_score for s in score_history] + [trend_obj.final_tps])
                             
                             arrival_count = 0
                             current_tps = 0.0
@@ -201,34 +182,31 @@ elif display_mode == "Replay (بازپخش)":
                                     m2.metric("نمره TPS فعلی", f"{round(current_tps, 1)}", delta=f"{arrival_count} خبر")
                                     m3.metric("قله نمره (Peak)", f"{round(peak_tps, 1)}")
 
+                                # ۱. گراف حجم کلاستر (بالایی)
                                 if not history_df.empty:
                                     c1 = alt.Chart(history_df).mark_line(point=True, color="#3b82f6").encode(
-                                        x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), title='زمان ورود'),
+                                        x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), axis=None), # حذف محور X برای چسبیدن به گراف پایین
                                         y=alt.Y('حجم اخبار:Q', scale=alt.Scale(domain=[0, total_arrivals_final + 1]), title='تعداد سیگنال')
-                                    ).properties(height=200, title="رشد کلاستر خبری")
+                                    ).properties(height=180, title="رشد کلاستر خبری (ورود منابع)")
                                     chart_placeholder.altair_chart(c1, use_container_width=True)
 
+                                # ۲. گراف حرارت TPS (پایینی - کاملاً همگام)
                                 if not tps_df.empty:
-                                    c2 = alt.Chart(tps_df).mark_area(
-                                        line={'color':'#ef4444'},
-                                        color=alt.Gradient(gradient='linear', stops=[alt.GradientStop(color='#ef4444', offset=0), alt.GradientStop(color='white', offset=1)], x1=1, x2=1, y1=1, y2=0)
-                                    ).encode(
-                                        x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), title='زمان'),
-                                        y=alt.Y('نمره TPS:Q', scale=alt.Scale(domain=[0, max_tps_final + 5]), title='امتیاز حرارت')
-                                    ).properties(height=250, title="نوسان حرارت خبر (TPS Real-time)")
+                                    c2 = alt.Chart(tps_df).mark_area(line={'color':'#ef4444'}, color=alt.Gradient(gradient='linear', stops=[alt.GradientStop(color='#ef4444', offset=0), alt.GradientStop(color='white', offset=1)], x1=1, x2=1, y1=1, y2=0)).encode(
+                                        x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), title='تایم‌لاین مشترک رویداد'),
+                                        y=alt.Y('نمره TPS:Q', scale=alt.Scale(domain=[0, max_tps_val + 5]), title='امتیاز حرارت AI')
+                                    ).properties(height=220, title="واکنش هوش مصنوعی (نوسان نمره داغ بودن)")
                                     tps_chart_placeholder.altair_chart(c2, use_container_width=True)
 
-                                log_placeholder.dataframe(pd.DataFrame(sources[:5]), use_container_width=True, hide_index=True)
+                                log_placeholder.dataframe(pd.DataFrame(sources), use_container_width=True, hide_index=True)
                                 time.sleep(0.8)
-
                             st.success(f"✅ بازپخش تمام شد. بالاترین نمره ثبت شده: {round(peak_tps, 1)}")
                     else:
-                        st.info("برای مشاهده سیر تکامل خبر و نوسان نمره هوش مصنوعی، روی دکمه Replay کلیک کنید.")
+                        st.info("برای مشاهده سیر تکامل خبر روی دکمه Replay کلیک کنید.")
                         if score_history:
                             df_static = pd.DataFrame([{"زمان": s.timestamp, "TPS": s.tps_score} for s in score_history])
                             st.line_chart(df_static.set_index("زمان"), use_container_width=True, height=300)
-                else:
-                    st.info("داده‌های ورودی برای این ترند یافت نشد.")
+                else: st.info("داده‌های ورودی یافت نشد.")
 
             with tab2:
                 colA, colB = st.columns([2, 1])
@@ -248,17 +226,20 @@ elif display_mode == "Replay (بازپخش)":
                     t3.metric("آخرین آپدیت کلاستر", trend_obj.last_updated.strftime('%H:%M'), delta=f"عمر ترند: {int(lifespan)} دقیقه", delta_color="off")
                     st.divider()
                     for rn in raw_items:
-                        with st.expander(f"📌 {rn.source_name} | {rn.content[:60]}..."):
-                            st.write(f"**زمان:** {rn.published_at}"); st.write(rn.content)
+                        content_snippet = (rn.content[:60] + "...") if rn.content else "متن خبر خالی است"
+                        with st.expander(f"📌 منبع: :red[{rn.source_name}] | {content_snippet}"):
+                            st.write(f"**زمان انتشار مرجع:** {rn.published_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                            st.markdown("---")
+                            st.write(rn.content)
+                            if rn.external_id: st.caption(f"لینک/آیدی مرجع: {rn.external_id}")
+                else: st.warning("هیچ خبر خامی ثبت نشده است.")
             
             with tab4:
                 drafts = db.query(XDraft).filter(XDraft.trend_id == selected_trend_id).all()
                 if drafts:
                     for d in drafts:
-                        st.markdown(f"**وضعیت:** {d.status} | **نمره در لحظه تولید:** {d.tps_score}")
+                        st.markdown(f"**وضعیت:** {d.status} | **نمره:** {d.tps_score}")
                         st.code(d.long_caption)
                 else: st.warning("پیش‌نویسی یافت نشد.")
-        else:
-            st.warning("هیچ رویداد دارای تیتری در ۷ روز گذشته یافت نشد.")
-
+        else: st.warning("هیچ رویداد دارای تیتری در ۷ روز گذشته یافت نشد.")
     finally: db.close()
