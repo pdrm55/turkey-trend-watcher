@@ -142,7 +142,7 @@ elif display_mode == "Replay (بازپخش)":
     st.header("⏪ کالبدشکافی هوش مصنوعی (AI Autopsy)")
     db = get_db_session()
     try:
-        top_trends = db.query(Trend).filter(Trend.title.isnot(None), Trend.first_seen >= last_week).order_by(desc(Trend.final_tps), desc(Trend.id)).limit(20).all()
+        top_trends = db.query(Trend).filter(Trend.is_active == True, Trend.title.isnot(None), Trend.first_seen >= last_week).order_by(desc(Trend.final_tps), desc(Trend.id)).limit(20).all()
         
         if top_trends:
             trend_mapping = {t.id: f"[{t.first_seen.strftime('%m-%d')}] {t.title[:70]}... (TPS: {round(t.final_tps, 1)})" for t in top_trends}
