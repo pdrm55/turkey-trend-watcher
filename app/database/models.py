@@ -305,7 +305,7 @@ def init_db():
 
             if 'ai_processed_at' not in trend_columns:
                 print("⏱️ Adding 'ai_processed_at' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN ai_processed_at DATETIME"))
+                conn.execute(text("ALTER TABLE trends ADD COLUMN ai_processed_at TIMESTAMP"))
             
             conn.commit()
 
