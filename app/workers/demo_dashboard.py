@@ -6,14 +6,14 @@ import time
 import altair as alt
 from datetime import datetime, timedelta
 
-# اضافه کردن مسیر ریشه پروژه به sys.path
+# اضافه کردن مسیر ریشه پروژه به sys.path برای ایمپورت صحیح ماژول‌های app
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../"))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-# ایمپورت‌های دیتابیس
-from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, TrendScoreHistory
+# ایمپورت‌های دیتابیس (XDraft برای نمایش ربات توییتر اضافه شد)
+from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, TrendScoreHistory, XDraft
 from sqlalchemy import desc, func
 
 # ==========================================
@@ -32,17 +32,69 @@ st.set_page_config(
 st.markdown("""
     <style>
     @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
-    .block-container { direction: rtl; text-align: right; max-width: 90% !important; margin: auto; }
-    html, body, p, h1, h2, h3, h4, h5, h6, label, li, span, div { font-family: 'Vazirmatn', sans-serif; }
-    .material-symbols-rounded, .material-icons, [data-testid="stIconMaterial"], [data-testid="stExpanderToggleIcon"] {
+    
+    /* تنظیمات کانتینر اصلی برای رفع مشکل چسبیدن به لبه‌ها */
+    .block-container {
+        direction: rtl;
+        text-align: right;
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 90% !important; /* ایجاد حاشیه مناسب از کناره‌ها */
+        margin: auto;
+    }
+    
+    /* اعمال فونت روی متون، با اولویت پایین‌تر تا آیکون‌ها خراب نشوند */
+    html, body, [class*="css"], p, h1, h2, h3, h4, h5, h6, label, li, span, div {
+        font-family: 'Vazirmatn', sans-serif;
+    }
+    
+    /* محافظت قطعی از آیکون‌های متریال استریم‌لیت */
+    .material-symbols-rounded, 
+    .material-icons, 
+    [data-testid="stIconMaterial"], 
+    [data-testid="stExpanderToggleIcon"],
+    i {
         font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
         direction: ltr !important;
     }
-    .stTabs [data-baseweb="tab-list"] { justify-content: flex-start; flex-direction: row-reverse; }
-    [data-testid="stExpander"] details summary { flex-direction: row-reverse; text-align: right; }
-    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { text-align: right !important; direction: rtl; }
-    div[data-baseweb="select"], div[data-baseweb="popover"] { direction: ltr !important; text-align: left !important; }
-    label[data-testid="stWidgetLabel"] { direction: rtl !important; text-align: right !important; width: 100%; }
+    
+    /* اصلاح تب‌ها برای نمایش صحیح راست‌به‌چپ */
+    .stTabs [data-baseweb="tab-list"] {
+        justify-content: flex-start;
+        flex-direction: row-reverse;
+    }
+    
+    /* اصلاح دکمه‌های آکاردئون (Expander) */
+    [data-testid="stExpander"] details summary {
+        flex-direction: row-reverse;
+        text-align: right;
+    }
+    
+    [data-testid="stExpander"] details summary svg {
+        margin-left: 0.5rem;
+    }
+    
+    /* راست‌چین کردن متون داخل ویجت‌ها، متریک‌ها و دیتافریم‌ها */
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"], [data-testid="stMetricDelta"] {
+        text-align: right !important;
+        direction: rtl;
+    }
+    .stDataFrame {
+        direction: rtl;
+    }
+    
+    /* فیکس: چپ‌چین کردن باکس انتخاب خبر و پاپ‌آپ آن */
+    div[data-baseweb="select"], div[data-baseweb="popover"] {
+        direction: ltr !important;
+        text-align: left !important;
+    }
+    
+    /* لیبل بالای سلکت‌باکس */
+    label[data-testid="stWidgetLabel"] {
+        direction: rtl !important;
+        text-align: right !important;
+        width: 100%;
+    }
     
     /* استایل اختصاصی برای باکس‌های Chaos و Magic */
     .chaos-box {
@@ -70,85 +122,132 @@ st.markdown("""
 # ==========================================
 @st.cache_resource(ttl=60)
 def check_db_connection():
+    """تست اتصال به دیتابیس و دریافت آمار اولیه"""
     db = SessionLocal()
     try:
         last_week = datetime.now() - timedelta(days=7)
         trends_count = db.query(Trend).filter(Trend.first_seen >= last_week).count()
         raw_news_count = db.query(RawNews).filter(RawNews.created_at >= last_week).count()
         return True, {"trends": trends_count, "raw_news": raw_news_count}
-    except Exception as e: return False, str(e)
-    finally: db.close()
+    except Exception as e:
+        return False, str(e)
+    finally:
+        db.close()
 
-def get_db_session(): return SessionLocal()
+def get_db_session():
+    """ایجاد یک نشست جدید دیتابیس"""
+    return SessionLocal()
 
 # ==========================================
-# سایدبار (Sidebar)
+# سایدبار (Sidebar) - ساختار ناوبری
 # ==========================================
 st.sidebar.markdown("""
     <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 25px; direction: ltr;">
-        <div style="background-color: #ef4444; border-radius: 14px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <div style="background-color: #ef4444; border-radius: 14px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0;">
             <svg viewBox="0 0 100 100" width="38" height="38" xmlns="http://www.w3.org/2000/svg">
                 <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-weight="800" font-size="62" fill="white">TT</text>
             </svg>
         </div>
-        <div style="font-size: 26px; font-weight: 800;"><span style="color: #0f172a;">Trendia</span><span style="color: #ef4444;">TR</span></div>
+        <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">
+            <span style="color: #0f172a;">Trendia</span><span style="color: #ef4444;">TR</span>
+        </div>
     </div>
 """, unsafe_allow_html=True)
 
-display_mode = st.sidebar.radio("انتخاب حالت نمایش:", ["Live (زنده)", "Replay (بازپخش)"])
+st.sidebar.markdown("---")
+
+display_mode = st.sidebar.radio(
+    "انتخاب حالت نمایش:",
+    ["Live (زنده)", "Replay (بازپخش)"],
+    index=0,
+    help="حالت زنده داده‌های فعلی را نشان می‌دهد. حالت بازپخش برای نمایش دمو و عملکرد هوش مصنوعی است."
+)
+
+st.sidebar.markdown("---")
 st.sidebar.info("📅 فیلتر زمانی: ۷ روز اخیر")
 
 # ==========================================
-# بدنه اصلی داشبورد
+# بدنه اصلی داشبورد (Main Body)
 # ==========================================
-st.title("🔥 TrendiaTR - مانیتورینگ هوشمند")
+st.title("🔥 TrendiaTR - داشبورد مانیتورینگ هوشمند")
+
+# ------------------------------------------
+# بخش تست دیتابیس (نمایش وضعیت اتصال)
+# ------------------------------------------
 is_connected, db_data = check_db_connection()
 
 if is_connected:
-    c1, c2, c3 = st.columns(3)
-    c1.metric("ترندهای هفته اخیر", f"{db_data['trends']:,}")
-    c2.metric("اخبار هفته اخیر", f"{db_data['raw_news']:,}")
-    c3.metric("وضعیت موتور", "Active 🟢")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(label="ترندهای هفته اخیر", value=f"{db_data['trends']:,}")
+    with col2:
+        st.metric(label="اخبار هفته اخیر", value=f"{db_data['raw_news']:,}")
+    with col3:
+        st.metric(label="وضعیت موتور پردازش", value="Active 🟢")
 else:
-    st.error(f"خطا در دیتابیس: {db_data}"); st.stop()
+    st.error(f"خطا در اتصال به دیتابیس: {db_data}")
+    st.stop()
 
 st.divider()
 
 last_week = datetime.now() - timedelta(days=7)
 
+# ------------------------------------------
+# منطق سوئیچ بین نماها (Live / Replay)
+# ------------------------------------------
 if display_mode == "Live (زنده)":
+    
     db = get_db_session()
     try:
         st.subheader("🔥 ۱۰ ترند داغ (۷ روز گذشته)")
-        recent = db.query(Trend).filter(Trend.is_active == True, Trend.first_seen >= last_week).order_by(desc(Trend.final_tps)).limit(10).all()
-        if recent:
-            df = pd.DataFrame([{"شناسه": t.id, "عنوان": t.title, "دسته": t.category, "TPS": round(t.final_tps, 1), "اخبار": t.message_count, "کشف": t.first_seen.strftime('%Y-%m-%d %H:%M')} for t in recent])
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        else: st.warning("در هفته اخیر ترندی ثبت نشده است.")
+        recent_trends = db.query(Trend).filter(Trend.is_active == True, Trend.first_seen >= last_week).order_by(desc(Trend.final_tps)).limit(10).all()
         
+        if recent_trends:
+            df_trends = pd.DataFrame([{
+                "شناسه": t.id,
+                "عنوان": t.title if t.title else "در حال تحلیل AI...",
+                "دسته‌بندی": t.category,
+                "امتیاز TPS": round(t.final_tps, 1),
+                "حجم اخبار": t.message_count,
+                "زمان کشف (First Seen)": t.first_seen.strftime('%Y-%m-%d %H:%M') if t.first_seen else '-'
+            } for t in recent_trends])
+            
+            st.dataframe(df_trends, use_container_width=True, hide_index=True)
+        else:
+            st.warning("در هفته اخیر ترندی ثبت نشده است.")
+
         st.subheader("📊 توزیع موضوعی هفته")
-        cats = db.query(Trend.category, func.count(Trend.id)).filter(Trend.first_seen >= last_week).group_by(Trend.category).all()
-        if cats:
-            df_cats = pd.DataFrame(cats, columns=["دسته", "تعداد"])
+        category_counts = db.query(Trend.category, func.count(Trend.id)).filter(Trend.first_seen >= last_week).group_by(Trend.category).all()
+        if category_counts:
+            df_cats = pd.DataFrame(category_counts, columns=["دسته‌بندی", "تعداد ترندها"])
             bar_chart = alt.Chart(df_cats).mark_bar(color="#0f172a", cornerRadiusTopLeft=8, cornerRadiusTopRight=8).encode(
-                x=alt.X('دسته:N', title='دسته‌بندی موضوعی', axis=alt.Axis(labelAngle=0, labelPadding=10)),
-                y=alt.Y('تعداد:Q', title='تعداد رویدادها'),
-                tooltip=['دسته', 'تعداد']
+                x=alt.X('دسته‌بندی:N', title='دسته‌بندی موضوعی', axis=alt.Axis(labelAngle=0, labelPadding=10)),
+                y=alt.Y('تعداد ترندها:Q', title='تعداد رویدادها'),
+                tooltip=['دسته‌بندی', 'تعداد ترندها']
             ).properties(height=350)
             st.altair_chart(bar_chart, use_container_width=True)
-    finally: db.close()
+                
+    finally:
+        db.close()
 
 elif display_mode == "Replay (بازپخش)":
     st.header("⏪ کالبدشکافی هوش مصنوعی (AI Autopsy)")
+    
     db = get_db_session()
     try:
         top_trends = db.query(Trend).filter(Trend.is_active == True, Trend.title.isnot(None), Trend.first_seen >= last_week).order_by(desc(Trend.final_tps), desc(Trend.id)).limit(20).all()
         
         if top_trends:
             trend_mapping = {t.id: f"[{t.first_seen.strftime('%m-%d')}] {t.title[:70]}... (TPS: {round(t.final_tps, 1)})" for t in top_trends}
-            selected_trend_id = st.selectbox("🎯 رویداد مورد نظر را انتخاب کنید:", options=[t.id for t in top_trends], format_func=lambda x: trend_mapping[x])
+            
+            selected_trend_id = st.selectbox(
+                "🎯 رویداد مورد نظر را انتخاب کنید:",
+                options=[t.id for t in top_trends],
+                format_func=lambda x: trend_mapping[x]
+            )
+            
             trend_obj = db.query(Trend).get(selected_trend_id)
-
+            
             tab1, tab2 = st.tabs(["📈 گراف شتاب و نوسان (Live TPS)", "⚖️ میز جادویی: مقایسه هوشمند (AI Magic)"])
             
             with tab1:
@@ -158,6 +257,7 @@ elif display_mode == "Replay (بازپخش)":
                 if arrivals:
                     start_replay = st.button("▶️ پخش سناریوی کشف و نوسان TPS", type="primary")
                     if start_replay:
+                        st.info("💡 در حال بازسازی تایم‌لاین ورود اخبار و تغییرات نمره داغ بودن...")
                         metric_placeholder = st.empty()
                         chart_placeholder = st.empty()
                         tps_chart_placeholder = st.empty()
@@ -172,62 +272,71 @@ elif display_mode == "Replay (بازپخش)":
                         for s in score_history: timeline_events.append({'time': s.timestamp, 'type': 'score', 'data': s.tps_score})
                         timeline_events.sort(key=lambda x: x['time'])
 
-                        min_ts = timeline_events[0]['time']
-                        max_ts = timeline_events[-1]['time']
-                        if min_ts == max_ts: max_ts = min_ts + pd.Timedelta(minutes=1)
-                        total_arrivals_final = len(arrivals)
-                        all_scores = [s.tps_score for s in score_history] + [trend_obj.final_tps]
-                        max_tps_val = max(all_scores) if all_scores else 100.0
-                        
-                        arrival_count = 0
-                        current_tps = 0.0
-                        peak_tps = 0.0
-                        
-                        # رهگیری زمان آخرین خبر ورودی
-                        latest_arrival_time = trend_obj.first_seen
+                        if timeline_events:
+                            min_ts = timeline_events[0]['time']
+                            max_ts = timeline_events[-1]['time']
+                            if min_ts == max_ts: max_ts = min_ts + pd.Timedelta(minutes=1)
+                            
+                            total_arrivals_final = len(arrivals)
+                            all_scores = [s.tps_score for s in score_history] + [trend_obj.final_tps]
+                            max_tps_val = max(all_scores) if all_scores else 100.0
+                            if max_tps_val < 10.0: max_tps_val = 100.0 
 
-                        for event in timeline_events:
-                            if event['type'] == 'arrival':
-                                arrival_count += 1
-                                latest_arrival_time = event['time']
-                                sources.insert(0, {"زمان": event['time'].strftime('%H:%M:%S'), "منبع": event['data'] or "سیستم"})
-                                new_row = pd.DataFrame({"زمان": [event['time']], "حجم اخبار": [arrival_count]})
-                                history_df = pd.concat([history_df, new_row])
-                            else:
-                                current_tps = event['data']
-                                if current_tps > peak_tps: peak_tps = current_tps
-                                new_score = pd.DataFrame({"زمان": [event['time']], "نمره TPS": [current_tps]})
-                                tps_df = pd.concat([tps_df, new_score])
+                            arrival_count = 0
+                            current_tps = 0.0
+                            peak_tps = 0.0
+                            
+                            latest_arrival_time = trend_obj.first_seen
 
-                            # محاسبه فاصله زمانی آخرین خبر تا زمان تشکیل کلاستر
-                            diff_seconds = (latest_arrival_time - trend_obj.first_seen).total_seconds()
-                            diff_minutes = max(0, int(diff_seconds / 60))
+                            for event in timeline_events:
+                                if event['type'] == 'arrival':
+                                    arrival_count += 1
+                                    latest_arrival_time = event['time']
+                                    sources.insert(0, {"زمان": event['time'].strftime('%H:%M:%S'), "منبع": event['data'] or "سیستم"})
+                                    new_row = pd.DataFrame({"زمان": [event['time']], "حجم اخبار": [arrival_count]})
+                                    history_df = pd.concat([history_df, new_row])
+                                else:
+                                    current_tps = event['data']
+                                    if current_tps > peak_tps: peak_tps = current_tps
+                                    new_score = pd.DataFrame({"زمان": [event['time']], "نمره TPS": [current_tps]})
+                                    tps_df = pd.concat([tps_df, new_score])
 
-                            with metric_placeholder.container():
-                                m1, m2, m3, m4 = st.columns(4)
-                                m1.metric("زمان ایجاد کلاستر", trend_obj.first_seen.strftime('%H:%M:%S'))
-                                m2.metric("فاصله با آخرین خبر", f"{diff_minutes} دقیقه")
-                                m3.metric("نمره TPS فعلی", f"{round(current_tps, 1)}", delta=f"{arrival_count} خبر")
-                                m4.metric("قله نمره (Peak)", f"{round(peak_tps, 1)}")
+                                diff_seconds = (latest_arrival_time - trend_obj.first_seen).total_seconds()
+                                diff_minutes = max(0, int(diff_seconds / 60))
 
-                            if not history_df.empty:
-                                c1 = alt.Chart(history_df).mark_line(point=True, color="#3b82f6").encode(
-                                    x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), axis=alt.Axis(labels=False, title=None)),
-                                    y=alt.Y('حجم اخبار:Q', scale=alt.Scale(domain=[0, total_arrivals_final + 1]), title='تعداد سیگنال')
-                                ).properties(height=180)
-                                chart_placeholder.altair_chart(c1, use_container_width=True)
+                                with metric_placeholder.container():
+                                    m1, m2, m3, m4 = st.columns(4)
+                                    m1.metric("زمان ایجاد کلاستر", trend_obj.first_seen.strftime('%H:%M:%S'))
+                                    m2.metric("فاصله با آخرین خبر", f"{diff_minutes} دقیقه")
+                                    m3.metric("نمره TPS فعلی", f"{round(current_tps, 1)}", delta=f"{arrival_count} خبر")
+                                    m4.metric("قله نمره (Peak)", f"{round(peak_tps, 1)}")
 
-                            if not tps_df.empty:
-                                c2 = alt.Chart(tps_df).mark_area(line={'color':'#ef4444'}, color=alt.Gradient(gradient='linear', stops=[alt.GradientStop(color='#ef4444', offset=0), alt.GradientStop(color='white', offset=1)], x1=1, x2=1, y1=1, y2=0)).encode(
-                                    x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), title='تایم‌لاین رویداد'),
-                                    y=alt.Y('نمره TPS:Q', scale=alt.Scale(domain=[0, max_tps_val + 5]), title='امتیاز حرارت AI')
-                                ).properties(height=220)
-                                tps_chart_placeholder.altair_chart(c2, use_container_width=True)
+                                if not history_df.empty:
+                                    c1 = alt.Chart(history_df).mark_line(point=True, color="#3b82f6").encode(
+                                        x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), 
+                                                axis=alt.Axis(labels=False, title=None, ticks=True)),
+                                        y=alt.Y('حجم اخبار:Q', scale=alt.Scale(domain=[0, total_arrivals_final + 1]), title='تعداد سیگنال')
+                                    ).properties(height=180, title="رشد کلاستر خبری (ورود منابع)")
+                                    chart_placeholder.altair_chart(c1, use_container_width=True)
 
-                            log_placeholder.dataframe(pd.DataFrame(sources), use_container_width=True, hide_index=True)
-                            time.sleep(0.8)
+                                if not tps_df.empty:
+                                    c2 = alt.Chart(tps_df).mark_area(line={'color':'#ef4444'}, 
+                                                                    color=alt.Gradient(gradient='linear', stops=[alt.GradientStop(color='#ef4444', offset=0), alt.GradientStop(color='white', offset=1)], x1=1, x2=1, y1=1, y2=0)).encode(
+                                        x=alt.X('زمان:T', scale=alt.Scale(domain=[min_ts.isoformat(), max_ts.isoformat()]), title='تایم‌لاین مشترک رویداد'),
+                                        y=alt.Y('نمره TPS:Q', scale=alt.Scale(domain=[0, max_tps_val + 5]), title='امتیاز حرارت AI')
+                                    ).properties(height=220, title="واکنش هوش مصنوعی (نوسان نمره داغ بودن)")
+                                    tps_chart_placeholder.altair_chart(c2, use_container_width=True)
+
+                                log_placeholder.dataframe(pd.DataFrame(sources), use_container_width=True, hide_index=True)
+                                time.sleep(0.8)
+                            st.success(f"✅ بازپخش تمام شد. بالاترین نمره ثبت شده: {round(peak_tps, 1)}")
                     else:
                         st.info("برای مشاهده سیر تکامل خبر روی دکمه Replay کلیک کنید.")
+                        if score_history:
+                            df_static = pd.DataFrame([{"زمان": s.timestamp, "TPS": s.tps_score} for s in score_history])
+                            st.line_chart(df_static.set_index("زمان"), use_container_width=True, height=300)
+                        else:
+                            st.warning("هنوز دیتای تاریخچه TPS برای این ترند ثبت نشده است.")
                 else: st.info("داده‌های ورودی یافت نشد.")
 
             with tab2:
@@ -261,16 +370,31 @@ elif display_mode == "Replay (بازپخش)":
                     st.markdown("##### ✨ خروجی هوشمند (AI Magic)")
                     st.markdown(f'<div class="magic-title">📰 {trend_obj.title}</div>', unsafe_allow_html=True)
                     
-                    # اضافه کردن لینک مستقیم به سایت لایو
+                    # لینک سایت و زمان پردازش AI در یک ردیف (نمایش در کنار هم)
+                    action_html = '<div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">'
+                    
                     if trend_obj.slug:
                         trend_url = f"https://trendiatr.com/trend/{trend_obj.slug}"
-                        st.markdown(f'''
+                        action_html += f'''
                             <a href="{trend_url}" target="_blank" style="text-decoration: none;">
-                                <div style="background-color: #ef4444; color: white; padding: 8px 15px; border-radius: 8px; display: inline-flex; align-items: center; gap: 8px; font-weight: bold; font-size: 0.9rem; margin-bottom: 15px; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.4);">
-                                    🌐 مشاهده این خبر در سایت TrendiaTR
+                                <div style="background-color: #ef4444; color: white; padding: 8px 15px; border-radius: 8px; display: inline-flex; align-items: center; gap: 8px; font-weight: bold; font-size: 0.9rem; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.4);">
+                                    🌐 مشاهده در سایت
                                 </div>
                             </a>
-                        ''', unsafe_allow_html=True)
+                        '''
+                        
+                    # بررسی وجود فیلد ai_processed_at با getattr برای جلوگیری از خطا
+                    ai_time = getattr(trend_obj, 'ai_processed_at', None)
+                    if ai_time:
+                        diff_seconds = max(1, int((ai_time - trend_obj.first_seen).total_seconds()))
+                        action_html += f'''
+                            <div style="background-color: #f0fdf4; color: #166534; padding: 8px 15px; border-radius: 8px; display: inline-flex; align-items: center; gap: 8px; font-weight: bold; font-size: 0.9rem; border: 1px solid #bbf7d0;">
+                                ⚡ زمان ایجاد خلاصه: {diff_seconds} ثانیه
+                            </div>
+                        '''
+                        
+                    action_html += '</div>'
+                    st.markdown(action_html, unsafe_allow_html=True)
 
                     st.success(trend_obj.summary or "تحلیل موجود نیست.")
                     
@@ -297,21 +421,18 @@ elif display_mode == "Replay (بازپخش)":
                     st.divider()
                     if raw_items:
                         reaction_mins = int((trend_obj.first_seen - raw_items[-1].published_at).total_seconds() / 60)
-                        st.metric("⏱️ سرعت واکنش سیستم", f"{reaction_mins} دقیقه", "پس از اولین سیگنال")
+                        st.metric("⏱️ سرعت کشف رویداد", f"{reaction_mins} دقیقه", "فاصله انتشار تا کشف توسط ترندیا")
 
                     st.divider()
                     
                     # 🌟 بخش جدید: قلاب فروش B2B (Social & API Push) 🌟
                     st.markdown("##### 📱 اتوماسیون شبکه‌های اجتماعی (Zero-Click)")
                     
-                    # تولید محتوای شبیه‌سازی شده برای توییتر
                     tweet_content = trend_obj.summary[:180] + "..." if trend_obj.summary else "خلاصه خبر برای انتشار آماده نیست."
                     hashtags_twitter = ""
                     if trend_obj.tags:
-                        # گرفتن نهایتاً 4 تگ اول برای شبیه‌سازی توییتر
                         hashtags_twitter = " ".join([f"#{t}" for t in trend_obj.tags[:4]])
                         
-                    # رسم باکس گرافیکی شبیه‌ساز توییتر (X)
                     st.markdown(f"""
                         <div style="background-color: #15202b; color: #ffffff; padding: 18px; border-radius: 16px; border: 1px solid #38444d; margin-top: 15px; margin-bottom: 25px; direction: rtl; text-align: right; font-family: sans-serif;">
                             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
@@ -336,15 +457,14 @@ elif display_mode == "Replay (بازپخش)":
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # دکمه بزرگ B2B Push به CMS
                     st.markdown("<br>", unsafe_allow_html=True)
                     
-                    # در پرزنت واقعی، کلیک روی این دکمه این حس را می‌دهد که دیتا واقعاً منتقل می‌شود
                     if st.button("🚀 ارسال مستقیم به CMS خبرگزاری (API Push)", type="primary", use_container_width=True):
                         with st.spinner("⏳ در حال برقراری ارتباط با Webhook تحریریه و انتقال پکیج خبری..."):
-                            time.sleep(2) # شبیه‌سازی تاخیر ارسال شبکه
+                            time.sleep(2)
                         
                         st.toast(f"✅ پکیج خبری «{trend_obj.title}» با موفقیت به سیستم وردپرس ارسال شد!", icon="🚀")
                         st.balloons()
 
-    finally: db.close()
+    finally:
+        db.close()
