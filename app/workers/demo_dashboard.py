@@ -261,6 +261,17 @@ elif display_mode == "Replay (بازپخش)":
                     st.markdown("##### ✨ خروجی هوشمند (AI Magic)")
                     st.markdown(f'<div class="magic-title">📰 {trend_obj.title}</div>', unsafe_allow_html=True)
                     
+                    # اضافه کردن لینک مستقیم به سایت لایو
+                    if trend_obj.slug:
+                        trend_url = f"https://trendiatr.com/trend/{trend_obj.slug}"
+                        st.markdown(f'''
+                            <a href="{trend_url}" target="_blank" style="text-decoration: none;">
+                                <div style="background-color: #ef4444; color: white; padding: 8px 15px; border-radius: 8px; display: inline-flex; align-items: center; gap: 8px; font-weight: bold; font-size: 0.9rem; margin-bottom: 15px; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.4);">
+                                    🌐 مشاهده این خبر در سایت TrendiaTR
+                                </div>
+                            </a>
+                        ''', unsafe_allow_html=True)
+
                     st.success(trend_obj.summary or "تحلیل موجود نیست.")
                     
                     if trend_obj.entities:
