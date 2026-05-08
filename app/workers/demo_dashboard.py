@@ -299,4 +299,52 @@ elif display_mode == "Replay (بازپخش)":
                         reaction_mins = int((trend_obj.first_seen - raw_items[-1].published_at).total_seconds() / 60)
                         st.metric("⏱️ سرعت واکنش سیستم", f"{reaction_mins} دقیقه", "پس از اولین سیگنال")
 
+                    st.divider()
+                    
+                    # 🌟 بخش جدید: قلاب فروش B2B (Social & API Push) 🌟
+                    st.markdown("##### 📱 اتوماسیون شبکه‌های اجتماعی (Zero-Click)")
+                    
+                    # تولید محتوای شبیه‌سازی شده برای توییتر
+                    tweet_content = trend_obj.summary[:180] + "..." if trend_obj.summary else "خلاصه خبر برای انتشار آماده نیست."
+                    hashtags_twitter = ""
+                    if trend_obj.tags:
+                        # گرفتن نهایتاً 4 تگ اول برای شبیه‌سازی توییتر
+                        hashtags_twitter = " ".join([f"#{t}" for t in trend_obj.tags[:4]])
+                        
+                    # رسم باکس گرافیکی شبیه‌ساز توییتر (X)
+                    st.markdown(f"""
+                        <div style="background-color: #15202b; color: #ffffff; padding: 18px; border-radius: 16px; border: 1px solid #38444d; margin-top: 15px; margin-bottom: 25px; direction: rtl; text-align: right; font-family: sans-serif;">
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                <div style="background-color: #ef4444; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 1.2rem;">TT</div>
+                                <div style="display: flex; flex-direction: column;">
+                                    <div style="font-weight: 700; font-size: 1rem; color: white; display: flex; align-items: center; gap: 4px;">Trendia Desk <span style="color: #1d9bf0; font-size: 1.1rem;">☑️</span></div>
+                                    <div style="color: #8b98a5; font-size: 0.85rem; text-align: left; direction: ltr;">@TrendiaTR</div>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.95rem; line-height: 1.6; margin-bottom: 12px; color: #e7e9ea; font-family: 'Vazirmatn', sans-serif;">
+                                {tweet_content}
+                            </div>
+                            <div style="color: #1d9bf0; font-size: 0.9rem; margin-bottom: 16px;">
+                                {hashtags_twitter}
+                            </div>
+                            <div style="display: flex; justify-content: space-between; color: #8b98a5; font-size: 0.85rem; padding-top: 12px; border-top: 1px solid #38444d; direction: ltr;">
+                                <span style="cursor: pointer;">💬 24</span>
+                                <span style="cursor: pointer;">🔁 89</span>
+                                <span style="cursor: pointer; color: #f91880;">❤️ 312</span>
+                                <span style="cursor: pointer;">📊 4.5K</span>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # دکمه بزرگ B2B Push به CMS
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    # در پرزنت واقعی، کلیک روی این دکمه این حس را می‌دهد که دیتا واقعاً منتقل می‌شود
+                    if st.button("🚀 ارسال مستقیم به CMS خبرگزاری (API Push)", type="primary", use_container_width=True):
+                        with st.spinner("⏳ در حال برقراری ارتباط با Webhook تحریریه و انتقال پکیج خبری..."):
+                            time.sleep(2) # شبیه‌سازی تاخیر ارسال شبکه
+                        
+                        st.toast(f"✅ پکیج خبری «{trend_obj.title}» با موفقیت به سیستم وردپرس ارسال شد!", icon="🚀")
+                        st.balloons()
+
     finally: db.close()
