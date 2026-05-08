@@ -81,6 +81,7 @@ class Trend(Base):
 
     first_seen = Column(DateTime, default=utc_now)
     last_updated = Column(DateTime, default=utc_now)
+    ai_processed_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     cover_image = Column(String(255), nullable=True)
     video_path = Column(String(500), nullable=True)
@@ -301,6 +302,10 @@ def init_db():
                 print("𝕏 Adding 'has_social_signal' column to 'trends'...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN has_social_signal BOOLEAN DEFAULT FALSE"))
                 conn.execute(text("CREATE INDEX idx_trends_social ON trends (has_social_signal)"))
+
+            if 'ai_processed_at' not in trend_columns:
+                print("⏱️ Adding 'ai_processed_at' column to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN ai_processed_at DATETIME"))
             
             conn.commit()
 

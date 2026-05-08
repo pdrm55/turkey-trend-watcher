@@ -494,6 +494,9 @@ def process_pending_trends():
                     if not trend.slug:
                         trend.slug = generate_unique_slug(db, trend.title, trend.id)
                     
+                    if not trend.ai_processed_at:
+                        trend.ai_processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    
                     trend.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
                     trend.last_summary_msg_count = trend.message_count
 
