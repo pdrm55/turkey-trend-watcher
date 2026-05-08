@@ -60,6 +60,8 @@ st.markdown("""
         padding-bottom: 10px;
         margin-bottom: 20px;
     }
+    /* فاصله مناسب بین دو نمودار عمودی */
+    .stAltairChart { margin-bottom: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -150,7 +152,6 @@ elif display_mode == "Replay (بازپخش)":
             tab1, tab2 = st.tabs(["📈 گراف شتاب و نوسان (Live TPS)", "⚖️ میز جادویی: مقایسه هوشمند (AI Magic)"])
             
             with tab1:
-                # منطق بازپخش (Replay Engine) - ثابت ماند
                 arrivals = db.query(TrendArrivals, RawNews.source_name).outerjoin(RawNews).filter(TrendArrivals.trend_id == selected_trend_id).order_by(TrendArrivals.timestamp).all()
                 score_history = db.query(TrendScoreHistory).filter(TrendScoreHistory.trend_id == selected_trend_id).order_by(TrendScoreHistory.timestamp).all()
                 
@@ -181,10 +182,14 @@ elif display_mode == "Replay (بازپخش)":
                         arrival_count = 0
                         current_tps = 0.0
                         peak_tps = 0.0
+                        
+                        # رهگیری زمان آخرین خبر ورودی
+                        latest_arrival_time = trend_obj.first_seen
 
                         for event in timeline_events:
                             if event['type'] == 'arrival':
                                 arrival_count += 1
+                                latest_arrival_time = event['time']
                                 sources.insert(0, {"زمان": event['time'].strftime('%H:%M:%S'), "منبع": event['data'] or "سیستم"})
                                 new_row = pd.DataFrame({"زمان": [event['time']], "حجم اخبار": [arrival_count]})
                                 history_df = pd.concat([history_df, new_row])
@@ -194,11 +199,16 @@ elif display_mode == "Replay (بازپخش)":
                                 new_score = pd.DataFrame({"زمان": [event['time']], "نمره TPS": [current_tps]})
                                 tps_df = pd.concat([tps_df, new_score])
 
+                            # محاسبه فاصله زمانی آخرین خبر تا زمان تشکیل کلاستر
+                            diff_seconds = (latest_arrival_time - trend_obj.first_seen).total_seconds()
+                            diff_minutes = max(0, int(diff_seconds / 60))
+
                             with metric_placeholder.container():
-                                m1, m2, m3 = st.columns(3)
-                                m1.metric("زمان رویداد", event['time'].strftime('%H:%M:%S'))
-                                m2.metric("نمره TPS فعلی", f"{round(current_tps, 1)}", delta=f"{arrival_count} خبر")
-                                m3.metric("قله نمره (Peak)", f"{round(peak_tps, 1)}")
+                                m1, m2, m3, m4 = st.columns(4)
+                                m1.metric("زمان ایجاد کلاستر", trend_obj.first_seen.strftime('%H:%M:%S'))
+                                m2.metric("فاصله با آخرین خبر", f"{diff_minutes} دقیقه")
+                                m3.metric("نمره TPS فعلی", f"{round(current_tps, 1)}", delta=f"{arrival_count} خبر")
+                                m4.metric("قله نمره (Peak)", f"{round(peak_tps, 1)}")
 
                             if not history_df.empty:
                                 c1 = alt.Chart(history_df).mark_line(point=True, color="#3b82f6").encode(
@@ -229,7 +239,7 @@ elif display_mode == "Replay (بازپخش)":
                     </div>
                 """, unsafe_allow_html=True)
                 
-                col_ai, col_raw = st.columns(2) # چیدمان دو ستونه (سمت چپ AI - سمت راست Raw)
+                col_ai, col_raw = st.columns(2)
                 
                 with col_raw:
                     st.markdown("##### 🌪️ آشفتگی خبرگزاری‌ها (Chaos)")
@@ -237,7 +247,6 @@ elif display_mode == "Replay (بازپخش)":
                     
                     if raw_items:
                         for rn in raw_items:
-                            # نمایش ۳ خط اول به صورت اسنیپت
                             snippet = (rn.content[:150] + "...") if rn.content else "بدون محتوا"
                             st.markdown(f"""
                                 <div class="chaos-box">
@@ -250,13 +259,10 @@ elif display_mode == "Replay (بازپخش)":
 
                 with col_ai:
                     st.markdown("##### ✨ خروجی هوشمند (AI Magic)")
-                    # نمایش تیتر چتری (Umbrella Title)
                     st.markdown(f'<div class="magic-title">📰 {trend_obj.title}</div>', unsafe_allow_html=True)
                     
-                    # نمایش خلاصه نهایی در باکس زیبا
                     st.success(trend_obj.summary or "تحلیل موجود نیست.")
                     
-                    # نمایش موجودیت‌ها و تگ‌ها
                     if trend_obj.entities:
                         st.markdown("**🧩 موجودیت‌های کلیدی استخراج شده:**")
                         ents = trend_obj.entities
@@ -277,7 +283,6 @@ elif display_mode == "Replay (بازپخش)":
                         tags_html = "".join([f'<span style="background-color: #fee2e2; color: #dc2626; padding: 2px 8px; border-radius: 5px; margin-left: 5px; font-size: 0.8rem;">#{tag}</span>' for tag in trend_obj.tags])
                         st.markdown(tags_html, unsafe_allow_html=True)
                     
-                    # مقایسه زمان واکنش (Reaction Time) به عنوان مهر تایید قدرت
                     st.divider()
                     if raw_items:
                         reaction_mins = int((trend_obj.first_seen - raw_items[-1].published_at).total_seconds() / 60)
