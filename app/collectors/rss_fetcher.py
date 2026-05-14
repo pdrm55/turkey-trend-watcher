@@ -157,8 +157,20 @@ def fetch_and_process_rss():
                         needs_scoring=True # ASYNC TRIGGER: در صف امتیازدهی قرار گرفت
                     )
                     db.add(trend)
-                    db.flush()
-                    new_trends_count += 1
+                    try:
+                        db.flush()
+                        new_trends_count += 1
+                    except Exception:
+                        # Race condition: session state after rollback caused a missed lookup.
+                        # The trend already exists in DB — fetch and update it instead.
+                        db.rollback()
+                        trend = db.query(Trend).filter(Trend.cluster_id == cluster_id).first()
+                        if not trend:
+                            continue
+                        trend.message_count += 1
+                        trend.last_updated = max(trend.last_updated, actual_pub_time)
+                        trend.needs_scoring = True
+                        signal_updates_count += 1
                 
                 # --- Step 3: Raw Data and Reliability ---
                 source_tier = get_source_tier(source_name)
