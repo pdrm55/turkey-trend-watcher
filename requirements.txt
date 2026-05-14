@@ -36,4 +36,4 @@ psutil==6.0.0
 docker==7.1.0
 
 # --- UI / Dashboard ---
-streamlit==1.43.2
+streamlit==1.53.1
