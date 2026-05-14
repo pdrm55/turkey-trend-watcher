@@ -64,7 +64,7 @@ services:
     ports: ["5000:5000"]
     networks: ["ttw_network"]
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
-    command: gunicorn --workers 6 --bind 0.0.0.0:5000 --timeout 120 --access-logfile - web_server:app
+    command: gunicorn --workers 4 --preload --bind 0.0.0.0:5000 --timeout 120 --access-logfile - web_server:app
 
   dashboard:
     build: .
@@ -195,6 +195,19 @@ services:
       - ttw_network
     restart: always
     command: python3 app/workers/telegram_bot_worker.py
+
+  merge_worker:
+    build: .
+    container_name: ttw_merge
+    profiles: ["workers"]
+    depends_on:
+      db_init: { condition: service_completed_successfully }
+    volumes: [".:/app"]
+    env_file: [".env"]
+    networks: ["ttw_network"]
+    restart: always
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: python3 app/workers/merge_worker.py
 
 volumes:
   postgres_data:

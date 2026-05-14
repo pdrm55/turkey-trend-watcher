@@ -1,13 +1,10 @@
 import math
 import logging
 import json
-import os
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import func
 from app.database.models import Trend, RawNews, TrendArrivals, TrendScoreHistory
 from app.core.ai_engine import ai_engine
 from app.core.text_utils import normalize_turkish, JUNK_KEYWORDS
-from app.core.alert_service import alert_service
 from app.config import Config
 from app.core.http_resilience import request_with_retry
 from app.core.observability import traced_span, emit_metric
@@ -187,7 +184,7 @@ class TPSCalculator:
         مقایسه بردار خبر با پایگاه داده برداری برای تشخیص تکراری بودن.
         """
         try:
-            vector = ai_engine.get_embedding(text)
+            vector = ai_engine.get_embedding(text, is_query=True)
             # جستجو در ChromaDB برای یافتن نزدیک‌ترین شباهت
             results = ai_engine.collection.query(
                 query_embeddings=[vector],

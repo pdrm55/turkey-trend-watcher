@@ -55,9 +55,9 @@ class AIEngine:
                 port=int(CHROMA_PORT),
                 settings=Settings(anonymized_telemetry=False, allow_reset=True)
             )
-            # Create or get collection with cosine space
+            # v2: new collection for multilingual-e5-large (1024-dim, incompatible with old 384-dim)
             self.collection = self.chroma_client.get_or_create_collection(
-                name="news_clusters",
+                name="news_clusters_v2",
                 metadata={"hnsw:space": "cosine"}
             )
             print(f"✅ AI Engine Phase 3 Ready. Rolling Cache: Numeric Timestamps.", flush=True)
@@ -67,15 +67,19 @@ class AIEngine:
         self.fast_dedup_ttl = max(10, getattr(Config, "AI_FAST_DEDUP_TTL_SECONDS", 180))
         self.fast_dedup_cache = {}
 
-    def get_embedding(self, text: str):
-        """Convert text to numerical vector (Embedding)"""
+    def get_embedding(self, text: str, is_query: bool = False):
+        """Convert text to numerical vector using multilingual-e5-large.
+        Prefix strategy: 'query: ' for search lookups, 'passage: ' for indexed documents.
+        """
         try:
             if self.model is None:
-                print("🧠 Loading Multilingual Embedding Model (Lazy Load)...", flush=True)
-                self.model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device='cpu')
+                print("🧠 Loading multilingual-e5-large (Lazy Load)...", flush=True)
+                self.model = SentenceTransformer('intfloat/multilingual-e5-large', device='cpu')
 
-            if not isinstance(text, str): text = str(text)
-            vector = self.model.encode(text, convert_to_numpy=True).tolist()
+            if not isinstance(text, str):
+                text = str(text)
+            prefix = "query: " if is_query else "passage: "
+            vector = self.model.encode(prefix + text, convert_to_numpy=True).tolist()
             return vector
         except Exception as e:
             logger.error(f"Embedding Error: {e}")
@@ -243,19 +247,20 @@ class AIEngine:
         if cache_entry and cache_entry["expires_at"] > now_ts:
             return cache_entry["cluster_id"], True
 
-        vector = self.get_embedding(cleaned_text)
-        
+        # Two vectors: passage for storage, query for search (e5-large prefix strategy)
+        passage_vector = self.get_embedding(cleaned_text, is_query=False)
+        query_vector = self.get_embedding(cleaned_text, is_query=True)
+
         # --- FIXED Phase 3: Rolling Cache (Numeric Unix Timestamp) ---
-        # Current time as Unix timestamp (Float)
         # Filter: only check clusters from the last 48 hours
         time_threshold_ts = (datetime.now() - timedelta(hours=48)).timestamp()
-        
+
         try:
             # Vector query with numeric metadata filtering
             results = self.collection.query(
-                query_embeddings=[vector],
-                n_results=5,
-                where={"timestamp": {"$gte": time_threshold_ts}}, # Numeric comparison fixed
+                query_embeddings=[query_vector],
+                n_results=12,
+                where={"timestamp": {"$gte": time_threshold_ts}},
                 include=["metadatas", "distances", "documents"]
             )
         except Exception as e:
@@ -268,8 +273,8 @@ class AIEngine:
 
         if results['distances'] and results['distances'][0]:
             for i, distance in enumerate(results['distances'][0]):
-                # Cosine distance threshold (0.0 is exact match, 1.0 is opposite)
-                if distance > 0.35: continue
+                # Cosine distance: 0.0 = exact match. Skip anything beyond uncertain_thresh max.
+                if distance > 0.42: continue
                 
                 metadata = results['metadatas'][0][i]
                 candidate_cluster_id = metadata['cluster_id']
@@ -283,13 +288,14 @@ class AIEngine:
                     ref_meta = results['metadatas'][0][i]
 
                 # Dynamic Thresholds with Time-Decay
-                auto_merge_thresh = 0.18
-                uncertain_thresh = 0.35
-                
+                # e5-large produces higher-quality embeddings → thresholds widened
+                auto_merge_thresh = 0.22
+                uncertain_thresh = 0.42
+
                 age_hours = (now_ts - ref_meta['timestamp']) / 3600.0
                 if age_hours > 24.0:
-                    auto_merge_thresh = 0.11
-                    uncertain_thresh = 0.22
+                    auto_merge_thresh = 0.15
+                    uncertain_thresh = 0.30
                 
                 # Case 1: High similarity (Auto-Merge Zone)
                 if distance < auto_merge_thresh:
@@ -314,7 +320,7 @@ class AIEngine:
         # Store in ChromaDB with numeric timestamp for future filtering
         self.collection.add(
             documents=[cleaned_text],
-            embeddings=[vector],
+            embeddings=[passage_vector],
             metadatas=[{
                 "source": source,
                 "cluster_id": cluster_id,
@@ -340,7 +346,7 @@ class AIEngine:
             
             if not ref_doc: return []
 
-            query_vector = self.get_embedding(ref_doc)
+            query_vector = self.get_embedding(ref_doc, is_query=True)
 
             # No time filter here as related news can be from the past
             results = self.collection.query(

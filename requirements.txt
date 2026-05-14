@@ -20,11 +20,11 @@ google-api-python-client==2.188.0
 feedparser==6.0.12
 beautifulsoup4==4.12.2
 requests==2.32.5
-yfinance
+yfinance==0.2.54
 
 # --- Telegram ---
 Telethon==1.42.0
-pyTelegramBotAPI
+pyTelegramBotAPI==4.26.0
 
 # --- Processing & Utils ---
 pandas==2.3.3
@@ -36,4 +36,4 @@ psutil==6.0.0
 docker==7.1.0
 
 # --- UI / Dashboard ---
-streamlit==1.53.1
+streamlit==1.43.2
