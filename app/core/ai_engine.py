@@ -109,7 +109,7 @@ class AIEngine:
             "options": {"temperature": 0.0, "num_ctx": 2048}
         }
         try:
-            response = requests.post(OLLAMA_API_URL, json=payload, timeout=10)
+            response = requests.post(OLLAMA_API_URL, json=payload, timeout=25)
             result = response.json()
             raw_text = result.get('response', '{}').strip()
             
