@@ -16,12 +16,38 @@ JUNK_KEYWORDS = [
 
 # Layer 1: Structural Noise Patterns (Turkish News Clutter)
 NOISE_PATTERNS = [
-    r'ilgili haber', r'son dakika', r'tıklayın', r'abone ol', 
-    r'takip et', r'daha fazlası için', r'ilginizi çekebilir', 
-    r'haberin devamı', r'gelen aramalar', r'okuma süresi', 
-    r'yayınlanma tarihi', r'devamı için', r'tıkla', r'ilgili haberler', 
-    r'galeri için', r'video için', r'paylaş', r'yorum yap', r'yazdır', 
+    r'ilgili haber', r'son dakika', r'tıklayın', r'abone ol',
+    r'takip et', r'daha fazlası için', r'ilginizi çekebilir',
+    r'haberin devamı', r'gelen aramalar', r'okuma süresi',
+    r'yayınlanma tarihi', r'devamı için', r'tıkla', r'ilgili haberler',
+    r'galeri için', r'video için', r'paylaş', r'yorum yap', r'yazdır',
     r'haberleri', r'son dakika haberi', r'gelişmeler için', r'kaynak\s*:'
+]
+
+# Layer 2: Event-Template Phrases
+# These appear in nearly every Turkish crime/politics/ops news article.
+# They describe the *format* of an event (arrest, investigation, operation)
+# but NOT the specific event itself — so they inflate embedding similarity
+# between completely different stories. Stripped before embedding only.
+EVENT_TEMPLATE_PHRASES = [
+    # Operation/arrest boilerplate
+    r'\d+\s*şüpheli\s*(gözaltına alındı|yakalandı|tutuklandı)',
+    r'\d+\s*(kişi|zanlı|şüpheli)?\s*gözaltı',
+    r'gözaltına alındı', r'gözaltı kararı', r'gözaltında', r'gözaltı',
+    r'tutuklama kararı', r'tutuklandı', r'tutuklu',
+    r'operasyon düzenlendi', r'operasyon başlatıldı', r'operasyonda',
+    r'eş zamanlı operasyon', r'\d+\s*ilde\s*(operasyon|baskın|gözaltı)',
+    r'şüpheli yakalandı', r'zanlı gözaltına',
+    # Investigation boilerplate
+    r'soruşturma başlatıldı', r'soruşturma kapsamında',
+    r'soruşturma yürütülüyor', r'soruşturma sürdürülüyor',
+    r'savcılık tarafından', r'cumhuriyet başsavcılığı',
+    r'emniyet müdürlüğü', r'(mali suçlarla mücadele|asayiş) şube müdürlüğü',
+    # Attribution boilerplate
+    r'(aa|dha|iha|bianet)\s*-\s*', r'ajansı\s*-\s*',
+    # Clickbait openers
+    r'^(flaş|son dakika|acil|önemli)[!:.,\s]*',
+    r'(bomba|çarpıcı|dikkat çeken|çok konuşulan)\s*(gelişme|haber|iddia)',
 ]
 
 def normalize_turkish(text: str) -> str:
@@ -144,6 +170,26 @@ def clean_text(text: str) -> str:
     text = re.sub(r'\s+', ' ', text).strip()
     
     return text
+
+def clean_text_for_embedding(text: str) -> str:
+    """
+    Extended cleaning pipeline used only before vectorization.
+    Applies clean_text first, then strips event-template phrases that are
+    common across unrelated Turkish news stories (arrests, operations, etc.)
+    so the embedding captures WHAT happened, not HOW it was reported.
+    """
+    text = clean_text(text)
+    if not text:
+        return ""
+
+    text_lower = text.lower()
+    for pattern in EVENT_TEMPLATE_PHRASES:
+        text_lower = re.sub(pattern, ' ', text_lower, flags=re.IGNORECASE)
+
+    # Collapse whitespace left by removals
+    text_lower = re.sub(r'\s+', ' ', text_lower).strip()
+    return text_lower
+
 
 def slugify_turkish(text: str) -> str:
     """

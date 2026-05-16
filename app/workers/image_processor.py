@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageStat
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from rapidfuzz import fuzz
-from sqlalchemy import desc, and_, or_
+from sqlalchemy import desc, and_, or_, cast, String, func
 
 # اضافه کردن ریشه پروژه به مسیر برای ایمپورت‌های داخلی
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -40,17 +40,19 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1"
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1"
 ]
 
 class ImageProcessor:
     def __init__(self):
         # مقداردهی کلاینت تلگرام (فقط یک بار متصل می‌شود)
         self.client = TelegramClient(
-            '/app/ttw_image', 
-            Config.TELEGRAM_API_ID, 
+            '/app/ttw_image',
+            Config.TELEGRAM_API_ID,
             Config.TELEGRAM_API_HASH
         )
+        # Limit concurrent DB sessions to stay within SQLAlchemy pool size (5+10=15)
+        self._sem = asyncio.Semaphore(8)
 
     async def start(self):
         """اتصال به تلگرام"""
@@ -68,7 +70,7 @@ class ImageProcessor:
         """تغییر سایز، برش، واترمارک دوگانه (برند + منبع) و تبدیل به WebP"""
         try:
             img = Image.open(io.BytesIO(image_data))
-            
+
             if img.mode != 'RGB':
                 if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
                     # Create a white background for transparent images before converting to RGB
@@ -77,23 +79,23 @@ class ImageProcessor:
                     img = background
                 else:
                     img = img.convert('RGB')
-            
+
             # ۱. حذف ۵۰ پیکسل پایین (برای پاک‌سازی واترمارک‌های منبع اصلی)
             w, h = img.size
-            if h > 400: 
+            if h > 400:
                 img = img.crop((0, 0, w, h - 50))
-            
+
             # ۲. تغییر سایز با حفظ نسبت ابعاد (عرض ثابت ۸۰۰)
             w, h = img.size
             aspect_ratio = h / w
             new_h = int(TARGET_WIDTH * aspect_ratio)
             img = img.resize((TARGET_WIDTH, new_h), Image.Resampling.LANCZOS)
-            
+
             # ۳. تنظیمات واترمارک
             draw = ImageDraw.Draw(img)
             font_size = 20
             padding = 15
-            
+
             try:
                 # مسیر فونت در کانتینر لینوکسی
                 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
@@ -117,18 +119,18 @@ class ImageProcessor:
                 else:
                     # پایین سمت چپ (برند)
                     x = padding
-                
+
                 y = new_h - text_h - padding
-                
+
                 # تحلیل روشنایی دقیقاً در محل درج متن
                 box = (max(0, x-5), max(0, y-5), min(TARGET_WIDTH, x + text_w + 5), min(new_h, y + text_h + 5))
                 watermark_area = img.crop(box)
                 lum = self.get_luminance(watermark_area)
-                
+
                 # کنتراست خودکار
                 text_color = (255, 255, 255) if lum < 128 else (0, 0, 0)
                 shadow_color = (0, 0, 0) if lum < 128 else (255, 255, 255)
-                
+
                 # رسم سایه و متن
                 draw.text((x+1, y+1), text, font=font, fill=shadow_color)
                 draw.text((x, y), text, font=font, fill=text_color)
@@ -141,12 +143,12 @@ class ImageProcessor:
             if len(display_source) > 30:
                 display_source = display_source[:27] + "..."
             draw_smart_text(display_source, align='right')
-            
+
             # ۴. خروجی به فرمت WebP
             output = io.BytesIO()
             img.save(output, format="WEBP", quality=80)
             return output.getvalue(), TARGET_WIDTH, new_h
-            
+
         except Exception as e:
             logger.error(f"Image Processing Error: {e}")
             return None, 0, 0
@@ -156,16 +158,16 @@ class ImageProcessor:
         try:
             parts = external_id.split('/')
             if len(parts) < 2: return None
-            
+
             msg_id = int(parts[-1])
             username = parts[-2]
-            
+
             message = await self.client.get_messages(username, ids=msg_id)
             if not message or not message.media:
                 return None
-                
+
             buffer = io.BytesIO()
-            
+
             if getattr(message, 'video', None) or getattr(message, 'document', None):
                 # Intentionally skip video thumbnails to force the Intelligent Bing Fallback
                 logger.info(f"📹 Video detected in Telegram message. Skipping thumbnail to force high-quality Bing fallback.")
@@ -173,7 +175,7 @@ class ImageProcessor:
             else:
                 await self.client.download_media(message, file=buffer)
             return buffer.getvalue()
-            
+
         except FloodWaitError as e:
             logger.warning(f"FloodWait: Sleeping {e.seconds}s")
             await asyncio.sleep(e.seconds)
@@ -186,24 +188,24 @@ class ImageProcessor:
         """استخراج تصویر از لینک خبرگزاری (اولویت با لینک مستقیم RSS)"""
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-            
+
             img_url = pre_extracted_media_url
-            
+
             # اگر لینک مستقیم نداشتیم، صفحه را اسکرپ می‌کنیم
             if not img_url:
                 resp = requests.get(external_id, headers=headers, timeout=10)
                 if resp.status_code != 200: return None, None
-                
+
                 soup = BeautifulSoup(resp.content, 'html.parser')
                 og_image = soup.find("meta", property="og:image") or \
                            soup.find("meta", attrs={"name": "og:image"}) or \
                            soup.find("meta", property="twitter:image")
-                
+
                 if not og_image or not og_image.get("content"):
                     return None, None
-                    
+
                 img_url = og_image["content"]
-                
+
                 # مدیریت لینک‌های نسبی
                 if img_url.startswith('/'):
                     from urllib.parse import urljoin
@@ -213,7 +215,7 @@ class ImageProcessor:
             if img_resp.status_code == 200:
                 return img_resp.content, img_url
             return None, None
-            
+
         except Exception as e:
             logger.error(f"RSS Download Error ({external_id}): {e}")
             return None, None
@@ -222,7 +224,8 @@ class ImageProcessor:
         """جستجوی فوق‌پیشرفته در بینگ با جعل مکان (TR) و دور زدن محدودیت‌های دانلود"""
         try:
             import json
-            time.sleep(random.uniform(1.5, 3.0))
+            # Fix 4: Reduced sleep from (1.5, 3.0) to (0.8, 1.5) for faster image sourcing
+            time.sleep(random.uniform(0.8, 1.5))
 
             # 🧹 Aggressive Query Cleaning: Remove phrases that trigger "Viral Social" results
             noise = ['Sosyal Medya Trendi', 'İlgili Haber Başlıkları', '𝕏', '📰', '#']
@@ -249,7 +252,7 @@ class ImageProcessor:
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.content, 'html.parser')
                 elements = soup.find_all('a', class_='iusc')
-                
+
                 candidates = []
                 for i, el in enumerate(elements[:8]): # Check top 8 results
                     try:
@@ -257,7 +260,7 @@ class ImageProcessor:
                         img_url = m_data.get('murl')
                         title = m_data.get('t', '')
                         desc = m_data.get('desc', '')
-                        
+
                         if not img_url or not img_url.startswith('http'):
                             continue
 
@@ -265,13 +268,13 @@ class ImageProcessor:
                         bad_domains = ['tiktok', 'instagram', 'pinterest', 'facebook', 'meme', 'emoji', 'tenor', 'giphy']
                         if any(x in img_url.lower() for x in bad_domains):
                             continue
-                        
+
                         combined_text = f"{title} {desc}".strip()
                         score = fuzz.token_set_ratio(clean_query.lower(), combined_text.lower())
                         candidates.append({"url": img_url, "score": score})
                     except:
                         continue
-                
+
                 # Sort by score descending
                 candidates.sort(key=lambda x: x["score"], reverse=True)
 
@@ -279,12 +282,12 @@ class ImageProcessor:
                     if candidate["score"] < 60:
                         logger.warning(f"⚠️ Best match score ({candidate['score']}) below threshold (60). Aborting.")
                         break
-                    
+
                     try:
                         img_url = candidate["url"]
                         # 📥 Download with Bing as Referer (Crucial for bypassing Hotlink Protection)
                         img_resp = requests.get(img_url, headers={"User-Agent": headers["User-Agent"], "Referer": "https://www.bing.com/"}, timeout=7)
-                        
+
                         if img_resp.status_code == 200:
                             content_type = img_resp.headers.get('Content-Type', '')
                             if 'image' in content_type:
@@ -305,27 +308,187 @@ class ImageProcessor:
         """ذخیره فایل در ساختار پوشه‌بندی تاریخ‌محور"""
         now = datetime.now()
         year, month, day = now.strftime("%Y"), now.strftime("%m"), now.strftime("%d")
-        
+
         folder_path = os.path.join(MEDIA_ROOT, year, month, day)
         os.makedirs(folder_path, exist_ok=True)
-        
+
         filename = f"{uuid.uuid4()}.webp"
         full_path = os.path.join(folder_path, filename)
-        
+
         logger.info(f"💾 Attempting to save processed image for News {news_id} to {full_path}")
-        
+
         with open(full_path, "wb") as f:
             f.write(image_data)
-            
+
         return f"media/{year}/{month}/{day}/{filename}"
+
+    async def _process_one(self, news_id: int):
+        """Process a single news item's image. Uses its own DB session for parallel safety."""
+        async with self._sem:
+            await self._process_one_inner(news_id)
+
+    async def _process_one_inner(self, news_id: int):
+        db = SessionLocal()
+        try:
+            news = db.query(RawNews).filter(RawNews.id == news_id).first()
+            if not news:
+                return
+
+            image_data = None
+            source_url = None
+            active_entity_name = None
+
+            # ۱. منطق دانلود
+            if news.source_type == 'telegram':
+                image_data = await self.download_from_telegram(news.external_id)
+                source_url = news.external_id
+
+                # SMART FALLBACK: If no media in Telegram, check text for links
+                if not image_data and news.content:
+                    urls = re.findall(r'(https?://[^\s]+)', news.content)
+                    if urls:
+                        fallback_url = urls[0].rstrip('.,!?\'"')
+                        loop = asyncio.get_event_loop()
+                        image_data, _ = await loop.run_in_executor(None, self.download_from_rss, fallback_url, None)
+                        if image_data:
+                            source_url = fallback_url
+                            logger.info(f"🔗 Fallback successful: Extracted image from link {source_url}")
+            elif news.source_type == 'rss':
+                loop = asyncio.get_event_loop()
+                image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id, news.media_url)
+
+            # --- 🌟 THE ULTIMATE BING IMAGES FALLBACK 🌟 ---
+            # Triggers for X-Trends (source='x') or if Telegram/RSS failed
+            if not image_data:
+                search_query = None
+                active_entity_name = None
+
+                if news.trend_id:
+                    trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
+                    if trend:
+                        if trend.entities and isinstance(trend.entities, dict):
+                            ai_image_query = trend.entities.get('image_search_query')
+                            if ai_image_query and len(ai_image_query) > 2:
+                                search_query = ai_image_query
+                            else:
+                                people = trend.entities.get('people', [])
+                                orgs = trend.entities.get('organizations', [])
+                                if people or orgs:
+                                    search_query = " ".join(people[:1] + orgs[:1])
+
+                            active_entity_name = search_query
+
+                            # CACHE CHECK
+                            if active_entity_name:
+                                cached_entity = db.query(EntityImageCache).filter(
+                                    EntityImageCache.entity_name == active_entity_name
+                                ).first()
+                                if cached_entity:
+                                    logger.info(f"⚡ CACHE HIT! Using verified image for entity: {active_entity_name}")
+                                    news.media_path = cached_entity.local_path
+                                    news.media_url = cached_entity.image_url
+                                    news.media_status = 2
+                                    news.media_meta = {"cached": True}
+                                    if not trend.cover_image or news.source_tier == 1:
+                                        trend.cover_image = cached_entity.local_path
+                                        logger.info(f"🖼️ Set/Upgraded cover for Trend {trend.id} from Cache")
+                                    db.commit()
+                                    return
+                        else:
+                            # Fix 1: entities is None or {} (empty dict) — use title as fallback
+                            # instead of deferring to -2, which caused an infinite retry loop
+                            if trend.title:
+                                search_query = trend.title[:80]
+                                logger.info(
+                                    f"🔍 Trend {trend.id} has no/empty entities — "
+                                    f"using title as Bing query."
+                                )
+                            else:
+                                news.media_status = -1
+                                db.commit()
+                                return
+
+                if search_query:
+                    search_query = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
+                    logger.info(f"🔍 Ultimate Fallback: Searching Bing (TR) for '{search_query[:40]}...'")
+                    loop = asyncio.get_event_loop()
+                    image_data, fallback_url = await loop.run_in_executor(
+                        None, self.download_from_bing_images, search_query
+                    )
+                    if image_data:
+                        source_url = fallback_url
+                        logger.info("✅ Fallback image successfully downloaded from Bing Images.")
+
+            if not image_data:
+                news.media_status = -1
+                db.commit()
+                return
+
+            # ۲. منطق پردازش تصویر
+            current_source = news.source_name if news.source_name else "TrendiaTR"
+            processed_data, w, h = self.process_image_data(image_data, current_source)
+
+            if not processed_data:
+                news.media_status = -1
+                db.commit()
+                return
+
+            # ۳. ذخیره‌سازی فیزیکی
+            rel_path = self.save_file(processed_data, news.id)
+
+            # ۴. بروزرسانی دیتابیس
+            news.media_path = rel_path
+            news.media_url = source_url
+            news.media_status = 2  # Ready
+            news.media_meta = {"width": w, "height": h, "size": len(processed_data)}
+
+            # CACHE SAVE
+            if active_entity_name:
+                existing_cache = db.query(EntityImageCache).filter(
+                    EntityImageCache.entity_name == active_entity_name
+                ).first()
+                if not existing_cache:
+                    new_cache = EntityImageCache(
+                        entity_name=active_entity_name,
+                        image_url=source_url,
+                        local_path=rel_path
+                    )
+                    db.add(new_cache)
+                    logger.info(f"💾 Cached new verified image for entity: {active_entity_name}")
+
+            # ۵. منطق انتخاب بهترین تصویر برای ترند (Promotion Logic)
+            if news.trend_id:
+                trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
+                if trend:
+                    if not trend.cover_image:
+                        trend.cover_image = rel_path
+                        logger.info(f"🖼️ Set initial cover for Trend {trend.id}")
+                    elif news.source_tier == 1:
+                        trend.cover_image = rel_path
+                        logger.info(f"🖼️ Upgraded cover for Trend {trend.id} (Tier 1 Source)")
+
+            db.commit()
+
+        except Exception as e:
+            logger.error(f"Error processing news {news_id}: {e}")
+            try:
+                news_row = db.query(RawNews).filter(RawNews.id == news_id).first()
+                if news_row:
+                    news_row.media_status = -1
+                    db.commit()
+            except Exception:
+                db.rollback()
+        finally:
+            db.close()
 
     async def run(self):
         await self.start()
         logger.info("🚀 Image Worker Loop Started (Time Limit: 48h active)")
-        
+
         last_retry_time = 0
-        
+
         while True:
+            news_ids = []
             db = SessionLocal()
             try:
                 # --- Periodic Retry for Missing Images (Self-Healing) ---
@@ -333,184 +496,72 @@ class ImageProcessor:
                 # Run this check every 15 minutes (900 seconds)
                 if current_time - last_retry_time > 900:
                     logger.info("🔄 Checking for missing images (Self-Healing)...")
-                    
+
                     heal_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)
                     recent_failed = db.query(RawNews).filter(
                         RawNews.media_status == -1,
                         RawNews.created_at >= heal_cutoff
                     ).order_by(desc(RawNews.created_at)).limit(50).all()
-                    
+
                     requeued_count = 0
                     for n in recent_failed:
                         n.media_status = 0  # Put back in the processing queue
                         requeued_count += 1
-                    
+
                     if requeued_count > 0:
                         db.commit()
                         logger.info(f"♻️ Re-queued {requeued_count} failed news items for image retry.")
-                    
+
+                    # Fix 2: Backfill cover_image for trends missing a cover (e.g. after cluster merges)
+                    no_cover_trends = db.query(Trend).filter(
+                        Trend.is_active == True,
+                        Trend.cover_image == None
+                    ).all()
+                    backfilled = 0
+                    for trend in no_cover_trends:
+                        best_news = db.query(RawNews).filter(
+                            RawNews.trend_id == trend.id,
+                            RawNews.media_status == 2,
+                            RawNews.media_path.isnot(None)
+                        ).order_by(RawNews.source_tier.asc(), RawNews.published_at.desc()).first()
+                        if best_news:
+                            trend.cover_image = best_news.media_path
+                            backfilled += 1
+                    if backfilled > 0:
+                        db.commit()
+                        logger.info(f"🖼️ Backfilled cover_image for {backfilled} trends missing a cover.")
+
                     last_retry_time = current_time
-                
+
                 # محاسبه زمان قطع ۴۸ ساعت اخیر
                 cutoff_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)
-                
-                # دریافت موارد در انتظار با فیلتر زمانی ۴۸ ساعت
+
+                # دریافت موارد در انتظار — Fix 3: limit raised to 20, processed in parallel
+                # Fix 1: -2 items are fetched regardless of entities (title fallback handles empty/null)
                 pending_news = db.query(RawNews).outerjoin(Trend, RawNews.trend_id == Trend.id).filter(
                     RawNews.created_at >= cutoff_time,
                     or_(
                         RawNews.media_status == 0,
-                        and_(RawNews.media_status == -2, Trend.entities.is_not(None))
+                        RawNews.media_status == -2
                     )
-                ).order_by(desc(RawNews.created_at)).limit(10).all()
-                
-                if not pending_news:
-                    db.close()
-                    await asyncio.sleep(15)
-                    continue
-                
-                logger.info(f"📸 Processing {len(pending_news)} actionable images...")
-                
-                for news in pending_news:
-                    try:
-                        image_data = None
-                        source_url = None
-                        active_entity_name = None
-                        
-                        # ۱. منطق دانلود
-                        if news.source_type == 'telegram':
-                            image_data = await self.download_from_telegram(news.external_id)
-                            source_url = news.external_id
-                            
-                            # SMART FALLBACK: If no media in Telegram, check text for links (e.g., AA.com.tr)
-                            if not image_data and news.content:
-                                urls = re.findall(r'(https?://[^\s]+)', news.content)
-                                if urls:
-                                    # Strip trailing punctuation (.,!?"') that might get caught by the regex
-                                    fallback_url = urls[0].rstrip('.,!?\'"')
-                                    loop = asyncio.get_event_loop()
-                                    image_data, _ = await loop.run_in_executor(None, self.download_from_rss, fallback_url, None)
-                                    if image_data:
-                                        source_url = fallback_url
-                                        logger.info(f"🔗 Fallback successful: Extracted image from link {source_url}")
-                        elif news.source_type == 'rss':
-                            loop = asyncio.get_event_loop()
-                            image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id, news.media_url)
-                        
-                        # --- 🌟 THE ULTIMATE BING IMAGES FALLBACK 🌟 ---
-                        # This will trigger for X-Trends (source='x') or if Telegram/RSS failed to get an image
-                        if not image_data:
-                            search_query = None
-                            active_entity_name = None
-                            
-                            if news.trend_id:
-                                trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
-                                if trend:
-                                    if trend.entities and isinstance(trend.entities, dict):
-                                        ai_image_query = trend.entities.get('image_search_query')
-                                        if ai_image_query and len(ai_image_query) > 2:
-                                            search_query = ai_image_query
-                                        else:
-                                            people = trend.entities.get('people', [])
-                                            orgs = trend.entities.get('organizations', [])
-                                            if people or orgs:
-                                                search_query = " ".join(people[:1] + orgs[:1])
-                                        
-                                        active_entity_name = search_query
-                                        
-                                        # CACHE CHECK
-                                        if active_entity_name:
-                                            cached_entity = db.query(EntityImageCache).filter(EntityImageCache.entity_name == active_entity_name).first()
-                                            if cached_entity:
-                                                logger.info(f"⚡ CACHE HIT! Using verified image for entity: {active_entity_name}")
-                                                news.media_path = cached_entity.local_path
-                                                news.media_url = cached_entity.image_url
-                                                news.media_status = 2
-                                                news.media_meta = {"cached": True}
-                                                if not trend.cover_image or news.source_tier == 1:
-                                                    trend.cover_image = cached_entity.local_path
-                                                    logger.info(f"🖼️ Set/Upgraded cover for Trend {trend.id} from Cache")
-                                                db.commit()
-                                                continue
-                                    else:
-                                        # ⏳ RACE CONDITION FIX: Gemini has not run yet.
-                                        logger.info(f"⏳ Trend {trend.id} missing AI entities. Deferring Bing search.")
-                                        news.media_status = -2
-                                        db.commit()
-                                        continue
+                ).order_by(desc(RawNews.created_at)).limit(20).all()
 
-                            if search_query:
-                                # Final sanitation before Bing
-                                search_query = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
-                                logger.info(f"🔍 Ultimate Fallback: Searching Bing (TR) for '{search_query[:40]}...'")
-                                loop = asyncio.get_event_loop()
-                                image_data, fallback_url = await loop.run_in_executor(None, self.download_from_bing_images, search_query)
-                                if image_data:
-                                    source_url = fallback_url
-                                    logger.info("✅ Fallback image successfully downloaded from Bing Images.")
+                news_ids = [n.id for n in pending_news]
 
-                        # If it STILL fails after Google Images Fallback, mark as error
-                        if not image_data:
-                            news.media_status = -1 
-                            db.commit()
-                            continue
-                            
-                        # ۲. منطق پردازش تصویر (با نام منبع)
-                        current_source = news.source_name if news.source_name else "TrendiaTR"
-                        processed_data, w, h = self.process_image_data(image_data, current_source)
-                        
-                        if not processed_data:
-                            news.media_status = -1
-                            db.commit()
-                            continue
-                            
-                        # ۳. ذخیره‌سازی فیزیکی
-                        rel_path = self.save_file(processed_data, news.id)
-                        
-                        # ۴. بروزرسانی دیتابیس
-                        news.media_path = rel_path
-                        news.media_url = source_url
-                        news.media_status = 2 # Ready
-                        news.media_meta = {"width": w, "height": h, "size": len(processed_data)}
-                        
-                        # CACHE SAVE
-                        if active_entity_name:
-                            # Check if it was added by another thread to avoid duplicate key errors
-                            existing_cache = db.query(EntityImageCache).filter(EntityImageCache.entity_name == active_entity_name).first()
-                            if not existing_cache:
-                                new_cache = EntityImageCache(
-                                    entity_name=active_entity_name,
-                                    image_url=source_url,
-                                    local_path=rel_path
-                                )
-                                db.add(new_cache)
-                                logger.info(f"💾 Cached new verified image for entity: {active_entity_name}")
-                        
-                        # ۵. منطق انتخاب بهترین تصویر برای ترند (Promotion Logic)
-                        if news.trend_id:
-                            trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
-                            if trend:
-                                # قانون ۱: اگر ترند هنوز عکس ندارد، این اولین عکس شاخص شود
-                                if not trend.cover_image:
-                                    trend.cover_image = rel_path
-                                    logger.info(f"🖼️ Set initial cover for Trend {trend.id}")
-                                
-                                # قانون ۲: ارتقای منبع (خبرگزاری‌های رسمی Tier 1 جایگزین تلگرام می‌شوند)
-                                elif news.source_tier == 1:
-                                    trend.cover_image = rel_path
-                                    logger.info(f"🖼️ Upgraded cover for Trend {trend.id} (Tier 1 Source)")
-                        
-                        db.commit()
-                    except Exception as e:
-                        logger.error(f"Error processing news {news.id}: {e}")
-                        news.media_status = -1
-                        db.commit()
-                    
             except Exception as e:
                 logger.error(f"Loop Error: {e}")
                 db.rollback()
             finally:
                 db.close()
-                
+
+            if not news_ids:
+                await asyncio.sleep(15)
+                continue
+
+            logger.info(f"📸 Processing {len(news_ids)} actionable images in parallel...")
+            # Fix 3: parallel processing — each _process_one has its own DB session
+            await asyncio.gather(*[self._process_one(nid) for nid in news_ids])
+
             await asyncio.sleep(10)
 
 if __name__ == "__main__":

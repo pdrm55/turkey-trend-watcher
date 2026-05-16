@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # --- Configuration ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-MODEL_NAME = "gemini-2.0-flash-lite-preview-09-2025"  # Default fallback
+MODEL_NAME = "gemini-2.5-flash-lite"  # Default fallback
 
 client = None
 
@@ -33,15 +33,23 @@ def _initialize_client():
                 if 'flash' in name.lower() and 'image' not in name.lower() and 'audio' not in name.lower():
                     candidates.append(name)
             
-            # Priority 1: Flash Lite (Best value/performance)
+            # Priority 1: gemini-2.5-flash-lite (preferred)
             found = False
             for c in candidates:
-                if 'lite' in c and 'flash' in c: 
+                if '2.5' in c and 'lite' in c and 'flash' in c:
                     MODEL_NAME = c
                     found = True
                     break
-            
-            # Priority 2: Stable 1.5 Flash
+
+            # Priority 2: Any flash-lite
+            if not found:
+                for c in candidates:
+                    if 'lite' in c and 'flash' in c:
+                        MODEL_NAME = c
+                        found = True
+                        break
+
+            # Priority 3: Stable 1.5 Flash
             if not found:
                 for c in candidates:
                     if '1.5-flash' in c and 'latest' not in c:

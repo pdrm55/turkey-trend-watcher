@@ -15,12 +15,26 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger("MergeWorker")
 
 # --- Configuration ---
-MERGE_INTERVAL_SECONDS = 7200      # Run full cycle every 2 hours
-SEARCH_DISTANCE_MIN = 0.23         # Below this, ai_engine already merges at ingest time
-SEARCH_DISTANCE_MAX = 0.50         # Above this, clusters are semantically different
+MERGE_INTERVAL_SECONDS = 3600      # Run full cycle every 1 hour
+SEARCH_DISTANCE_MIN = 0.16         # Below this, ai_engine already merges at ingest time
+SEARCH_DISTANCE_MAX = 0.40         # Above this, clusters are semantically different
 MAX_GEMINI_CALLS_PER_CYCLE = 40    # Rate-limit guard for Gemini API
 MAX_TIME_DIFF_HOURS = 72           # Don't merge events more than 3 days apart
-GEMINI_VERIFY_MODEL = "gemini-2.0-flash-lite"
+GEMINI_VERIFY_MODEL = "gemini-2.5-flash-lite"
+
+# --- Smart Pre-filter ---
+# Pairs with distance > this threshold also require title keyword overlap to reach Gemini
+SMART_FILTER_DISTANCE_THRESHOLD = 0.28
+# Tighter time window for distant pairs (distance > threshold)
+SMART_FILTER_MAX_TIME_HOURS = 24.0
+
+_TURKISH_STOPWORDS = {
+    've', 'ile', 'için', 'bir', 'bu', 'da', 'de', 'ki', 'ne', 'ya',
+    'mi', 'mu', 'mü', 'mı', 'o', 'şu', 'ise', 'var', 'yok', 'olan',
+    'oldu', 'olacak', 'etti', 'edildi', 'olarak', 'kadar', 'sonra',
+    'önce', 'gibi', 'üzere', 'ama', 'fakat', 'ancak', 'veya', 'hem',
+    'daha', 'çok', 'en', 'her', 'hiç', 'bazı', 'tüm', 'bütün',
+}
 
 # --- Gemini Client (lightweight, for verification only) ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -32,6 +46,30 @@ def _get_gemini_client():
         from google import genai
         _gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
     return _gemini_client
+
+
+def _title_keyword_overlap(title_a: str, title_b: str) -> int:
+    """Count shared meaningful tokens between two cluster titles."""
+    def tokens(t: str) -> set:
+        return {
+            w.lower().strip("':,.()")
+            for w in (t or '').split()
+            if len(w) > 3 and w.lower() not in _TURKISH_STOPWORDS
+        }
+    return len(tokens(title_a) & tokens(title_b))
+
+
+def _categories_compatible(cat_a: str, cat_b: str) -> bool:
+    """Return False only for clearly incompatible category pairs (e.g. Spor vs Siyaset)."""
+    if not cat_a or not cat_b or cat_a == cat_b:
+        return True
+    # Gündem is a catch-all — always compatible
+    if 'Gündem' in (cat_a, cat_b):
+        return True
+    # Spor clusters must not merge with non-sport clusters
+    if 'Spor' in (cat_a, cat_b):
+        return False
+    return True
 
 
 def verify_same_event(text_a: str, text_b: str) -> bool:
@@ -65,10 +103,14 @@ Return JSON only: {{"same_event": true}} or {{"same_event": false}}"""
                 config=types.GenerateContentConfig(
                     response_mime_type='application/json',
                     temperature=0.0,
-                    max_output_tokens=20,
+                    max_output_tokens=200,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 )
             )
-            result = json.loads(response.text.strip())
+            raw = response.text.strip().strip("` \n")
+            if raw.startswith("json"):
+                raw = raw[4:].strip()
+            result = json.loads(raw)
             return bool(result.get("same_event", False))
         except Exception as e:
             logger.warning(f"Gemini verification failed, falling back to local LLM: {e}")
@@ -141,10 +183,19 @@ def _do_merge(source: Trend, target: Trend, db) -> bool:
 
 def run_merge_cycle() -> int:
     """
-    Main retroactive merge cycle.
-    Scans active trends, finds semantically similar cluster pairs via ChromaDB,
-    verifies with Gemini, and merges confirmed duplicates.
-    Returns the number of merges performed.
+    Main retroactive merge cycle — two-phase with smart pre-filter.
+
+    Phase 1 (no Gemini): scan all active trends via ChromaDB, collect every
+    candidate pair with its cosine distance. No API calls, just embeddings.
+
+    Phase 2 (Gemini): sort pairs by distance ASC so the most similar pairs are
+    verified first. Apply two cheap pre-filters before each Gemini call:
+      - Category compatibility (Spor clusters never merge with non-Spor)
+      - Keyword overlap guard: if distance > SMART_FILTER_DISTANCE_THRESHOLD and
+        the two titles share zero meaningful words, skip Gemini entirely.
+
+    This ensures the 40-call budget is spent on the strongest merge candidates
+    across all clusters, not just the first few high-TPS trends.
     """
     db = SessionLocal()
     merged_count = 0
@@ -163,10 +214,12 @@ def run_merge_cycle() -> int:
 
         logger.info(f"🔍 [MergeWorker] Scanning {len(active_trends)} active trends...")
 
+        # ── Phase 1: collect all candidate pairs (no Gemini) ──────────────────
         checked_pairs: set[tuple] = set()
+        # (distance, trend, candidate_trend, ref_doc_of_trend)
+        candidate_pairs: list = []
 
         for trend in active_trends:
-            # A trend that was merged away in this cycle is now inactive — skip it
             if not trend.is_active:
                 continue
 
@@ -210,40 +263,68 @@ def run_merge_cycle() -> int:
                 if not candidate_trend:
                     continue
 
-                # Time-window guard: don't merge events far apart in time
                 time_diff_hours = abs(
                     (trend.first_seen - candidate_trend.first_seen).total_seconds() / 3600.0
                 )
-                if time_diff_hours > MAX_TIME_DIFF_HOURS:
+                # Tighter time window for semantically distant pairs
+                max_hours = MAX_TIME_DIFF_HOURS if distance < SMART_FILTER_DISTANCE_THRESHOLD else SMART_FILTER_MAX_TIME_HOURS
+                if time_diff_hours > max_hours:
                     continue
 
-                # Rate-limit guard
-                if gemini_calls >= MAX_GEMINI_CALLS_PER_CYCLE:
-                    logger.info("⚠️ [MergeWorker] Gemini call limit reached, stopping this cycle.")
-                    return merged_count
+                candidate_pairs.append((distance, trend, candidate_trend, ref_doc))
 
-                candidate_doc = _get_ref_doc(candidate_trend, db)
-                if not candidate_doc:
+        logger.info(f"📋 [MergeWorker] {len(candidate_pairs)} candidate pairs collected before pre-filter")
+
+        # ── Phase 2: sort by distance, pre-filter, verify with Gemini ─────────
+        candidate_pairs.sort(key=lambda x: x[0])
+
+        skipped_category = 0
+        skipped_keyword = 0
+
+        for distance, trend, candidate_trend, ref_doc in candidate_pairs:
+            # Skip if either side was merged away earlier in this cycle
+            if not trend.is_active or not candidate_trend.is_active:
+                continue
+
+            # Pre-filter 1: incompatible categories (free — no API call)
+            if not _categories_compatible(trend.category, candidate_trend.category):
+                skipped_category += 1
+                continue
+
+            # Pre-filter 2: for distant pairs, require at least one shared keyword
+            if distance > SMART_FILTER_DISTANCE_THRESHOLD:
+                if _title_keyword_overlap(trend.title, candidate_trend.title) == 0:
+                    skipped_keyword += 1
                     continue
 
-                gemini_calls += 1
-                time.sleep(0.5)  # polite rate limiting
+            # Rate-limit guard
+            if gemini_calls >= MAX_GEMINI_CALLS_PER_CYCLE:
+                logger.info("⚠️ [MergeWorker] Gemini call limit reached, stopping this cycle.")
+                break
 
-                if not verify_same_event(ref_doc[:600], candidate_doc[:600]):
-                    continue
+            candidate_doc = _get_ref_doc(candidate_trend, db)
+            if not candidate_doc:
+                continue
 
-                # Merge smaller into larger (by message count)
-                if trend.message_count >= candidate_trend.message_count:
-                    target, source = trend, candidate_trend
-                else:
-                    target, source = candidate_trend, trend
+            gemini_calls += 1
+            time.sleep(0.5)
 
-                if _do_merge(source, target, db):
-                    merged_count += 1
-                    # If this trend was the source, it's now inactive — stop inner loop
-                    if source is trend:
-                        break
+            if not verify_same_event(ref_doc[:600], candidate_doc[:600]):
+                continue
 
+            if trend.message_count >= candidate_trend.message_count:
+                target, source = trend, candidate_trend
+            else:
+                target, source = candidate_trend, trend
+
+            if _do_merge(source, target, db):
+                merged_count += 1
+
+        logger.info(
+            f"📊 [MergeWorker] Pre-filter saved: {skipped_category} category + "
+            f"{skipped_keyword} keyword mismatches. "
+            f"Gemini calls: {gemini_calls}/{MAX_GEMINI_CALLS_PER_CYCLE}"
+        )
         return merged_count
 
     except Exception as e:

@@ -232,24 +232,35 @@ class AIEngine:
         """
         Main processing pipeline: Vectorization -> Rolling Search -> LLM Verification -> Clustering.
         """
-        from app.core.text_utils import clean_text
+        from app.core.text_utils import clean_text, clean_text_for_embedding
         cleaned_text = clean_text(raw_text)
-        
+
         # Discard very short or irrelevant noise
-        if not cleaned_text or len(cleaned_text) < 25: 
+        if not cleaned_text or len(cleaned_text) < 25:
             return None, False
+
+        # Embedding uses a deeper-cleaned version that strips event-template
+        # phrases (arrests, operations, boilerplate) so the vector represents
+        # WHAT happened, not HOW it was reported. Display/storage still uses
+        # the original cleaned_text.
+        embedding_text = clean_text_for_embedding(raw_text)
+        if not embedding_text or len(embedding_text) < 15:
+            embedding_text = cleaned_text  # fallback if over-stripped
 
         now_ts = datetime.now().timestamp()
 
-        # Fast-path dedup in ingest process memory to avoid repeated heavy AI calls.
-        text_hash = hashlib.sha1(cleaned_text.encode("utf-8")).hexdigest()
+        # Fast-path dedup uses embedding_text hash so identical boilerplate
+        # with different event details doesn't collide.
+        text_hash = hashlib.sha1(embedding_text.encode("utf-8")).hexdigest()
         cache_entry = self.fast_dedup_cache.get(text_hash)
         if cache_entry and cache_entry["expires_at"] > now_ts:
             return cache_entry["cluster_id"], True
 
-        # Two vectors: passage for storage, query for search (e5-large prefix strategy)
-        passage_vector = self.get_embedding(cleaned_text, is_query=False)
-        query_vector = self.get_embedding(cleaned_text, is_query=True)
+        # Two vectors: passage for storage, query for search (e5-large prefix strategy).
+        # Both use embedding_text (template-stripped) so distance reflects event
+        # similarity rather than shared reporting boilerplate.
+        passage_vector = self.get_embedding(embedding_text, is_query=False)
+        query_vector = self.get_embedding(embedding_text, is_query=True)
 
         # --- FIXED Phase 3: Rolling Cache (Numeric Unix Timestamp) ---
         # Filter: only check clusters from the last 48 hours
@@ -273,8 +284,9 @@ class AIEngine:
 
         if results['distances'] and results['distances'][0]:
             for i, distance in enumerate(results['distances'][0]):
-                # Cosine distance: 0.0 = exact match. Skip anything beyond uncertain_thresh max.
-                if distance > 0.42: continue
+                # Cosine distance: 0.0 = exact match. Skip anything clearly unrelated.
+                # Use 0.35 as the hard cap; X-Trend has its own tighter threshold applied below.
+                if distance > 0.35: continue
                 
                 metadata = results['metadatas'][0][i]
                 candidate_cluster_id = metadata['cluster_id']
@@ -288,14 +300,23 @@ class AIEngine:
                     ref_meta = results['metadatas'][0][i]
 
                 # Dynamic Thresholds with Time-Decay
-                # e5-large produces higher-quality embeddings → thresholds widened
-                auto_merge_thresh = 0.22
-                uncertain_thresh = 0.42
+                # X-Trend posts share a template prefix ("𝕏 Sosyal Medya Trendi:")
+                # which inflates embedding similarity — use tighter thresholds to prevent
+                # different trending topics from being merged into one cluster.
+                if source == "X-Trend":
+                    # X-Trend posts share template prefix → very tight
+                    auto_merge_thresh = 0.12
+                    uncertain_thresh = 0.20
+                else:
+                    # RSS/Telegram: embedding_text is now template-stripped,
+                    # so stricter thresholds are safe — boilerplate inflation removed.
+                    auto_merge_thresh = 0.15
+                    uncertain_thresh = 0.25
 
                 age_hours = (now_ts - ref_meta['timestamp']) / 3600.0
-                if age_hours > 24.0:
-                    auto_merge_thresh = 0.15
-                    uncertain_thresh = 0.30
+                if age_hours > 24.0 and source != "X-Trend":
+                    auto_merge_thresh = 0.12
+                    uncertain_thresh = 0.20
                 
                 # Case 1: High similarity (Auto-Merge Zone)
                 if distance < auto_merge_thresh:
