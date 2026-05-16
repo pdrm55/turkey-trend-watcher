@@ -218,6 +218,28 @@ class CommentVote(Base):
         Index('idx_comment_vote_session', 'comment_id', 'session_id', unique=True),
     )
 
+class APIClient(Base):
+    """B2B API clients — stores credentials and plan limits"""
+    __tablename__ = 'api_clients'
+
+    id            = Column(Integer, primary_key=True, index=True)
+    name          = Column(String(255), nullable=False)
+    email         = Column(String(255), nullable=False)
+    api_key       = Column(String(64), unique=True, index=True, nullable=False)
+    plan          = Column(String(50), default='starter')
+    tps_threshold = Column(Float, default=70.0)
+    monthly_limit = Column(Integer, default=1000)
+    calls_used    = Column(Integer, default=0)
+    calls_reset_at = Column(DateTime, default=utc_now)
+    is_active     = Column(Boolean, default=True)
+    created_at    = Column(DateTime, default=utc_now)
+    last_seen_at  = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index('idx_api_clients_key', 'api_key'),
+    )
+
+
 def init_db():
     """
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
@@ -364,6 +386,11 @@ def init_db():
                     ))
                 session.commit()
             
+        # 7. B2B API Client table
+        if 'api_clients' not in inspector.get_table_names():
+            print("🔑 Creating 'api_clients' table for B2B API...")
+            Base.metadata.tables['api_clients'].create(bind=engine)
+
         print("✅ Entity Image Caching system ready.")
         print("✅ Database synchronization successful. All strategic fields are ready.")
     except Exception as e:

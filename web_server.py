@@ -2,6 +2,8 @@ import os
 import logging
 from flask import Flask
 from app.api.routes import api_bp
+from app.api.api_v1 import bp as api_v1_bp
+from app.api.api_admin import bp as api_admin_b2b_bp
 from app.database.models import init_db
 
 # تنظیمات لاگر برای مانیتورینگ متمرکز سیستم
@@ -32,6 +34,8 @@ def create_app():
 
     # ثبت بلوپرینت اصلی API و مسیرهای مسیریابی (Routing)
     app.register_blueprint(api_bp)
+    app.register_blueprint(api_v1_bp)
+    app.register_blueprint(api_admin_b2b_bp)
 
     # اطمینان از آماده‌سازی دیتابیس در بدو ورود به اپلیکیشن
     with app.app_context():

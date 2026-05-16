@@ -877,16 +877,17 @@ def generate_x_drafts():
 def list_x_drafts():
     db = SessionLocal()
     try:
-        drafts = db.query(XDraft, Trend.title).join(Trend, XDraft.trend_id == Trend.id).filter(
+        drafts = db.query(XDraft, Trend.title, Trend.category).join(Trend, XDraft.trend_id == Trend.id).filter(
             XDraft.status == 'draft'
         ).order_by(desc(XDraft.created_at)).all()
-        
+
         results = []
-        for d, title in drafts:
+        for d, title, category in drafts:
             results.append({
                 "draft_id": d.id,
                 "trend_id": d.trend_id,
                 "trend_title": title,
+                "category": category,
                 "caption": d.long_caption,
                 "image_path": d.image_path,
                 "tps_score": d.tps_score,
@@ -1043,92 +1044,43 @@ def generate_x_draft_by_id():
 
         # Generate Content
         context_text = trend.summary if trend.summary else trend.title
-        ai_data = generate_x_content(trend.title, context_text, trend.category, phase_type=phase_type)
-        
+        ai_data = generate_x_content(trend.title, context_text, trend.category)
+
         if not ai_data:
             return jsonify({"error": "AI content generation failed"}), 500
-            
+
         # Generate Image
         tps_val = round(trend.final_tps, 1)
         image_path = generate_x_image(trend.id, trend.title, ai_data['image_short_text'], tps_val)
-        
+
         if not image_path:
             return jsonify({"error": "Image generation failed"}), 500
-            
-        # Construct Caption
+
+        # Build caption from new template output (no hardcoded metadata)
         public_url = get_public_url()
         slug_part = trend.slug if trend.slug else trend.id
-        full_link = f"{public_url}/trend/{slug_part}"
-        
-        spread_speed = round(tps_val / 7.5, 1)
-        hashtags = ai_data.get('hashtags', [])
-        hash1 = hashtags[0] if len(hashtags) > 0 else trend.category
-        hash2 = hashtags[1] if len(hashtags) > 1 else "Gündem"
+        full_link = f"{public_url}/trend/{slug_part}?utm_source=x&utm_medium=post&utm_campaign=x_studio"
 
-        # 1. Calculate Confidence (Güven Endeksi)
-        confidence_val = getattr(trend, 'tps_confidence', 0.85)
-        if confidence_val is None:
-            confidence_val = 0.85
-        confidence_pct = int(confidence_val * 100)
-        
-        if phase_type == 'radar':
-            conf_label = "⏳ İnceleniyor - İlk Sinyaller"
-        elif confidence_pct >= 90:
-            conf_label = "Teyitli Kaynaklar"
-        elif confidence_pct >= 75:
-            conf_label = "Güvenilir Veri"
-        else:
-            conf_label = "Gelişmekte Olan Haber"
-
-        # 2. Calculate Trend Power (Gündem Gücü)
-        if tps_val >= 80:
-            power_label = "Kritik"
-        elif tps_val >= 50:
-            power_label = "Yüksek"
-        else:
-            power_label = "Dikkat Çekici"
-
-        # Sanitize the question to prevent double emojis
-        clean_question = ai_data.get('interaction_question', '').replace("💬", "").strip()
-
-        main_tweet = (
-            f"{ai_data['ai_summary']}\n\n"
-            f"🛡️ Güven Endeksi: %{confidence_pct} ({conf_label})\n"
-            f"📈 Gündem Gücü: {power_label} (Normalden {spread_speed}x daha hızlı yayılıyor)\n\n"
-            f"💬 {clean_question}\n\n"
-            f"#{hash1} #{hash2} #TrendiaTR"
-        )
-        
-        if phase_type == 'radar':
-            main_tweet = "💬 Bu neden trend?\n\n" + main_tweet
-            trend.radar_phase_triggered = True
-        elif phase_type == 'confirmed':
-            main_tweet = "🚨 DOĞRULANDI (Sistem Güncellemesi):\n\n" + main_tweet
-            trend.radar_phase_triggered = False
-
-        reply_tweet = f"Olayın tüm detayları, resmi açıklamalar ve güncel gelişmeler için: 👇 🔗\n{full_link}"
-        
+        main_tweet = ai_data['full_tweet']
+        reply_tweet = f"{ai_data['reply_hook']}\n{full_link}"
         caption = f"{main_tweet}\n\n====REPLY====\n\n{reply_tweet}"
-        
+
         # Save Draft
         draft = XDraft(
             trend_id=trend.id,
-            hook_text=ai_data['ai_summary'][:50],
-            long_caption=caption, # Storing full caption in long_caption column
+            hook_text=ai_data['full_tweet'][:50],
+            long_caption=caption,
             image_short_text=ai_data['image_short_text'],
             tps_score=tps_val,
             image_path=image_path,
             status='draft',
-            draft_type=phase_type
+            draft_type='confirmed'
         )
-        
-        if phase_type == 'confirmed' and trend.radar_tweet_id:
-            draft.reply_to_tweet_id = trend.radar_tweet_id
 
         db.add(draft)
         db.commit()
-        
-        notify_admin_x_draft(trend.title, tps_val, f"Manual ID ({phase_type.capitalize()})")
+
+        notify_admin_x_draft(trend.title, tps_val, "Manual ID")
         
         return jsonify({"status": "success", "draft_id": draft.id})
     except Exception as e:

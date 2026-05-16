@@ -1,21 +1,18 @@
 import os
 import json
 import logging
-import random
 from google import genai
 from google.genai import types
 
-# Configure module logger
 logger = logging.getLogger(__name__)
 
-# --- Configuration ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 MODEL_NAME = "gemini-2.5-flash-lite"  # Default fallback
 
 client = None
 
 def _initialize_client():
-    """Initializes the Gemini client and selects the best model."""
+    """Initializes the Gemini client and selects the best available flash model."""
     global client, MODEL_NAME
     if not GOOGLE_API_KEY:
         logger.error("GOOGLE_API_KEY not found in environment variables.")
@@ -23,17 +20,14 @@ def _initialize_client():
 
     try:
         client = genai.Client(api_key=GOOGLE_API_KEY)
-        
-        # Dynamic Model Selection Logic (Replicated from Summarizer)
+
         try:
             candidates = []
             for m in client.models.list():
                 name = m.name.replace('models/', '')
-                # Filter for text-generation flash models
                 if 'flash' in name.lower() and 'image' not in name.lower() and 'audio' not in name.lower():
                     candidates.append(name)
-            
-            # Priority 1: gemini-2.5-flash-lite (preferred)
+
             found = False
             for c in candidates:
                 if '2.5' in c and 'lite' in c and 'flash' in c:
@@ -41,7 +35,6 @@ def _initialize_client():
                     found = True
                     break
 
-            # Priority 2: Any flash-lite
             if not found:
                 for c in candidates:
                     if 'lite' in c and 'flash' in c:
@@ -49,17 +42,16 @@ def _initialize_client():
                         found = True
                         break
 
-            # Priority 3: Stable 1.5 Flash
             if not found:
                 for c in candidates:
                     if '1.5-flash' in c and 'latest' not in c:
                         MODEL_NAME = c
                         found = True
                         break
-            
+
             if not found and candidates:
                 MODEL_NAME = candidates[0]
-            
+
             logger.info(f"X-AI Service initialized with model: {MODEL_NAME}")
         except Exception as e:
             logger.warning(f"Model discovery failed, using default {MODEL_NAME}: {e}")
@@ -67,60 +59,121 @@ def _initialize_client():
     except Exception as e:
         logger.error(f"Failed to initialize Gemini client: {e}")
 
-# Initialize on module load
 _initialize_client()
 
-def generate_x_content(trend_title, cluster_text, category, phase_type="standard"):
+
+# ── Content-type detection ─────────────────────────────────────────────────────
+
+_SPORTS_KEYWORDS = {"futbol", "spor", "basketbol", "voleybol", "formula", "tenis", "yüzme", "atletizm"}
+_DISASTER_KEYWORDS = {"deprem", "sel", "yangın", "kaza", "afet", "fırtına", "çığ", "heyelan", "trafik"}
+
+def _detect_content_type(category: str) -> str:
+    cat = (category or "").lower()
+    if any(k in cat for k in _SPORTS_KEYWORDS):
+        return "breaking"
+    if any(k in cat for k in _DISASTER_KEYWORDS):
+        return "disaster"
+    return "politics"
+
+
+# ── Per-type content rules ─────────────────────────────────────────────────────
+
+_CONTENT_RULES = {
+    "breaking": {
+        "label": "BREAKING (Spor / Anlık Haber)",
+        "hook_rule": """
+HOOK TYPE — Seç birini:
+- Şok rakam: "90+3'te gol. 90+7'de kırmızı. Sonuç: beraberlik 😤"
+- Keskin kontrast: "Galatasaray coştu — TFF koltuğu boş bıraktı 🪑"
+- Çarpıcı gerçek: "3 maçta 0 gol. Teknik direktör hâlâ görevde."
+TONE: Hızlı, çarpıcı, duygusal. Analiz yok.
+YASAK: Açıklayıcı girişler, "Bu gelişme...", jeopolitik analiz.""",
+        "body_rule": "2 cümle max. Sadece sert gerçek. Özellikle beklenmedik detay varsa onu öne çıkar.",
+        "question_rule": "Sonuca veya karara odaklı binary soru. Takım taraftarını yorum yapmaya zorla."
+    },
+    "politics": {
+        "label": "POLİTİK / JEOPOLİTİK",
+        "hook_rule": """
+HOOK TYPE — Seç birini:
+- Gizli gerilim: "Kimse konuşmuyor ama bu karar her şeyi değiştirebilir 🧵"
+- Çelişki: "NATO'ya evet, BM'ye hayır. Bu tutarsızlığın bedeli ne?"
+- Keskin soru: "Anlaşma imzalandı. Peki kazanan kim?"
+TONE: Analitik ama anlaşılır. Taraf tutan değil, düşündüren.
+YASAK: "bölgesel istikrarsızlık", "piyasalarda dalgalanma", "istikrarsızlığı tetikleyecek" — bunlar jenerik dolgu ifadedir, KESİNLİKLE kullanma.""",
+        "body_rule": "Cümle 1: Somut gerçek (kim, ne yaptı). Cümle 2: Spesifik sonuç veya beklenmedik detay — genel değerlendirme değil.",
+        "question_rule": "İki gerçek senaryo arasında seçim yaptıran soru. Okuyucuyu taraf seçmeye zorla."
+    },
+    "disaster": {
+        "label": "AFET / ACİL DURUM",
+        "hook_rule": """
+HOOK TYPE — Önce insan gerçeği, sonra rakam:
+- "Enkaz altında 14 saat. İşte o an 🔴"
+- "7 yaşında bir çocuk. 43 saat sonra kurtarıldı."
+- "Yangın 6 saatte 3 köyü yuttu."
+TONE: Ağır, saygılı, gerçekçi. Abartı veya yapay duygusallık kesinlikle yok.
+YASAK: "yürekler acısı", "büyük felaket", melodramatik ifadeler.""",
+        "body_rule": "Cümle 1: İnsan boyutu (kaç kişi, hangi durum). Cümle 2: Operasyonun mevcut durumu — somut rakam ile.",
+        "question_rule": "Okuyucunun tepkisini veya beklentisini soran soru. Müdahale hızı veya yeterliliği hakkında."
+    }
+}
+
+
+# ── Main content generator ─────────────────────────────────────────────────────
+
+def generate_x_content(trend_title: str, cluster_text: str, category: str) -> dict | None:
     """
-    Generates optimized X (Twitter) Premium content using Gemini.
+    Generates a single-phase X (Twitter) post using a category-aware template.
+    Returns: {full_tweet, reply_hook, hashtags, image_short_text}
     """
     if not client:
         logger.error("Gemini client is not initialized.")
         return None
 
-    phase_instructions = ""
-    if phase_type == "radar":
-        phase_instructions = "PHASE 1 (RADAR / BREAKING): The event is just breaking. Tone: Urgent but investigating. Start with phrases like 'İlk bilgilere göre' or 'Gelen ilk raporlara göre'. Focus ONLY on the core claim triggering the trend. Do not make definitive geopolitical conclusions yet."
-    elif phase_type == "confirmed":
-        phase_instructions = "PHASE 2 (CONFIRMED): The event is fully verified. Tone: Authoritative, definitive, and factual. State exactly what happened with absolute certainty. Then provide 1 highly specific, non-obvious strategic insight."
+    content_type = _detect_content_type(category)
+    rules = _CONTENT_RULES[content_type]
 
     prompt = f"""
-    You are an "Expert Data Journalist" for the news platform 'TrendiaTR'. 
-    Create highly engaging, professional content for X (Twitter).
+Sen TrendiaTR platformu için Türkçe X (Twitter) içerik uzmanısın.
+Hedef kitle: Türkçe konuşan global kullanıcılar.
+Amaç: Marka bilinirliği ve takipçi büyümesi — viral, insan gibi yazılmış içerik.
 
-    CRITICAL RULE: ALL GENERATED TEXT MUST BE STRICTLY IN THE TURKISH LANGUAGE (TÜRKÇE).
+## GİRİŞ
+- Başlık: {trend_title}
+- Bağlam: {cluster_text}
+- İçerik Türü: {rules['label']}
 
-    ### INPUT DATA
-    - Headline: {trend_title}
-    - Context: {cluster_text}
+## HOOK KURALI
+{rules['hook_rule']}
 
-    ### JOURNALISM RULES (STRICTLY ENFORCED)
-    1. THE INVERTED PYRAMID: Your summary MUST start with the hard facts (Who, What, Where, When).
-    2. ANTI-CLICHÉ PROTOCOL: YOU ARE STRICTLY FORBIDDEN from using generic geopolitical or economic filler phrases (e.g., "bölgesel çatışma riskini artıracak", "piyasalarda dalgalanma yaratacak", "istikrarsızlığı tetikleyecek"). 
-    3. SPECIFIC INSIGHT ONLY: If you add an analysis, it must be a concrete, data-driven detail or a specific strategic consequence (e.g., "The targeted facility produces 40% of the fuel" NOT "this will affect the economy").
-    4. CURRENT STATUS: {phase_instructions}
+## BODY KURALI
+{rules['body_rule']}
 
-    ### TASK
-    Generate a JSON response with exactly these 4 keys:
+## SORU KURALI
+{rules['question_rule']}
 
-    1. "ai_summary": 
-       - 2 sentences max.
-       - Sentence 1: The hard fact (What exactly happened?).
-       - Sentence 2: The specific insight or current status based on the phase.
-       - CRITICAL: DO NOT ASK ANY QUESTIONS in this section.
+## EVRENSELLİŞ KURALLAR (İSTİSNASIZ)
+1. İlk cümle (hook) MAKSIMUM 10 kelime
+2. Toplam 3-4 kısa paragraf — her paragraf max 2 satır
+3. Mobil okumaya uygun — kısa, nefes alabilir
+4. ASLA yazma: "Güven Endeksi", "Gündem Gücü", "Normalden Xx daha hızlı"
+5. ASLA yazma: "🚨 DOĞRULANDI", "Son dakika:", "Önemli gelişme:"
+6. Soru SADECE en sona, binary format — A/B şeklinde
+7. Hashtag sayısı: tam olarak 2 (3. olarak #TrendiaTR x_worker ekler)
 
-    2. "interaction_question":
-       - IDENTIFY the core tension or uncertainty in the news.
-       - SYNTHESIZE a polarizing BINARY question.
-       - CRITICAL JSON FORMATTING: You MUST use the exact string characters "\\n\\n" (double backslash) to create line breaks.
-       - STRICT FORMAT: "[Your specific question?]\\n\\nA) [Scenario A]\\nB) [Scenario B]\\n\\nA veya B? Yorumlarda nedenini belirtin! 👇"
+## ÇIKTI FORMATI — SADECE JSON, başka hiçbir şey yazma
 
-    3. "hashtags":
-       - Exactly 2 relevant hashtags (without the #). Example: ["Siyaset", "Ortadoğu"]
+{{
+  "full_tweet": "hook\\n\\nbody cümle 1. Body cümle 2.\\n\\nSoru?\\n\\nA) Seçenek A\\nB) Seçenek B\\n\\nA veya B? Yorumlarda nedenini belirtin! 👇\\n\\n#Hashtag1 #Hashtag2",
+  "reply_hook": "Konunun [spesifik detay] ve resmi açıklamalar için 👇",
+  "hashtags": ["Hashtag1", "Hashtag2"],
+  "image_short_text": "Max 130 karakter, emoji yok, tek cümle özet"
+}}
 
-    4. "image_short_text":
-       - A heavily compressed, single-sentence summary UNDER 130 CHARACTERS. NO EMOJIS.
-    """
+UYARI — reply_hook için:
+- Jenerik YAZMA: "Olayın tüm detayları için 👇" — bu değersiz
+- SPESİFİK YAZ: "TFF'nin resmi açıklaması ve kulüp tepkileri için 👇" veya "Maçın VAR kararları ve teknik analiz için 👇"
+- reply_hook içinde URL YAZMA — x_worker ekler
+"""
 
     try:
         response = client.models.generate_content(
@@ -128,10 +181,9 @@ def generate_x_content(trend_title, cluster_text, category, phase_type="standard
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type='application/json',
-                temperature=0.8,
+                temperature=0.85,
             )
         )
-        
         try:
             result = json.loads(response.text)
             if isinstance(result, list) and len(result) > 0:
@@ -139,21 +191,24 @@ def generate_x_content(trend_title, cluster_text, category, phase_type="standard
         except json.JSONDecodeError:
             logger.error("Failed to decode JSON from AI response.")
             return None
-        
-        required_keys = ["ai_summary", "interaction_question", "hashtags", "image_short_text"]
+
+        required_keys = ["full_tweet", "reply_hook", "hashtags", "image_short_text"]
         if not all(k in result for k in required_keys):
-            logger.error(f"AI response missing required keys.")
+            logger.error(f"AI response missing required keys. Got: {list(result.keys())}")
             return None
-            
+
+        logger.info(f"Generated {content_type} content for: {trend_title[:50]}")
         return result
 
     except Exception as e:
         logger.error(f"X Content Generation Failed: {e}")
         return None
 
+
 def generate_x_thread(trend_title, cluster_text, category):
     """
     Generates a viral 4-part Twitter thread (flood) using Gemini.
+    Used for manual thread generation from the studio UI.
     """
     if not client:
         logger.error("Gemini client is not initialized.")
@@ -190,7 +245,7 @@ def generate_x_thread(trend_title, cluster_text, category):
             contents=prompt,
             config=types.GenerateContentConfig(response_mime_type='application/json', temperature=0.7)
         )
-        
+
         try:
             result = json.loads(response.text)
             if isinstance(result, list) and len(result) > 0:
@@ -198,12 +253,12 @@ def generate_x_thread(trend_title, cluster_text, category):
         except json.JSONDecodeError:
             logger.error("Failed to decode JSON from AI response.")
             return None
-        
+
         required_keys = ["tweet_1_hook", "tweet_2_facts", "tweet_3_ai_insight", "tweet_4_cta", "image_short_text"]
         if not all(k in result for k in required_keys):
             logger.error(f"AI response missing keys.")
             return None
-            
+
         return result
 
     except Exception as e:
