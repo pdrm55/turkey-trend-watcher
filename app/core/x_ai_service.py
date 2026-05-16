@@ -100,8 +100,8 @@ HOOK TYPE — Seç birini:
 - Keskin soru: "Anlaşma imzalandı. Peki kazanan kim?"
 TONE: Analitik ama anlaşılır. Taraf tutan değil, düşündüren.
 YASAK: "bölgesel istikrarsızlık", "piyasalarda dalgalanma", "istikrarsızlığı tetikleyecek" — bunlar jenerik dolgu ifadedir, KESİNLİKLE kullanma.""",
-        "body_rule": "Cümle 1: Somut gerçek (kim, ne yaptı). Cümle 2: Spesifik sonuç veya beklenmedik detay — genel değerlendirme değil.",
-        "question_rule": "İki gerçek senaryo arasında seçim yaptıran soru. Okuyucuyu taraf seçmeye zorla."
+        "body_rule": "Cümle 1: Somut gerçek — kim, ne yaptı, kaç kişi, hangi tarih.\nCümle 2: ZORUNLU OLARAK cümle 1'den farklı bir bilgi — şu seçeneklerden biri:\n  • Henüz bilinmeyen veya açıklanmayan bir detay (örn: 'Şüphelilerin hangi ülkeye bilgi sızdırdığı açıklanmadı.')\n  • Beklenmedik bir bağlam veya çelişki (örn: 'Bu, son 3 yılın en büyük operasyonu.')\n  • Olayın spesifik bir sonucu (örn: 'Tutuklananlar arasında 2 aktif kamu görevlisi var.')\n  YASAK: Cümle 1'i farklı kelimelerle tekrar etme.",
+        "question_rule": "Soru ZORUNLU OLARAK bu kurallara uymalı:\n  - Tek bir spesifik ikilemin etrafında şekillenmeli\n  - A ve B seçenekleri MANTIKSAL OLARAK birbirini DIŞLAMALI — ikisi aynı anda doğru olamaz\n  - Her seçenek 5-10 kelime, somut ve iddialı\n\n  YANLIŞ örnek (bunları YAZMA):\n  A) Evet, sorun çözüldü.\n  B) Hayır, sorun devam ediyor.\n  → Çok belirsiz, çatışma yaratmıyor.\n\n  DOĞRU örnek:\n  A) MİT sistematik bir temizlik yaptı — ağın tamamı çökertildi.\n  B) Dış bağlantılar hâlâ serbest — operasyon yarım kaldı."
     },
     "disaster": {
         "label": "AFET / ACİL DURUM",
@@ -150,6 +150,9 @@ Amaç: Marka bilinirliği ve takipçi büyümesi — viral, insan gibi yazılmı
 
 ## SORU KURALI
 {rules['question_rule']}
+
+⚠️ SORU KALİTE KONTROLÜ: Yazmadan önce kendin sor — "A ve B seçenekleri aynı anda doğru olabilir mi?"
+Eğer cevap "Evet" ise soruyu ve seçenekleri tamamen yeniden yaz. İkisi ASLA aynı anda doğru olmamalı.
 
 ## EVRENSELLİŞ KURALLAR (İSTİSNASIZ)
 1. İlk cümle (hook) MAKSIMUM 10 kelime
