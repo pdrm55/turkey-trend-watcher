@@ -18,13 +18,14 @@ logger = logging.getLogger("MergeWorker")
 MERGE_INTERVAL_SECONDS = 3600      # Run full cycle every 1 hour
 SEARCH_DISTANCE_MIN = 0.16         # Below this, ai_engine already merges at ingest time
 SEARCH_DISTANCE_MAX = 0.40         # Above this, clusters are semantically different
-MAX_GEMINI_CALLS_PER_CYCLE = 40    # Rate-limit guard for Gemini API
+MAX_GEMINI_CALLS_PER_CYCLE = 60    # Rate-limit guard for Gemini API
 MAX_TIME_DIFF_HOURS = 72           # Don't merge events more than 3 days apart
 GEMINI_VERIFY_MODEL = "gemini-2.5-flash-lite"
 
 # --- Smart Pre-filter ---
 # Pairs with distance > this threshold also require title keyword overlap to reach Gemini
-SMART_FILTER_DISTANCE_THRESHOLD = 0.28
+# Set equal to SEARCH_DISTANCE_MIN so keyword filter applies to ALL candidate pairs
+SMART_FILTER_DISTANCE_THRESHOLD = 0.16
 # Tighter time window for distant pairs (distance > threshold)
 SMART_FILTER_MAX_TIME_HOURS = 24.0
 

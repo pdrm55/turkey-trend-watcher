@@ -424,47 +424,125 @@ elif display_mode == "Replay (بازپخش)":
                         st.metric("⏱️ سرعت کشف رویداد", f"{reaction_mins} دقیقه", "فاصله انتشار تا کشف توسط ترندیا")
 
                     st.divider()
-                    
-                    # 🌟 بخش جدید: قلاب فروش B2B (Social & API Push) 🌟
-                    st.markdown("##### 📱 اتوماسیون شبکه‌های اجتماعی (Zero-Click)")
-                    
-                    tweet_content = trend_obj.summary[:180] + "..." if trend_obj.summary else "خلاصه خبر برای انتشار آماده نیست."
-                    hashtags_twitter = ""
-                    if trend_obj.tags:
-                        hashtags_twitter = " ".join([f"#{t}" for t in trend_obj.tags[:4]])
-                        
-                    st.markdown(f"""
-                        <div style="background-color: #15202b; color: #ffffff; padding: 18px; border-radius: 16px; border: 1px solid #38444d; margin-top: 15px; margin-bottom: 25px; direction: rtl; text-align: right; font-family: sans-serif;">
-                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                                <div style="background-color: #ef4444; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 1.2rem;">TT</div>
-                                <div style="display: flex; flex-direction: column;">
-                                    <div style="font-weight: 700; font-size: 1rem; color: white; display: flex; align-items: center; gap: 4px;">Trendia Desk <span style="color: #1d9bf0; font-size: 1.1rem;">☑️</span></div>
-                                    <div style="color: #8b98a5; font-size: 0.85rem; text-align: left; direction: ltr;">@TrendiaTR</div>
+
+                    # ── بخش درافت X (توییتر) ──────────────────────────────────
+                    st.markdown("##### 𝕏 پست آماده انتشار (X Draft)")
+
+                    REPLY_SEP = "\n\n====REPLY====\n\n"
+                    x_draft = db.query(XDraft).filter(
+                        XDraft.trend_id == selected_trend_id
+                    ).order_by(desc(XDraft.created_at)).first()
+
+                    if x_draft:
+                        # تفکیک توییت اصلی و ریپلای
+                        if x_draft.long_caption and REPLY_SEP in x_draft.long_caption:
+                            main_tweet_text, reply_tweet_text = x_draft.long_caption.split(REPLY_SEP, 1)
+                        else:
+                            main_tweet_text = x_draft.long_caption or x_draft.hook_text or ""
+                            reply_tweet_text = ""
+
+                        # نشان‌گر وضعیت
+                        status_color = {"sent": "#166534", "draft": "#1e40af", "rejected": "#991b1b"}.get(x_draft.status, "#374151")
+                        status_label = {"sent": "✅ ارسال شده", "draft": "⏳ پیش‌نویس", "rejected": "❌ رد شده"}.get(x_draft.status, x_draft.status)
+                        draft_type_label = "🔴 Confirmed" if x_draft.draft_type == "confirmed" else x_draft.draft_type
+
+                        st.markdown(f"""
+                            <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+                                <span style="background:#f1f5f9; color:{status_color}; padding:4px 12px; border-radius:20px; font-size:0.82rem; font-weight:700; border:1px solid #e2e8f0;">{status_label}</span>
+                                <span style="background:#fef3c7; color:#92400e; padding:4px 12px; border-radius:20px; font-size:0.82rem; font-weight:700; border:1px solid #fde68a;">{draft_type_label}</span>
+                                <span style="background:#ede9fe; color:#5b21b6; padding:4px 12px; border-radius:20px; font-size:0.82rem; font-weight:700; border:1px solid #ddd6fe;">TPS {x_draft.tps_score}</span>
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                        # توییت اصلی
+                        st.markdown(f"""
+                            <div style="background:#15202b; color:#e7e9ea; padding:18px; border-radius:16px; border:1px solid #38444d; margin-bottom:10px; direction:rtl; text-align:right; font-family:'Vazirmatn',sans-serif;">
+                                <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                                    <div style="background:#ef4444; width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; color:white; font-size:1.1rem; flex-shrink:0;">TT</div>
+                                    <div>
+                                        <div style="font-weight:700; color:white;">Trendia Desk <span style="color:#1d9bf0;">☑️</span></div>
+                                        <div style="color:#8b98a5; font-size:0.82rem; direction:ltr; text-align:left;">@TrendiaTR</div>
+                                    </div>
+                                </div>
+                                <div style="font-size:0.93rem; line-height:1.7; white-space:pre-wrap;">{main_tweet_text}</div>
+                                <div style="display:flex; justify-content:space-between; color:#8b98a5; font-size:0.82rem; padding-top:12px; border-top:1px solid #38444d; margin-top:14px; direction:ltr;">
+                                    <span>💬</span><span>🔁</span><span>❤️</span><span>📊</span>
                                 </div>
                             </div>
-                            <div style="font-size: 0.95rem; line-height: 1.6; margin-bottom: 12px; color: #e7e9ea; font-family: 'Vazirmatn', sans-serif;">
-                                {tweet_content}
-                            </div>
-                            <div style="color: #1d9bf0; font-size: 0.9rem; margin-bottom: 16px;">
-                                {hashtags_twitter}
-                            </div>
-                            <div style="display: flex; justify-content: space-between; color: #8b98a5; font-size: 0.85rem; padding-top: 12px; border-top: 1px solid #38444d; direction: ltr;">
-                                <span style="cursor: pointer;">💬 24</span>
-                                <span style="cursor: pointer;">🔁 89</span>
-                                <span style="cursor: pointer; color: #f91880;">❤️ 312</span>
-                                <span style="cursor: pointer;">📊 4.5K</span>
-                            </div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
+                        """, unsafe_allow_html=True)
+
+                        # ریپلای (اگر وجود داشت)
+                        if reply_tweet_text.strip():
+                            st.markdown(f"""
+                                <div style="background:#1e2732; color:#e7e9ea; padding:14px 18px; border-radius:0 0 16px 16px; border:1px solid #38444d; border-top:none; margin-bottom:10px; margin-right:40px; direction:rtl; text-align:right; font-family:'Vazirmatn',sans-serif;">
+                                    <div style="color:#8b98a5; font-size:0.78rem; margin-bottom:6px; direction:ltr; text-align:left;">↩ Reply · @TrendiaTR</div>
+                                    <div style="font-size:0.88rem; line-height:1.6; white-space:pre-wrap;">{reply_tweet_text}</div>
+                                </div>
+                            """, unsafe_allow_html=True)
+
+                        # تصویر کوتاه (برای کارت تصویر)
+                        if x_draft.image_short_text:
+                            st.caption(f"🖼️ متن تصویر: {x_draft.image_short_text}")
+                    else:
+                        st.info("هنوز درافت X برای این ترند ایجاد نشده است.")
+
                     st.markdown("<br>", unsafe_allow_html=True)
-                    
+
+                    # ── دکمه ارسال به CMS ─────────────────────────────────────
                     if st.button("🚀 ارسال مستقیم به CMS خبرگزاری (API Push)", type="primary", use_container_width=True):
-                        with st.spinner("⏳ در حال برقراری ارتباط با Webhook تحریریه و انتقال پکیج خبری..."):
-                            time.sleep(2)
-                        
-                        st.toast(f"✅ پکیج خبری «{trend_obj.title}» با موفقیت به سیستم وردپرس ارسال شد!", icon="🚀")
-                        st.balloons()
+                        import json as _json
+                        import os as _os
+
+                        BASE_URL = _os.getenv("BASE_SITE_URL", "https://trendiatr.com")
+
+                        def _abs(path):
+                            if not path:
+                                return None
+                            return path if path.startswith("http") else f"{BASE_URL}{path}"
+
+                        api_payload = {
+                            "data": {
+                                "id": trend_obj.id,
+                                "title": trend_obj.title,
+                                "category": trend_obj.category,
+                                "tps_score": round(trend_obj.final_tps, 2),
+                                "tps_signal": round(trend_obj.tps_signal, 2),
+                                "tps_confidence": round(trend_obj.tps_confidence, 2),
+                                "trajectory": trend_obj.trajectory,
+                                "article_count": trend_obj.message_count,
+                                "first_seen": trend_obj.first_seen.isoformat() + "Z" if trend_obj.first_seen else None,
+                                "last_updated": trend_obj.last_updated.isoformat() + "Z" if trend_obj.last_updated else None,
+                                "url": f"{BASE_URL}/trend/{trend_obj.slug or trend_obj.id}",
+                                "cover_image": _abs(trend_obj.cover_image),
+                                "has_video": bool(trend_obj.video_path),
+                                "summary": trend_obj.summary,
+                                "tags": trend_obj.tags or [],
+                                "entities": trend_obj.entities or [],
+                                "cluster": {
+                                    "article_count": len(raw_items),
+                                    "articles": [
+                                        {
+                                            "id": rn.id,
+                                            "title": (rn.content or "")[:120].strip(),
+                                            "source_name": rn.source_name,
+                                            "source_type": rn.source_type,
+                                            "source_tier": rn.source_tier,
+                                            "published_at": rn.published_at.isoformat() + "Z" if rn.published_at else None,
+                                            "media_url": rn.media_url,
+                                        }
+                                        for rn in raw_items
+                                    ]
+                                }
+                            },
+                            "_meta": {
+                                "endpoint": f"GET {BASE_URL}/api/v1/trends/{trend_obj.id}",
+                                "auth": "X-API-Key: ttr_••••••••••••",
+                                "plan_threshold_example": 50.0,
+                            }
+                        }
+
+                        st.markdown("**📦 پیلود ارسال‌شده به API خبرگزاری:**")
+                        st.code(_json.dumps(api_payload, ensure_ascii=False, indent=2), language="json")
 
     finally:
         db.close()

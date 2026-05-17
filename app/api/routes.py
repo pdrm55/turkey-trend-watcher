@@ -520,6 +520,12 @@ def editorial_panel():
     """Render the dedicated Editorial News creation page"""
     return render_template('editorial.html')
 
+@api_bp.route('/admin/api-clients')
+@requires_auth
+def api_clients_panel():
+    """Render the B2B API client management dashboard"""
+    return render_template('api_clients.html')
+
 @api_bp.route('/api/admin/news/draft', methods=['POST'])
 @requires_auth
 def generate_manual_news_draft():
@@ -531,7 +537,7 @@ def generate_manual_news_draft():
         return jsonify({"error": "Text is too short (Requires at least 50 characters)"}), 400
         
     try:
-        ai_data, in_tok, out_tok, duration = generate_summary_with_gemini(content)
+        ai_data, in_tok, out_tok, duration, _model = generate_summary_with_gemini(content)
         
         if not ai_data:
             return jsonify({"error": "AI did not respond properly (AI Error)"}), 500

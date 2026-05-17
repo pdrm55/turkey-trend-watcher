@@ -1,8 +1,19 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
+from functools import wraps
 from app.database.models import SessionLocal, APIClient, utc_now
 from app.core.api_auth import generate_api_key
+import os
 
 bp = Blueprint('api_admin_b2b', __name__, url_prefix='/api/admin/b2b')
+
+def _require_admin(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or auth.username != 'admin' or auth.password != os.getenv('ADMIN_PASSWORD', 'trendia2026'):
+            return Response('Login Required', 401, {'WWW-Authenticate': 'Basic realm="TrendiaTR Admin"'})
+        return f(*args, **kwargs)
+    return decorated
 
 PLAN_DEFAULTS = {
     "starter":    {"monthly_limit": 1000,   "tps_threshold": 70.0},
@@ -12,6 +23,7 @@ PLAN_DEFAULTS = {
 
 
 @bp.route('/clients', methods=['GET'])
+@_require_admin
 def list_clients():
     db = SessionLocal()
     try:
@@ -34,6 +46,7 @@ def list_clients():
 
 
 @bp.route('/clients', methods=['POST'])
+@_require_admin
 def create_client():
     data = request.get_json() or {}
     name = data.get('name', '').strip()
@@ -76,6 +89,7 @@ def create_client():
 
 
 @bp.route('/clients/<int:client_id>', methods=['PATCH'])
+@_require_admin
 def update_client(client_id):
     data = request.get_json() or {}
     db = SessionLocal()
@@ -100,6 +114,7 @@ def update_client(client_id):
 
 
 @bp.route('/clients/<int:client_id>/reset-key', methods=['POST'])
+@_require_admin
 def reset_key(client_id):
     db = SessionLocal()
     try:

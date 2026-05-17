@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrendiaTR — B2B API Clients</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .plan-starter    { background:#1e3a5f; color:#93c5fd; border-color:#2563eb; }
+        .plan-pro        { background:#1a3a2a; color:#6ee7b7; border-color:#059669; }
+        .plan-enterprise { background:#3b1f5e; color:#d8b4fe; border-color:#7c3aed; }
+        .copy-btn:active { transform: scale(.95); }
+        .usage-bar { height: 6px; border-radius: 9999px; background: #334155; }
+        .usage-fill { height: 100%; border-radius: 9999px; transition: width .4s; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-8">
+
+<div class="max-w-7xl mx-auto">
+
+    <!-- Header -->
+    <header class="flex justify-between items-center mb-10">
+        <div>
+            <h1 class="text-3xl font-black tracking-tight text-white">TrendiaTR <span class="text-blue-500">B2B API</span></h1>
+            <p class="text-slate-400 text-sm mt-1">Manage external client keys and plans</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="/admin" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-lg transition-colors text-sm">← Admin Panel</a>
+            <a href="/admin/editorial" class="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-4 py-2 rounded-lg transition-colors text-sm">📝 Editorial</a>
+            <a href="/admin/x-studio" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2 rounded-lg border border-slate-600 transition-colors text-sm">𝕏 X Studio</a>
+        </div>
+    </header>
+
+    <!-- Stats Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" id="statsRow">
+        <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Clients</p>
+            <p class="text-3xl font-black" id="statTotal">—</p>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Active</p>
+            <p class="text-3xl font-black text-green-400" id="statActive">—</p>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Total API Calls</p>
+            <p class="text-3xl font-black text-blue-400" id="statCalls">—</p>
+        </div>
+        <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Enterprise Clients</p>
+            <p class="text-3xl font-black text-purple-400" id="statEnterprise">—</p>
+        </div>
+    </div>
+
+    <!-- Table Card -->
+    <div class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-xl">
+        <div class="p-6 border-b border-slate-700 flex justify-between items-center">
+            <h2 class="text-lg font-bold">API Clients</h2>
+            <button onclick="openCreateModal()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm">
+                <span class="text-lg">+</span> New Client
+            </button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-700 bg-slate-800/60">
+                    <tr>
+                        <th class="px-6 py-3">Client</th>
+                        <th class="px-6 py-3">Plan</th>
+                        <th class="px-6 py-3">API Key</th>
+                        <th class="px-6 py-3">Usage (this period)</th>
+                        <th class="px-6 py-3">Last Seen</th>
+                        <th class="px-6 py-3">Status</th>
+                        <th class="px-6 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="clientTable" class="divide-y divide-slate-700/50"></tbody>
+            </table>
+            <div id="emptyState" class="hidden py-16 text-center text-slate-500">
+                <p class="text-4xl mb-3">🔑</p>
+                <p class="font-semibold">No API clients yet</p>
+                <p class="text-sm mt-1">Click "New Client" to create the first one.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Create Client Modal ──────────────────────────────────────── -->
+<div id="createModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden p-4">
+    <div class="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md p-6 shadow-2xl">
+        <h3 class="text-xl font-bold mb-6">New API Client</h3>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Client / Company Name *</label>
+                <input id="newName" type="text" placeholder="e.g. Hürriyet Digital"
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Email *</label>
+                <input id="newEmail" type="email" placeholder="api@client.com"
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Plan</label>
+                <select id="newPlan" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none">
+                    <option value="starter">Starter — 1,000 calls/mo · TPS ≥70</option>
+                    <option value="pro" selected>Pro — 10,000 calls/mo · TPS ≥50</option>
+                    <option value="enterprise">Enterprise — Unlimited · TPS ≥30</option>
+                </select>
+            </div>
+        </div>
+        <div id="createError" class="hidden mt-4 text-red-400 text-sm bg-red-900/30 rounded-lg px-4 py-2"></div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closeCreateModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-lg transition-colors">Cancel</button>
+            <button onclick="createClient()" id="createBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition-colors">Create & Generate Key</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Key Display Modal (shown once after create/reset) ────────── -->
+<div id="keyModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden p-4">
+    <div class="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-lg p-6 shadow-2xl">
+        <div class="text-center mb-6">
+            <div class="text-5xl mb-3">🔑</div>
+            <h3 class="text-xl font-bold">API Key Generated</h3>
+            <p class="text-slate-400 text-sm mt-2">Copy this key now — it will <span class="text-red-400 font-semibold">never be shown again.</span></p>
+        </div>
+        <div class="bg-slate-900 border border-slate-600 rounded-xl p-4 mb-4">
+            <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">API Key</p>
+            <p id="keyDisplay" class="font-mono text-green-400 text-sm break-all leading-relaxed"></p>
+        </div>
+        <button onclick="copyKey()" id="copyBtn" class="copy-btn w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-colors mb-3 flex items-center justify-center gap-2">
+            📋 Copy to Clipboard
+        </button>
+        <div class="bg-amber-900/30 border border-amber-700/50 rounded-lg px-4 py-3 text-amber-300 text-sm mb-4">
+            ⚠️ Send this key to the client over a secure channel (encrypted email, secure message). Do not share it publicly.
+        </div>
+        <button onclick="closeKeyModal()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-lg transition-colors">Done — I've saved the key</button>
+    </div>
+</div>
+
+<!-- ── Edit Plan Modal ──────────────────────────────────────────── -->
+<div id="editModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden p-4">
+    <div class="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md p-6 shadow-2xl">
+        <h3 class="text-xl font-bold mb-6">Edit Client</h3>
+        <input type="hidden" id="editClientId">
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Plan</label>
+                <select id="editPlan" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none">
+                    <option value="starter">Starter — 1,000 calls/mo · TPS ≥70</option>
+                    <option value="pro">Pro — 10,000 calls/mo · TPS ≥50</option>
+                    <option value="enterprise">Enterprise — Unlimited · TPS ≥30</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Monthly Limit (override)</label>
+                <input id="editLimit" type="number"
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">TPS Threshold (override)</label>
+                <input id="editTps" type="number" step="0.1"
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:outline-none">
+            </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closeEditModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-lg transition-colors">Cancel</button>
+            <button onclick="saveEdit()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition-colors">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Confirm Reset Key Modal ──────────────────────────────────── -->
+<div id="resetModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden p-4">
+    <div class="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-sm p-6 shadow-2xl text-center">
+        <div class="text-5xl mb-4">⚠️</div>
+        <h3 class="text-xl font-bold mb-2">Reset API Key?</h3>
+        <p class="text-slate-400 text-sm mb-6">The existing key will stop working immediately. A new key will be generated.</p>
+        <input type="hidden" id="resetClientId">
+        <div class="flex gap-3">
+            <button onclick="closeResetModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-lg transition-colors">Cancel</button>
+            <button onclick="confirmReset()" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg transition-colors">Reset Key</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let clients = [];
+
+// ── Load & render ────────────────────────────────────────────────
+async function loadClients() {
+    const res = await fetch('/api/admin/b2b/clients');
+    if (!res.ok) { showToast('Failed to load clients', 'error'); return; }
+    clients = await res.json();
+    renderTable();
+    renderStats();
+}
+
+function renderStats() {
+    document.getElementById('statTotal').textContent    = clients.length;
+    document.getElementById('statActive').textContent   = clients.filter(c => c.is_active).length;
+    document.getElementById('statCalls').textContent    = clients.reduce((s, c) => s + c.calls_used, 0).toLocaleString();
+    document.getElementById('statEnterprise').textContent = clients.filter(c => c.plan === 'enterprise').length;
+}
+
+function renderTable() {
+    const tbody = document.getElementById('clientTable');
+    const empty = document.getElementById('emptyState');
+    if (!clients.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+    empty.classList.add('hidden');
+
+    tbody.innerHTML = clients.map(c => {
+        const pct = c.monthly_limit > 0 ? Math.min(100, Math.round(c.calls_used / c.monthly_limit * 100)) : 0;
+        const barColor = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#22c55e';
+        const planClass = `plan-${c.plan}`;
+        const lastSeen = c.last_seen_at ? timeAgo(c.last_seen_at) : 'Never';
+        const limitLabel = c.monthly_limit >= 999999 ? '∞' : c.monthly_limit.toLocaleString();
+
+        return `
+        <tr class="hover:bg-slate-700/30 transition-colors">
+            <td class="px-6 py-4">
+                <div class="font-semibold text-white">${escHtml(c.name)}</div>
+                <div class="text-xs text-slate-400 mt-0.5">${escHtml(c.email)}</div>
+                <div class="text-xs text-slate-600 mt-0.5">ID #${c.id} · since ${fmtDate(c.created_at)}</div>
+            </td>
+            <td class="px-6 py-4">
+                <span class="inline-block px-3 py-1 rounded-full text-xs font-bold border ${planClass} capitalize">${c.plan}</span>
+                <div class="text-xs text-slate-500 mt-1">TPS ≥${c.tps_threshold}</div>
+            </td>
+            <td class="px-6 py-4 font-mono text-xs text-slate-400">${escHtml(c.api_key_preview || '—')}</td>
+            <td class="px-6 py-4 min-w-[160px]">
+                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                    <span>${c.calls_used.toLocaleString()} used</span>
+                    <span>${limitLabel}</span>
+                </div>
+                <div class="usage-bar"><div class="usage-fill" style="width:${pct}%;background:${barColor}"></div></div>
+                <div class="text-xs text-slate-500 mt-1">${pct}% of limit</div>
+            </td>
+            <td class="px-6 py-4 text-sm text-slate-400">${lastSeen}</td>
+            <td class="px-6 py-4">
+                ${c.is_active
+                    ? '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-green-900/40 text-green-400 border border-green-800">● Active</span>'
+                    : '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-red-900/40 text-red-400 border border-red-800">● Inactive</span>'
+                }
+            </td>
+            <td class="px-6 py-4 text-right">
+                <div class="flex gap-2 justify-end">
+                    <button onclick="openEditModal(${c.id})" title="Edit plan / limits"
+                        class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors">✏️ Edit</button>
+                    <button onclick="toggleActive(${c.id}, ${c.is_active})" title="${c.is_active ? 'Deactivate' : 'Activate'}"
+                        class="${c.is_active ? 'bg-amber-700 hover:bg-amber-600' : 'bg-green-700 hover:bg-green-600'} text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors">
+                        ${c.is_active ? '⏸ Disable' : '▶ Enable'}
+                    </button>
+                    <button onclick="openResetModal(${c.id})" title="Rotate API key"
+                        class="bg-red-800 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors">🔄 Key</button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Create ───────────────────────────────────────────────────────
+function openCreateModal() {
+    document.getElementById('newName').value = '';
+    document.getElementById('newEmail').value = '';
+    document.getElementById('newPlan').value = 'pro';
+    document.getElementById('createError').classList.add('hidden');
+    document.getElementById('createModal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('newName').focus(), 50);
+}
+function closeCreateModal() { document.getElementById('createModal').classList.add('hidden'); }
+
+async function createClient() {
+    const name  = document.getElementById('newName').value.trim();
+    const email = document.getElementById('newEmail').value.trim();
+    const plan  = document.getElementById('newPlan').value;
+    const errEl = document.getElementById('createError');
+
+    if (!name || !email) { errEl.textContent = 'Name and email are required.'; errEl.classList.remove('hidden'); return; }
+
+    const btn = document.getElementById('createBtn');
+    btn.disabled = true; btn.textContent = 'Creating…';
+
+    const res = await fetch('/api/admin/b2b/clients', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, email, plan})
+    });
+    const data = await res.json();
+    btn.disabled = false; btn.textContent = 'Create & Generate Key';
+
+    if (!res.ok) { errEl.textContent = data.error || 'Error creating client.'; errEl.classList.remove('hidden'); return; }
+
+    closeCreateModal();
+    showKeyModal(data.api_key);
+    loadClients();
+}
+
+// ── Key modal ────────────────────────────────────────────────────
+function showKeyModal(key) {
+    document.getElementById('keyDisplay').textContent = key;
+    document.getElementById('copyBtn').textContent = '📋 Copy to Clipboard';
+    document.getElementById('keyModal').classList.remove('hidden');
+}
+function closeKeyModal() { document.getElementById('keyModal').classList.add('hidden'); }
+
+function copyKey() {
+    const key = document.getElementById('keyDisplay').textContent;
+    navigator.clipboard.writeText(key).then(() => {
+        document.getElementById('copyBtn').innerHTML = '✅ Copied!';
+    });
+}
+
+// ── Toggle active ────────────────────────────────────────────────
+async function toggleActive(id, current) {
+    const res = await fetch(`/api/admin/b2b/clients/${id}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({is_active: !current})
+    });
+    if (res.ok) { loadClients(); showToast(`Client ${current ? 'disabled' : 'enabled'}`, 'ok'); }
+    else showToast('Update failed', 'error');
+}
+
+// ── Edit modal ───────────────────────────────────────────────────
+function openEditModal(id) {
+    const c = clients.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('editClientId').value = id;
+    document.getElementById('editPlan').value  = c.plan;
+    document.getElementById('editLimit').value = c.monthly_limit;
+    document.getElementById('editTps').value   = c.tps_threshold;
+    document.getElementById('editModal').classList.remove('hidden');
+}
+function closeEditModal() { document.getElementById('editModal').classList.add('hidden'); }
+
+async function saveEdit() {
+    const id    = document.getElementById('editClientId').value;
+    const plan  = document.getElementById('editPlan').value;
+    const limit = parseInt(document.getElementById('editLimit').value);
+    const tps   = parseFloat(document.getElementById('editTps').value);
+    const res = await fetch(`/api/admin/b2b/clients/${id}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({plan, monthly_limit: limit, tps_threshold: tps})
+    });
+    if (res.ok) { closeEditModal(); loadClients(); showToast('Client updated', 'ok'); }
+    else showToast('Update failed', 'error');
+}
+
+// ── Reset key modal ──────────────────────────────────────────────
+function openResetModal(id) {
+    document.getElementById('resetClientId').value = id;
+    document.getElementById('resetModal').classList.remove('hidden');
+}
+function closeResetModal() { document.getElementById('resetModal').classList.add('hidden'); }
+
+async function confirmReset() {
+    const id = document.getElementById('resetClientId').value;
+    const res = await fetch(`/api/admin/b2b/clients/${id}/reset-key`, { method: 'POST' });
+    const data = await res.json();
+    closeResetModal();
+    if (res.ok) { showKeyModal(data.new_api_key); loadClients(); }
+    else showToast('Key reset failed', 'error');
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+}
+
+function timeAgo(iso) {
+    if (!iso) return 'Never';
+    const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (diff < 60)    return `${diff}s ago`;
+    if (diff < 3600)  return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    return `${Math.floor(diff/86400)}d ago`;
+}
+
+let _toastTimer;
+function showToast(msg, type='ok') {
+    clearTimeout(_toastTimer);
+    let el = document.getElementById('toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'toast';
+        el.className = 'fixed bottom-6 right-6 px-5 py-3 rounded-xl font-semibold text-sm shadow-2xl z-50 transition-all';
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.background = type === 'ok' ? '#166534' : '#991b1b';
+    el.style.color = '#fff';
+    el.style.opacity = '1';
+    _toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 3000);
+}
+
+// Close modals on backdrop click
+['createModal','keyModal','editModal','resetModal'].forEach(id => {
+    document.getElementById(id).addEventListener('click', e => {
+        if (e.target.id === id) e.target.classList.add('hidden');
+    });
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') ['createModal','keyModal','editModal','resetModal'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+    });
+});
+
+loadClients();
+</script>
+</body>
+</html>

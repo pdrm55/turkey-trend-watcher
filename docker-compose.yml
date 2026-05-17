@@ -70,7 +70,7 @@ services:
     build: .
     container_name: ttw_dashboard
     depends_on: ["api_server"]
-    volumes: 
+    volumes:
       - ".:/app"
       - "/var/run/docker.sock:/var/run/docker.sock"
     env_file: [".env"]
@@ -78,6 +78,18 @@ services:
     networks: ["ttw_network"]
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: streamlit run app/workers/dashboard.py --server.port 8501 --server.address 0.0.0.0
+
+  demo_dashboard:
+    image: turkey-trend-watcher-dashboard:latest
+    container_name: ttw_demo
+    depends_on: ["api_server"]
+    volumes:
+      - ".:/app"
+    env_file: [".env"]
+    ports: ["8080:8080"]
+    networks: ["ttw_network"]
+    entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
+    command: streamlit run app/workers/demo_dashboard.py --server.port 8080 --server.address 0.0.0.0
 
   # --- [Isolated Workers] ---
   telegram_worker:
