@@ -46,3 +46,7 @@ trabzonsporsevgisi
 # --- Teknoloji ---
 technopatnet
 webtekno
+
+# --- Deprem ---
+depremturkey
+kandillisondepremler

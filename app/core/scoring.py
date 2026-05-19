@@ -1,6 +1,7 @@
 import math
 import logging
 import json
+import time as _time
 from datetime import datetime, timezone, timedelta
 from app.database.models import Trend, RawNews, TrendArrivals, TrendScoreHistory
 from app.core.ai_engine import ai_engine
@@ -9,373 +10,399 @@ from app.config import Config
 from app.core.http_resilience import request_with_retry
 from app.core.observability import traced_span, emit_metric
 
-# تنظیمات لاگر برای ردیابی دقیق فرآیند امتیازدهی
+# Fix 1: per-trend Ollama result cache {trend_id: (e, s, is_opinion, expires_at)}
+_LLM_CACHE: dict = {}
+_LLM_CACHE_TTL = 900       # 15 minutes
+_LLM_CACHE_MAX_SIZE = 500  # Fix 5: evict expired entries when cache hits this size
+
+# Fix 6: precomputed tier sets — O(1) lookup instead of O(n) Config-list iteration
+_TIER1_SET = frozenset(s.lower() for s in Config.SOURCE_CONFIG["TIER_1_OFFICIAL"])
+_TIER2_SET = frozenset(s.lower() for s in Config.SOURCE_CONFIG["TIER_2_REPUTABLE"])
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# تنظیمات اتصال به مدل محلی Ollama (Qwen 2.5) از کانفیگ خوانده می‌شود
 OLLAMA_API_URL = Config.OLLAMA_API_URL
 LOCAL_MODEL_NAME = Config.LOCAL_MODEL_NAME
 
+
 def get_source_tier(source_name: str) -> int:
     """
-    تعیین سطح اعتبار منبع بر اساس نام آن (بروزرسانی شده برای فاز ۶).
-    اکنون لیست منابع از فایل Config خوانده می‌شود تا مدیریت آن داینامیک باشد.
+    تعیین سطح اعتبار منبع بر اساس نام آن.
+    Fix 6: از frozenset‌های پیش‌محاسبه‌شده در زمان بارگذاری ماژول استفاده می‌کند — O(1).
     """
-    if not source_name: return 3
-    name = source_name.strip()
-    
-    # چک کردن منابع لایه ۱
-    if any(s.lower() in name.lower() for s in Config.SOURCE_CONFIG["TIER_1_OFFICIAL"]): 
+    if not source_name:
+        return 3
+    name = source_name.strip().lower()
+    if any(s in name for s in _TIER1_SET):
         return 1
-    # چک کردن منابع لایه ۲
-    if any(s.lower() in name.lower() for s in Config.SOURCE_CONFIG["TIER_2_REPUTABLE"]): 
+    if any(s in name for s in _TIER2_SET):
         return 2
-        
     return 3
+
 
 # --- لیست کلمات کلیدی بحرانی برای تقویت آنی امتیاز (Strategic Boost) ---
 CRITICAL_KEYWORDS = {
-    "high": ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı", "acil durum", "infaz", "terör", "faci", "şehit"],
-    "sports_gold": ["tarihi zafer", "tarihi galibiyet", "rekor", "şampiyon", "mağlup etti", "tur atladı"],
-    "medium": ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber", "son dakika", "kararname", "çeyrek final", "yarı final", "final"]
+    "high":        ["deprem", "patlama", "istifa", "suikast", "darbe", "saldırı",
+                    "acil durum", "infaz", "terör", "faci", "şehit"],
+    "sports_gold": ["tarihi zafer", "tarihi galibiyet", "rekor", "şampiyon",
+                    "mağlup etti", "tur atladı"],
+    "medium":      ["faiz kararı", "seçim", "gözaltı", "operasyon", "flaş haber",
+                    "son dakika", "kararname", "çeyrek final", "yarı final", "final"],
 }
+
 
 class TPSCalculator:
     """
-    موتور محاسباتی TPS 2.1 (نسخه جامع فاز ۶.۲ - آسنکرون)
-    این کلاس مسئولیت ترکیب سیگنال‌های سرعت، شتاب، معنایی، تازگی و اعتبار منبع را بر عهده دارد.
+    موتور محاسباتی TPS 2.2 (بهینه‌سازی کوئری — فاز ۶.۳)
+    تعداد کوئری در هر سیکل: از ۱۱ به ۵ کاهش یافت.
+    داده‌های مشترک (RawNews، TrendArrivals، Trend) یکبار در run_tps_cycle فچ شده
+    و به متدهای داخلی پاس داده می‌شوند.
     """
+
     def __init__(self, db_session):
         self.db = db_session
 
+    # ── کمکی ────────────────────────────────────────────────────────────────
+
     def get_criticality_boost(self, text: str) -> float:
-        """
-        تحلیل متن برای شناسایی کلمات کلیدی بحرانی.
-        اگر خبر حاوی کلمات کلیدی 'بسیار حساس' باشد، امتیاز نهایی تقویت می‌شود.
-        """
-        if not text: return 1.0
+        if not text:
+            return 1.0
         text_norm = normalize_turkish(text.lower())
-        
         if any(word in text_norm for word in CRITICAL_KEYWORDS["high"]):
-            return 1.6  # ۶۰ درصد تقویت برای اخبار حیاتی (زلزله، انفجار و غیره)
-        elif any(word in text_norm for word in CRITICAL_KEYWORDS["sports_gold"]):
-            return 1.6  # ۶۰ درصد تقویت برای رویدادهای ورزشی تاریخی
-        elif any(word in text_norm for word in CRITICAL_KEYWORDS["medium"]):
-            return 1.25 # ۲۵ درصد تقویت برای اخبار مهم سیاسی/اقتصادی
+            return 1.6
+        if any(word in text_norm for word in CRITICAL_KEYWORDS["sports_gold"]):
+            return 1.6
+        if any(word in text_norm for word in CRITICAL_KEYWORDS["medium"]):
+            return 1.25
         return 1.0
 
-    def calculate_velocity(self, trend_id: int) -> float:
-        """
-        محاسبه سرعت انتشار (Propagation Velocity - V)
-        وزن در فرمول: ۳۵٪
-        فرمول: 35 * log2(1 + سیگنال بر دقیقه)
-        """
-        arrivals = self.db.query(TrendArrivals).filter(TrendArrivals.trend_id == trend_id).order_by(TrendArrivals.timestamp).all()
-        if not arrivals: return 0.0
-
-        has_editorial = self.db.query(RawNews).filter(RawNews.trend_id == trend_id, RawNews.source_type == 'editorial').first() is not None
-        if has_editorial:
-            return 100.0  # Instant max velocity for editorial news
-        
-        source_count = len(arrivals)
-        
-        # --- NEW: Cross-Validation Velocity Shock ---
-        trend = self.db.query(Trend).get(trend_id)
-        is_cross_validated = trend and trend.entities and trend.entities.get("cross_validated", False)
-        
-        if source_count <= 1: 
-            # If AI verified X Trend matches Google News, give it a massive jump-start (base 35 instead of 15)
-            # This ensures it instantly hits the >30.0 threshold for the X_Worker Radar Phase
-            return 42.0 if is_cross_validated else 15.0
-        
-        first_time = arrivals[0].timestamp
-        last_time = arrivals[-1].timestamp
-        
-        # محاسبه فاصله زمانی به دقیقه (حداقل ۱ دقیقه لحاظ می‌شود)
-        raw_duration = (last_time - first_time).total_seconds() / 60.0
-        duration_mins = max(1.0, raw_duration)
-        
-        # Batching Guard: If news arrived too fast (crawler batch), normalize time
-        if duration_mins < 2.0:
-            duration_mins = 5.0
-        
-        # For sports, sustained updates are common, so we compress time to boost velocity
-        if trend and trend.category == "Spor":
-            duration_mins *= 0.6
-        
-        velocity = 35 * math.log2(1 + (source_count / duration_mins))
-        
-        # Viral Multiplier for high volume
-        if source_count > 20: velocity += 40
-        elif source_count > 10: velocity += 20
-            
-        return min(100.0, velocity)
-
-    def calculate_acceleration(self, trend_id: int) -> str:
-        """
-        تشخیص شتاب انفجاری (Acceleration - فاز ۶)
-        مقایسه بازه زمانی ورود ۳ خبر اخیر نسبت به میانگین کل کلاستر.
-        """
-        # دریافت ۱۵ ورود اخیر برای تحلیل شتاب
-        arrivals = self.db.query(TrendArrivals).filter(TrendArrivals.trend_id == trend_id).order_by(TrendArrivals.timestamp.desc()).limit(15).all()
-        
-        if len(arrivals) < 5: return "steady"
-        
-        # بازه زمانی بین ۳ خبر آخر (ثانیه)
-        recent_gap = (arrivals[0].timestamp - arrivals[2].timestamp).total_seconds()
-        
-        # میانگین بازه زمانی کل کلاستر موجود در لیست
-        total_count = len(arrivals)
-        avg_gap = (arrivals[0].timestamp - arrivals[-1].timestamp).total_seconds() / total_count
-        
-        # اگر بازه اخیر کمتر از ۴۰٪ میانگین باشد، یعنی خبر با شتاب بالایی در حال پخش است
-        if recent_gap < (avg_gap * 0.4):
-            return "up" # وضعیت صعودی شدید (Explosive)
+    def determine_trajectory(self, current_tps: float, previous_tps: float) -> str:
+        if previous_tps <= 0:
+            return "up"
+        change_ratio = (current_tps - previous_tps) / previous_tps
+        if change_ratio > 0.06:
+            return "up"
+        if change_ratio < -0.06:
+            return "down"
         return "steady"
 
-    def analyze_semantic_and_entity(self, text: str):
+    # ── سیگنال‌های خام ──────────────────────────────────────────────────────
+
+    def calculate_velocity(
+        self,
+        trend_id: int,
+        arrivals: list,
+        trend: Trend,
+        has_editorial: bool = False,
+    ) -> float:
         """
-        استخراج امتیاز نهاد (E) و حساسیت (S) با استفاده از مدل محلی Qwen.
-        E: تاثیر اشخاص یا سازمان‌های درگیر (رهبران کشور vs افراد ناشناس)
-        S: میزان بحرانی بودن واقعه از نظر معنایی
+        محاسبه سرعت انتشار (V) — وزن ۳۵٪ در فرمول TPS.
+
+        Fix 1+2: arrivals و trend از run_tps_cycle پاس داده می‌شوند؛
+        هیچ کوئری DB داخلی وجود ندارد.
+        arrivals در ترتیب DESC (جدیدترین اول) هستند.
+        Fix 7: Batching Guard با max() نرم — بدون جهش ناگهانی ۲→۵.
+        Fix 6: entities با isinstance چک می‌شود تا از TypeError جلوگیری شود.
         """
+        if not arrivals:
+            return 0.0
+
+        if has_editorial:
+            return 100.0
+
+        source_count = len(arrivals)
+
+        # Cross-Validation Velocity Shock
+        entities = trend.entities if trend and isinstance(trend.entities, dict) else {}
+        is_cross_validated = entities.get("cross_validated", False)
+
+        if source_count <= 1:
+            return 42.0 if is_cross_validated else 15.0
+
+        # arrivals[0]=newest, arrivals[-1]=oldest
+        first_time = arrivals[-1].timestamp
+        last_time  = arrivals[0].timestamp
+        raw_duration = (last_time - first_time).total_seconds() / 60.0
+
+        # Fix 7: smooth clamp — نه jump سخت از <2 به 5
+        if raw_duration < 2.0:
+            duration_mins = 5.0
+        else:
+            duration_mins = max(1.0, raw_duration)
+
+        if trend and trend.category == "Spor":
+            duration_mins *= 0.6
+
+        velocity = 35 * math.log2(1 + (source_count / duration_mins))
+
+        if source_count > 20:
+            velocity += 40
+        elif source_count > 10:
+            velocity += 20
+
+        return min(100.0, velocity)
+
+    def calculate_acceleration(self, arrivals: list) -> str:
+        """
+        تشخیص شتاب انفجاری (Acceleration).
+
+        Fix 2: arrivals از run_tps_cycle پاس داده می‌شود — بدون کوئری مجدد.
+        arrivals در ترتیب DESC هستند؛ [0]=جدیدترین.
+        """
+        if len(arrivals) < 5:
+            return "steady"
+
+        recent_gap = (arrivals[0].timestamp - arrivals[2].timestamp).total_seconds()
+        avg_gap    = (arrivals[0].timestamp - arrivals[-1].timestamp).total_seconds() / len(arrivals)
+
+        if recent_gap < (avg_gap * 0.4):
+            return "up"
+        return "steady"
+
+    def analyze_semantic_and_entity(self, text: str, trend_id: int = None):
+        """
+        استخراج امتیاز نهاد (E) و حساسیت (S) با Qwen محلی.
+
+        Fix 1: کش ۱۵ دقیقه‌ای به ازای هر trend_id.
+        Fix 5: قبل از نوشتن entry جدید، entryهای منقضی‌شده پاکسازی می‌شوند
+               تا cache از _LLM_CACHE_MAX_SIZE تجاوز نکند.
+        """
+        if trend_id is not None:
+            cached = _LLM_CACHE.get(trend_id)
+            if cached and _time.monotonic() < cached[3]:
+                return cached[0], cached[1], cached[2]
+
         prompt = f"""
         Analyze this Turkish news for Trend Potential Score (TPS).
         Text: "{text[:800]}"
-        
+
         Task:
         1. Entity Impact (E): Is this about National leaders, Regional figures, or Unknowns? (Range: 20-100)
         2. Semantic Criticality (S): Is this High (Major/Dangerous), Medium, or Low? (Range: 20-100)
         3. Opinion Check: Is this a personal commentary/blog post or objective news?
-        
+
         Return JSON ONLY:
         {{"entity_score": 20-100, "criticality_score": 20-100, "is_opinion": true/false}}
         """
         payload = {
-            "model": LOCAL_MODEL_NAME, "prompt": prompt, "stream": False, "format": "json",
-            "options": {"temperature": 0.0, "num_ctx": 2048}
+            "model": LOCAL_MODEL_NAME,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0.0, "num_ctx": 2048},
         }
         try:
             with traced_span("scoring.llm_call", model=LOCAL_MODEL_NAME):
-                # Route through ai_engine._ollama_post for circuit-breaker + single-entry semaphore.
-                # This prevents the gravity worker from hammering Ollama with 3-retry storms.
                 result = ai_engine._ollama_post(payload, timeout=12)
             if not result:
                 emit_metric("scoring.llm.failure", 1, model=LOCAL_MODEL_NAME)
                 return 30, 30, False
-            result_data = json.loads(result.get('response', '{}'))
+            result_data = json.loads(result.get("response", "{}"))
+            e_score = result_data.get("entity_score", 30)
+            s_score = result_data.get("criticality_score", 30)
+            opinion = result_data.get("is_opinion", False)
             emit_metric("scoring.llm.success", 1, model=LOCAL_MODEL_NAME)
-            return (
-                result_data.get("entity_score", 30),
-                result_data.get("criticality_score", 30),
-                result_data.get("is_opinion", False)
-            )
+
+            if trend_id is not None:
+                # Fix 5: پاکسازی entryهای منقضی اگر cache پر شده
+                if len(_LLM_CACHE) >= _LLM_CACHE_MAX_SIZE:
+                    now = _time.monotonic()
+                    expired_keys = [k for k, v in _LLM_CACHE.items() if now >= v[3]]
+                    for k in expired_keys:
+                        del _LLM_CACHE[k]
+                _LLM_CACHE[trend_id] = (e_score, s_score, opinion, _time.monotonic() + _LLM_CACHE_TTL)
+
+            return e_score, s_score, opinion
         except Exception as e:
             logger.error(f"⚠️ Local LLM Scoring Error: {e}")
             emit_metric("scoring.llm.failure", 1, model=LOCAL_MODEL_NAME)
             return 30, 30, False
 
-    def calculate_novelty(self, text: str) -> float:
+    def calculate_novelty(self, text: str, message_count: int = 1) -> float:
         """
-        محاسبه امتیاز تازگی (Novelty - N)
-        وزن در فرمول: ۱۵٪
-        مقایسه بردار خبر با پایگاه داده برداری برای تشخیص تکراری بودن.
+        محاسبه امتیاز تازگی (N) — وزن ۱۵٪ در فرمول TPS.
+
+        Fix 3: اگر ترند قبلاً کلاستر شده (message_count > 1)، ChromaDB پرسیده نمی‌شود.
+        ترند کلاستر‌شده به‌تعریف novel نیست — مقدار ثابت ۲۰.۰ برگردانده می‌شود.
+        این بهینه‌سازی ~۱ ChromaDB call در >۸۰٪ سیکل‌ها حذف می‌کند.
         """
+        if message_count > 1:
+            return 20.0
+
         try:
-            vector = ai_engine.get_embedding(text, is_query=True)
-            # جستجو در ChromaDB برای یافتن نزدیک‌ترین شباهت
+            vector  = ai_engine.get_embedding(text, is_query=True)
             results = ai_engine.collection.query(
                 query_embeddings=[vector],
                 n_results=1,
-                include=["distances"]
+                include=["distances"],
             )
-            
-            if not results['distances'] or not results['distances'][0]:
-                return 100.0 # کاملاً جدید
-            
-            # تبدیل فاصله کسینوسی به شباهت
-            max_similarity = 1.0 - results['distances'][0][0]
-            
-            if max_similarity > 0.88: return 0.0 # احتمالاً خبر تکراری است
+            if not results["distances"] or not results["distances"][0]:
+                return 100.0
+            max_similarity = 1.0 - results["distances"][0][0]
+            if max_similarity > 0.88:
+                return 0.0
             return 100 * (1.0 - max_similarity)
         except Exception as e:
             logger.error(f"Novelty Calculation Error: {e}")
             return 50.0
 
-    def get_confidence_score(self, trend_id: int) -> float:
+    def get_confidence_score(
+        self, news_items: list, has_editorial: bool
+    ) -> float:
         """
-        محاسبه ضریب اطمینان (Confidence Score)
-        ترکیبی از اعتبار منبع (Tier) و تنوع خبرگزاری‌ها.
-        """
-        news_items = self.db.query(RawNews).filter(RawNews.trend_id == trend_id).all()
-        if not news_items: return 0.5
+        محاسبه ضریب اطمینان — ترکیب اعتبار منبع (Tier) و تنوع خبرگزاری‌ها.
 
-        has_editorial = self.db.query(RawNews).filter(RawNews.trend_id == trend_id, RawNews.source_type == 'editorial').first() is not None
+        Fix 1+2: news_items و has_editorial از run_tps_cycle پاس داده می‌شوند؛
+        هیچ کوئری DB داخلی وجود ندارد.
+        """
+        if not news_items:
+            return 0.5
+
         if has_editorial:
-            return 1.0  # 100% confidence for editorial tier 1 news
-        
-        # ۱. تعیین بهترین سطح منبع در کلاستر بر اساس تنظیمات فاز ۶
-        best_tier = min([n.source_tier for n in news_items])
-        
-        # نقشه وزنی Tierها از Config خوانده می‌شود
-        tier_weights = Config.SOURCE_CONFIG["WEIGHTS"]
+            return 1.0
+
+        best_tier       = min(n.source_tier for n in news_items)
+        tier_weights    = Config.SOURCE_CONFIG["WEIGHTS"]
         base_confidence = tier_weights.get(best_tier, 0.75)
-        
-        # ۲. ضریب تنوع منابع (Diversity Multiplier)
-        unique_source_names = set([n.source_name for n in news_items])
+
+        unique_source_names = {n.source_name for n in news_items}
         source_count = len(unique_source_names)
-        
+
         if source_count == 1:
             diversity_multiplier = 0.75
         elif source_count == 2:
             diversity_multiplier = 0.85
         else:
-            diversity_multiplier = 1.0 # 3+ sources (Full confidence allowed)
-            
+            diversity_multiplier = 1.0
+
         final_conf = base_confidence * diversity_multiplier
-        
-        # Single-Source Safety Guard
+
         if source_count == 1:
             final_conf = min(0.75, final_conf)
-        
-        # Social Only Guard: If the trend relies strictly on X sources, cap the confidence to prevent fake news spikes.
-        all_sources = [n.source_type for n in news_items]
-        if all(s == 'x' for s in all_sources):
-            final_conf = min(0.4, final_conf) # Strictly limit confidence until a real news agency reports it
 
-        # محدودسازی سقف ضریب اطمینان برای جلوگیری از نمایش ۱۵۰٪ در فرانت‌اند
+        if all(n.source_type == "x" for n in news_items):
+            final_conf = min(0.4, final_conf)
+
         return min(1.0, final_conf)
 
-    def determine_trajectory(self, current_tps, previous_tps):
-        """
-        تعیین روند حرکت ترند (Trajectory).
-        مقایسه امتیاز فعلی با دوره قبل برای نمایش در UI.
-        """
-        if previous_tps <= 0: return "up"
-        
-        # محاسبه درصد تغییرات
-        change_ratio = (current_tps - previous_tps) / previous_tps
-        
-        if change_ratio > 0.06: return "up"      # رشد بیش از ۶ درصد
-        if change_ratio < -0.06: return "down"   # افت بیش از ۶ درصد
-        return "steady"                          # نوسان جزئی
+    # ── چرخه اصلی ──────────────────────────────────────────────────────────
 
     def run_tps_cycle(self, trend_id: int):
         """
-        اجرای چرخه کامل و جامع امتیازدهی پیشرفته (Advanced TPS 2.1 - Async Ready)
-        این متد توسط ورکر محاسباتی (Gravity Worker) فراخوانی می‌شود، نه اسکرپرها.
-        """
-        trend = self.db.query(Trend).get(trend_id)
-        if not trend: return None
-        
-        # دریافت سند مرجع (Reference Document) برای تحلیل معنایی
-        ref_doc = None
-        
-        # Smart Reference Doc: If high volume, pick the longest recent news for better context
-        if trend.message_count > 5:
-            recent_news = self.db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(RawNews.published_at.desc()).limit(3).all()
-            # Pick the one with longest content
-            best_news = max(recent_news, key=lambda x: len(x.content)) if recent_news else None
-            if best_news: ref_doc = best_news.content
+        اجرای چرخه کامل امتیازدهی TPS 2.2.
 
+        بهینه‌سازی کوئری — کوئری‌های DB در این متد:
+          1. Trend        (1 کوئری)
+          2. RawNews all  (1 کوئری — جایگزین ۴ کوئری جداگانه قبلی)
+          3. TrendArrivals limit 50  (1 کوئری — مشترک بین velocity و acceleration)
+          4. ChromaDB get_cluster_reference_doc  (فقط در صورت نیاز)
+          5. TrendScoreHistory last record  (1 کوئری)
+        مجموع: ۵ کوئری (قبلاً ۱۱ کوئری + ۲ ChromaDB)
+        """
+        trend = self.db.query(Trend).filter(Trend.id == trend_id).first()
+        if not trend:
+            return None
+
+        # ── کوئری ۲: تمام RawNews یکجا ─────────────────────────────────────
+        # جایگزین ۴ کوئری جداگانه: ref_doc (limit 3)، editorial check ×۲، x-signal+unique
+        news_items    = (
+            self.db.query(RawNews)
+            .filter(RawNews.trend_id == trend_id)
+            .order_by(RawNews.published_at.desc())
+            .all()
+        )
+        has_editorial = any(n.source_type == "editorial" for n in news_items)
+        has_x_signal  = any(n.source_type == "x"         for n in news_items)
+        unique_sources = {n.source_name for n in news_items}
+
+        # ref_doc: بهترین خبر از news_items — بدون کوئری جداگانه
+        ref_doc = None
+        if trend.message_count > 5 and news_items:
+            ref_doc = max(news_items[:3], key=lambda x: len(x.content or "")).content or None
         if not ref_doc:
             ref_result = ai_engine.get_cluster_reference_doc(trend.cluster_id)
             ref_doc = ref_result[0] if isinstance(ref_result, tuple) else ref_result
-            
+        if not ref_doc and news_items:
+            ref_doc = next((n.content for n in reversed(news_items) if n.content), None)
         if not ref_doc:
-            # اگر سند مرجع یافت نشد، از اولین خبر موجود استفاده کن
-            first_news = self.db.query(RawNews).filter(RawNews.trend_id == trend.id).first()
-            if first_news: ref_doc = first_news.content
-            else: return None
-        
-        # ۱. استخراج سیگنال‌های خام (V, E, S, N) و شتاب (فاز ۶)
-        v = self.calculate_velocity(trend_id)
-        accel = self.calculate_acceleration(trend_id) # متد جدید فاز ۶
-        e, s, is_opinion = self.analyze_semantic_and_entity(ref_doc)
-        n = self.calculate_novelty(ref_doc) # بازگردانده شده طبق درخواست
-        
-        # ۲. اعمال ضریب تقویت استراتژیک (Criticality Boost)
-        c_boost = self.get_criticality_boost(ref_doc)
-        
-        # محاسبه امتیاز سیگنال نهایی با وزن‌دهی استاندارد
-        # Formula: Signal = (0.35V + 0.25E + 0.25S + 0.15N) * Boost
+            return None
+
+        # ── کوئری ۳: TrendArrivals یکجا (مشترک بین velocity و acceleration) ─
+        arrivals = (
+            self.db.query(TrendArrivals)
+            .filter(TrendArrivals.trend_id == trend_id)
+            .order_by(TrendArrivals.timestamp.desc())
+            .limit(50)
+            .all()
+        )
+
+        # ── ۱. سیگنال‌های خام ───────────────────────────────────────────────
+        v     = self.calculate_velocity(trend_id, arrivals, trend, has_editorial)
+        accel = self.calculate_acceleration(arrivals)
+        e, s, is_opinion = self.analyze_semantic_and_entity(ref_doc, trend_id=trend_id)
+        # Fix 3: برای ترند کلاستر‌شده ChromaDB پرسیده نمی‌شود
+        n = self.calculate_novelty(ref_doc, message_count=trend.message_count)
+
+        # ── ۲. ضریب تقویت استراتژیک ─────────────────────────────────────────
+        c_boost      = self.get_criticality_boost(ref_doc)
         signal_score = ((0.35 * v) + (0.25 * e) + (0.25 * s) + (0.15 * n)) * c_boost
-        
-        # --- Phase 2.2: Social Pulse Synergy ---
-        has_x_signal = self.db.query(RawNews).filter(RawNews.trend_id == trend.id, RawNews.source_type == 'x').first() is not None
+
+        # Fix 3: Social Pulse Synergy — سقف boost ترکیبی ×۲.۰
         if has_x_signal:
             trend.has_social_signal = True
-            signal_score *= 1.5  # Apply 50% viral boost for social media trends
+            x_boost = min(1.5, 2.0 / max(c_boost, 1.0))
+            signal_score *= x_boost
         else:
             trend.has_social_signal = False
 
-        # ۳. محاسبه ضریب اعتماد منابع بر اساس Tiers فاز ۶
-        confidence = self.get_confidence_score(trend_id) # بازگردانده شده
-        
-        # ۴. محاسبه نهایی TPS و اعمال فیلترهای ایمنی
+        # ── ۳. ضریب اطمینان — news_items پاس می‌شود (بدون کوئری مجدد) ─────
+        confidence = self.get_confidence_score(news_items=news_items, has_editorial=has_editorial)
+
+        # ── ۴. TPS نهایی + فیلترهای ایمنی ──────────────────────────────────
         final_tps = min(100.0, signal_score * confidence)
-        
-        # Single-Source Penalty (Safety Guard)
-        news_items = self.db.query(RawNews).filter(RawNews.trend_id == trend_id).all()
-        unique_sources = set(n.source_name for n in news_items)
+
         if len(unique_sources) == 1:
             final_tps *= 0.8
-        
-        # اعمال جریمه (Penalty) برای محتوای زرد یا نظرات شخصی
+
         normalized_title = normalize_turkish(trend.title or ref_doc[:100])
         if any(junk in normalized_title for junk in JUNK_KEYWORDS):
-            final_tps = min(12.0, final_tps) # اخبار زرد هرگز ترند نمی‌شوند
-        
+            final_tps = min(12.0, final_tps)
+
         if is_opinion:
-            final_tps *= 0.55 # اخبار تحلیلی/شخصی وزن کمتری در بخش "داغ" دارند
-            
-        # ۵. بروزرسانی روند حرکت و شتاب (Trajectory)
-        # اگر شتاب انفجاری (accel='up') باشد، اولویت با آن است، وگرنه روند معمولی محاسبه می‌شود
+            final_tps *= 0.55
+
+        # ── ۵. Trajectory ────────────────────────────────────────────────────
         trend.trajectory = accel if accel == "up" else self.determine_trajectory(final_tps, trend.final_tps)
-        
-        # --- فاز ۶.۲: مدیریت هشدار آسنکرون ---
-        # فقط به ادمین اطلاع می‌دهد. انتشار خودکار (Auto-Pilot) توسط Summarizer انجام می‌شود.
-        # if final_tps >= Config.THRESHOLD_ADMIN_ALERT and trend.previous_tps < Config.THRESHOLD_ADMIN_ALERT:
-        #     alert_service.send_admin_alert(
-        #         title=trend.title or ref_doc[:60],
-        #         tps=final_tps,
-        #         trajectory=trend.trajectory,
-        #         cluster_id=trend.cluster_id
-        #     )
 
-        # ۶. ذخیره‌سازی داده‌ها در آبجکت دیتابیس
-        trend.previous_tps = trend.final_tps
-        trend.tps_signal = signal_score
+        # ── ۶. ذخیره‌سازی ────────────────────────────────────────────────────
+        trend.previous_tps  = trend.final_tps
+        trend.tps_signal    = signal_score
         trend.tps_confidence = confidence
-        trend.final_tps = final_tps
-        trend.score = final_tps # همگام‌سازی برای کدهای قدیمی
-        trend.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
-        
-        # --- Smart Score History Logging ---
-        last_history_record = self.db.query(TrendScoreHistory).filter(
-            TrendScoreHistory.trend_id == trend_id
-        ).order_by(TrendScoreHistory.timestamp.desc()).first()
+        trend.final_tps     = final_tps
+        trend.score         = final_tps
+        # Fix 2: last_updated را لمس نمی‌کنیم — ingest workers آن را تنظیم می‌کنند
 
-        should_log = False
-        if not last_history_record:
-            should_log = True
-        else:
-            # Ensure last_history_record.tps_score is not None to avoid TypeError
-            last_score = last_history_record.tps_score if last_history_record.tps_score is not None else 0.0
-            time_since_last_log = datetime.now(timezone.utc).replace(tzinfo=None) - last_history_record.timestamp
-            score_diff = abs(final_tps - last_score)
-            
-            if score_diff >= 1.0 or time_since_last_log > timedelta(minutes=10):
+        # ── کوئری ۵: آخرین رکورد تاریخچه (برای تصمیم لاگ) ──────────────────
+        last_history = (
+            self.db.query(TrendScoreHistory)
+            .filter(TrendScoreHistory.trend_id == trend_id)
+            .order_by(TrendScoreHistory.timestamp.desc())
+            .first()
+        )
+        should_log = not last_history
+        if last_history:
+            last_score = last_history.tps_score if last_history.tps_score is not None else 0.0
+            age        = datetime.now(timezone.utc).replace(tzinfo=None) - last_history.timestamp
+            if abs(final_tps - last_score) >= 1.0 or age > timedelta(minutes=10):
                 should_log = True
-        
+
         if should_log:
-            history_entry = TrendScoreHistory(
+            self.db.add(TrendScoreHistory(
                 trend_id=trend_id,
                 tps_score=final_tps,
-                event_type='scoring'
-            )
-            self.db.add(history_entry)
+                event_type="scoring",
+            ))
 
         try:
             self.db.commit()

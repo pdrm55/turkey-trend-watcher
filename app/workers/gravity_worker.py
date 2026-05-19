@@ -3,7 +3,7 @@ import os
 import time
 import math
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # اضافه کردن مسیر ریشه پروژه به sys.path برای دسترسی به ماژول‌های داخلی
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -28,11 +28,29 @@ CATEGORY_DECAY_FACTORS = {
     "Default": 0.93     # نرخ پیش‌فرض برای دسته‌های ناشناخته
 }
 
+# Fix 4: disaster/emergency keywords — classifier never emits "afet", so we check titles directly
+_AFET_KEYWORDS = frozenset({
+    'deprem', 'yangın', 'yangin', 'sel', 'patlama', 'heyelan',
+    'fırtına', 'firtina', 'tsunami', 'kasırga', 'kasirga', 'tufan',
+})
+AFET_DECAY_FACTOR = 0.82  # faster decay: emergency news loses relevance quickly
+
+# Fix 6: process active trends in chunks to avoid loading thousands of rows at once
+GRAVITY_BATCH_SIZE = 100
+
 MIN_TPS_THRESHOLD = 3.0
 DECAY_CHECK_INTERVAL = 1800  # هر ۳۰ دقیقه برای Gravity
 SCORING_CHECK_INTERVAL = 5   # هر ۵ ثانیه برای امتیازدهی اخبار جدید (Async)
 GC_CHECK_INTERVAL = 21600    # هر ۶ ساعت برای پاکسازی فایل‌های مدیا (Garbage Collection)
 QUEUE_METRICS_LOG_INTERVAL = 60
+
+def _is_afet_trend(title: str) -> bool:
+    """Return True if the trend title contains any disaster/emergency keyword."""
+    if not title:
+        return False
+    lower = title.lower()
+    return any(kw in lower for kw in _AFET_KEYWORDS)
+
 
 def cleanup_inactive_media():
     """
@@ -77,6 +95,19 @@ def cleanup_inactive_media():
 
         db.commit()
         logger.info(f"✅ [GC] Cleanup finished. Removed videos from {cleaned_count} trends.")
+
+        # Fix 7: prune TrendScoreHistory rows older than 48 hours
+        try:
+            cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)
+            deleted_rows = db.query(TrendScoreHistory).filter(
+                TrendScoreHistory.timestamp < cutoff
+            ).delete(synchronize_session=False)
+            db.commit()
+            if deleted_rows:
+                logger.info(f"🗑️ [GC] Pruned {deleted_rows} stale TrendScoreHistory rows (>48h).")
+        except Exception as e:
+            db.rollback()
+            logger.error(f"❌ [GC] TrendScoreHistory prune error: {e}")
 
     except Exception as e:
         db.rollback()
@@ -158,58 +189,83 @@ def process_pending_scores():
 def apply_gravity_decay():
     """
     وظیفه ۲: اعمال نرخ میرایی هوشمند (Gravity 2.0).
+    Fix 6: processes trends in batches of GRAVITY_BATCH_SIZE to avoid loading
+    all rows into memory at once.
     """
     db = SessionLocal()
     try:
-        active_trends = db.query(Trend).filter(
-            Trend.is_active == True
-        ).all()
-
-        if not active_trends:
-            return
-
-        logger.info(f"📉 [Gravity] Starting decay cycle for {len(active_trends)} trends...")
-        
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         decay_count = 0
         deactivated_count = 0
+        offset = 0
+        total_seen = 0
 
-        for trend in active_trends:
-            time_diff = now - trend.last_updated
-            hours_passed = time_diff.total_seconds() / 3600.0
+        while True:
+            # Fix 6: chunked pagination — never load all active trends at once
+            batch = (
+                db.query(Trend)
+                .filter(Trend.is_active == True)
+                .order_by(Trend.id)
+                .limit(GRAVITY_BATCH_SIZE)
+                .offset(offset)
+                .all()
+            )
+            if not batch:
+                break
 
-            if hours_passed >= 1.0:
-                # Fast cleanup for orphaned/noise trends
-                if trend.final_tps < 3.0:
-                    trend.is_active = False
-                    deactivated_count += 1
-                    continue
+            if offset == 0:
+                logger.info(f"📉 [Gravity] Starting decay cycle (batch_size={GRAVITY_BATCH_SIZE})...")
 
-                category = trend.category if trend.category else "Default"
-                decay_factor = CATEGORY_DECAY_FACTORS.get(category, CATEGORY_DECAY_FACTORS["Default"])
-                
-                old_score = trend.final_tps
-                new_score = old_score * math.pow(decay_factor, hours_passed)
-                
-                trend.final_tps = new_score
-                trend.score = new_score
-                
-                if new_score < 2.0:
-                    trend.is_active = False
-                    deactivated_count += 1
-                
-                # --- Smart Score History Logging (Gravity) ---
-                history_entry = TrendScoreHistory(
-                    trend_id=trend.id,
-                    tps_score=new_score,
-                    timestamp=now,
-                    event_type='gravity'
-                )
-                db.add(history_entry)
-                decay_count += 1
+            for trend in batch:
+                time_diff = now - trend.last_updated
+                hours_passed = time_diff.total_seconds() / 3600.0
 
-        db.commit()
-        logger.info(f"✅ [Gravity] Cycle done. Decayed: {decay_count} | Archived: {deactivated_count}")
+                if hours_passed >= 1.0:
+                    # Fast cleanup for orphaned/noise trends
+                    if trend.final_tps < 3.0:
+                        trend.is_active = False
+                        deactivated_count += 1
+                        continue
+
+                    category = trend.category if trend.category else "Default"
+                    decay_factor = CATEGORY_DECAY_FACTORS.get(category, CATEGORY_DECAY_FACTORS["Default"])
+
+                    # Fix 4: disaster news (deprem, yangın, sel…) decays faster
+                    # The classifier never emits "afet" — check the title directly.
+                    if _is_afet_trend(trend.title):
+                        decay_factor = min(decay_factor, AFET_DECAY_FACTOR)
+
+                    old_score = trend.final_tps
+                    new_score = old_score * math.pow(decay_factor, hours_passed)
+
+                    trend.final_tps = new_score
+                    trend.score = new_score
+
+                    if new_score < 2.0:
+                        trend.is_active = False
+                        deactivated_count += 1
+
+                    # --- Smart Score History Logging (Gravity) ---
+                    history_entry = TrendScoreHistory(
+                        trend_id=trend.id,
+                        tps_score=new_score,
+                        timestamp=now,
+                        event_type='gravity'
+                    )
+                    db.add(history_entry)
+                    decay_count += 1
+
+            total_seen += len(batch)
+            db.commit()
+
+            if len(batch) < GRAVITY_BATCH_SIZE:
+                break
+            offset += GRAVITY_BATCH_SIZE
+
+        logger.info(
+            f"✅ [Gravity] Cycle done. Processed: {total_seen} | "
+            f"Decayed: {decay_count} | Archived: {deactivated_count}"
+        )
 
     except Exception as e:
         db.rollback()
