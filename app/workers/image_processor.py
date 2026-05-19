@@ -43,6 +43,10 @@ USER_AGENTS = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1"
 ]
 
+# Fix: after this many Bing failures for a single item, stop retrying it.
+# Tracked in media_meta->bing_tries; self-healing skips items at or above this limit.
+_MAX_BING_TRIES = 3
+
 class ImageProcessor:
     def __init__(self):
         # مقداردهی کلاینت تلگرام (فقط یک بار متصل می‌شود)
@@ -290,8 +294,8 @@ class ImageProcessor:
                 candidates.sort(key=lambda x: x["score"], reverse=True)
 
                 for rank, candidate in enumerate(candidates[:3]):
-                    if candidate["score"] < 60:
-                        logger.warning(f"⚠️ Best match score ({candidate['score']}) below threshold (60). Aborting.")
+                    if candidate["score"] < 40:
+                        logger.warning(f"⚠️ Best match score ({candidate['score']}) below threshold (40). Aborting.")
                         break
 
                     try:
@@ -423,11 +427,22 @@ class ImageProcessor:
                                     f"using title as Bing query."
                                 )
                             else:
+                                # No title, no entities — nothing to search; permanent fail
+                                _meta = news.media_meta if isinstance(news.media_meta, dict) else {}
+                                _meta['bing_tries'] = _MAX_BING_TRIES
+                                news.media_meta = _meta
                                 news.media_status = -1
                                 db.commit()
                                 return
 
                 if search_query:
+                    # Fix: check retry budget before making the HTTP call
+                    _meta = news.media_meta if isinstance(news.media_meta, dict) else {}
+                    if _meta.get('bing_tries', 0) >= _MAX_BING_TRIES:
+                        news.media_status = -1
+                        db.commit()
+                        return
+
                     search_query = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
                     logger.info(f"🔍 Ultimate Fallback: Searching Bing (TR) for '{search_query[:40]}...'")
                     loop = asyncio.get_event_loop()
@@ -437,8 +452,18 @@ class ImageProcessor:
                     if image_data:
                         source_url = fallback_url
                         logger.info("✅ Fallback image successfully downloaded from Bing Images.")
+                    else:
+                        # Bing was tried and failed — increment attempt counter
+                        _meta['bing_tries'] = _meta.get('bing_tries', 0) + 1
+                        news.media_meta = _meta
 
             if not image_data:
+                # Items that never reached Bing (no trend_id, no search possible) are
+                # marked permanent so self-healing does not keep re-queuing them.
+                _meta = news.media_meta if isinstance(news.media_meta, dict) else {}
+                if 'bing_tries' not in _meta:
+                    _meta['bing_tries'] = _MAX_BING_TRIES
+                    news.media_meta = _meta
                 news.media_status = -1
                 db.commit()
                 return
@@ -534,19 +559,24 @@ class ImageProcessor:
                     logger.info("🔄 Checking for missing images (Self-Healing)...")
 
                     heal_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=48)
-                    recent_failed = db.query(RawNews).filter(
-                        RawNews.media_status == -1,
-                        RawNews.created_at >= heal_cutoff
-                    ).order_by(desc(RawNews.created_at)).limit(50).all()
+                    # Fix: skip items that have exhausted their Bing retry budget
+                    # (bing_tries >= _MAX_BING_TRIES stored in media_meta JSON).
+                    # Items without bing_tries in meta are old/legacy — re-queue them once.
+                    retry_ids = [row[0] for row in db.execute(sa_text("""
+                        SELECT id FROM raw_news
+                        WHERE media_status = -1
+                          AND created_at >= :cutoff
+                          AND COALESCE((media_meta->>'bing_tries')::int, 0) < :max_tries
+                        ORDER BY created_at DESC
+                        LIMIT 50
+                    """), {"cutoff": heal_cutoff, "max_tries": _MAX_BING_TRIES}).fetchall()]
 
-                    requeued_count = 0
-                    for n in recent_failed:
-                        n.media_status = 0  # Put back in the processing queue
-                        requeued_count += 1
-
-                    if requeued_count > 0:
+                    if retry_ids:
+                        db.execute(sa_text(
+                            "UPDATE raw_news SET media_status = 0 WHERE id = ANY(:ids)"
+                        ), {"ids": retry_ids})
                         db.commit()
-                        logger.info(f"♻️ Re-queued {requeued_count} failed news items for image retry.")
+                        logger.info(f"♻️ Re-queued {len(retry_ids)} failed items for retry (budget remaining).")
 
                     # Fix 2: Backfill cover_image for trends missing a cover (e.g. after cluster merges)
                     no_cover_trends = db.query(Trend).filter(
