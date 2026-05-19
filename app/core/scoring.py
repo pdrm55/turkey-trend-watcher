@@ -158,14 +158,13 @@ class TPSCalculator:
         }
         try:
             with traced_span("scoring.llm_call", model=LOCAL_MODEL_NAME):
-                response = request_with_retry(
-                    "POST",
-                    OLLAMA_API_URL,
-                    json=payload,
-                    timeout=12,
-                    metric_name="scoring.ollama.http_ms"
-                )
-            result_data = json.loads(response.json()['response'])
+                # Route through ai_engine._ollama_post for circuit-breaker + single-entry semaphore.
+                # This prevents the gravity worker from hammering Ollama with 3-retry storms.
+                result = ai_engine._ollama_post(payload, timeout=12)
+            if not result:
+                emit_metric("scoring.llm.failure", 1, model=LOCAL_MODEL_NAME)
+                return 30, 30, False
+            result_data = json.loads(result.get('response', '{}'))
             emit_metric("scoring.llm.success", 1, model=LOCAL_MODEL_NAME)
             return (
                 result_data.get("entity_score", 30),

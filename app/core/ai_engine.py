@@ -7,6 +7,8 @@ import shutil
 import requests
 import json
 import hashlib
+import threading
+import time
 from datetime import datetime, timedelta
 
 # 1. Enable system error tracking (for debugging SegFaults in Docker)
@@ -44,6 +46,13 @@ OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/genera
 LOCAL_MODEL_NAME = "qwen2.5:1.5b"
 
 class AIEngine:
+    # Shared circuit breaker + mutex across all AI Engine instances
+    _ollama_lock = threading.Semaphore(1)        # Only 1 Ollama request at a time
+    _cb_failures = 0                             # Consecutive failure counter
+    _cb_open_until = 0.0                         # Epoch timestamp: circuit open until
+    _CB_THRESHOLD = 3                            # Failures before circuit opens
+    _CB_COOLDOWN = 60                            # Seconds to keep circuit open
+
     def __init__(self):
         """Initialize AI Engine and connect to Vector Database"""
         # Lazy load the model to save RAM on workers that don't need embedding
@@ -85,6 +94,44 @@ class AIEngine:
             logger.error(f"Embedding Error: {e}")
             raise e
 
+    def _ollama_post(self, payload: dict, timeout: int) -> dict:
+        """Send a single request to Ollama with circuit-breaker + single-entry mutex.
+
+        Circuit breaker opens after _CB_THRESHOLD consecutive failures and stays open
+        for _CB_COOLDOWN seconds, returning {} immediately so callers fall back gracefully.
+        The semaphore ensures only one in-flight request at a time so Ollama is never
+        queue-flooded by concurrent workers.
+        """
+        now = time.monotonic()
+        if now < AIEngine._cb_open_until:
+            logger.warning(
+                f"Ollama circuit OPEN — skipping call "
+                f"(resets in {AIEngine._cb_open_until - now:.0f}s)"
+            )
+            return {}
+
+        acquired = AIEngine._ollama_lock.acquire(blocking=True, timeout=timeout)
+        if not acquired:
+            return {}
+        try:
+            response = requests.post(OLLAMA_API_URL, json=payload, timeout=timeout)
+            response.raise_for_status()
+            AIEngine._cb_failures = 0
+            return response.json()
+        except Exception as e:
+            AIEngine._cb_failures += 1
+            if AIEngine._cb_failures >= AIEngine._CB_THRESHOLD:
+                AIEngine._cb_open_until = time.monotonic() + AIEngine._CB_COOLDOWN
+                logger.error(
+                    f"Ollama circuit OPENED after {AIEngine._cb_failures} failures "
+                    f"— pausing LLM calls for {AIEngine._CB_COOLDOWN}s. Last error: {e}"
+                )
+            else:
+                logger.error(f"Local LLM Verification Failed: {e}")
+            return {}
+        finally:
+            AIEngine._ollama_lock.release()
+
     def ask_local_llm(self, reference_news, candidate_news):
         """Final semantic verification using local Qwen model with robust JSON parsing"""
         prompt = f"""
@@ -100,7 +147,7 @@ class AIEngine:
 
         Ref News: "{reference_news[:700]}"
         New News: "{candidate_news[:700]}"
-        
+
         OUTPUT FORMAT: Return ONLY a raw JSON object. Do NOT use markdown formatting.
         Example: {{"match": true}}
         """
@@ -109,19 +156,17 @@ class AIEngine:
             "options": {"temperature": 0.0, "num_ctx": 2048}
         }
         try:
-            response = requests.post(OLLAMA_API_URL, json=payload, timeout=25)
-            result = response.json()
+            result = self._ollama_post(payload, timeout=25)
+            if not result:
+                return False
             raw_text = result.get('response', '{}').strip()
-            
-            # 🧹 Clean Markdown formatting safely without complex regex
             raw_text = raw_text.strip("` \n")
             if raw_text.startswith("json"):
                 raw_text = raw_text[4:].strip()
-                
             return json.loads(raw_text).get("match", False)
         except Exception as e:
             logger.error(f"Local LLM Verification Failed: {e}")
-            return False 
+            return False
 
     def verify_cross_trend(self, x_trend: str, google_title: str) -> bool:
         """
@@ -144,14 +189,13 @@ class AIEngine:
             "options": {"temperature": 0.0, "num_ctx": 1024}
         }
         try:
-            response = requests.post(OLLAMA_API_URL, json=payload, timeout=8)
-            result = response.json()
+            result = self._ollama_post(payload, timeout=8)
+            if not result:
+                return False
             raw_text = result.get('response', '{}').strip()
-            
             raw_text = raw_text.strip("` \n")
             if raw_text.startswith("json"):
                 raw_text = raw_text[4:].strip()
-                
             return json.loads(raw_text).get("match", False)
         except Exception as e:
             logger.error(f"Cross-Trend Verification Failed: {e}")
@@ -186,14 +230,13 @@ class AIEngine:
             "options": {"temperature": 0.0, "num_ctx": 1024}
         }
         try:
-            response = requests.post(OLLAMA_API_URL, json=payload, timeout=5)
-            result = response.json()
+            result = self._ollama_post(payload, timeout=5)
+            if not result:
+                return "pending"
             raw_text = result.get('response', '{}').strip()
-            
             raw_text = raw_text.strip("` \n")
             if raw_text.startswith("json"):
                 raw_text = raw_text[4:].strip()
-                
             status = json.loads(raw_text).get("status", "pending")
             if status not in ["approved", "rejected", "pending"]:
                 return "pending"

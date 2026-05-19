@@ -114,10 +114,8 @@ Return JSON only: {{"same_event": true}} or {{"same_event": false}}"""
             result = json.loads(raw)
             return bool(result.get("same_event", False))
         except Exception as e:
-            logger.warning(f"Gemini verification failed, falling back to local LLM: {e}")
-
-    # Fallback: local Qwen via ai_engine
-    return ai_engine.ask_local_llm(text_a, text_b)
+            logger.warning(f"Gemini verification failed — skipping merge (no Ollama fallback): {e}")
+            return False  # Skip merge; don't hammer Ollama as fallback
 
 
 def _get_ref_doc(trend: Trend, db) -> str | None:
