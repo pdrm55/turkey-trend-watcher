@@ -1,19 +1,48 @@
+# Telegram kanalları — her satırda bir kullanıcı adı (@işareti olmadan)
+# Boş satırlar ve # ile başlayan satırlar yok sayılır.
 
-
+# --- Haber Ajansları & Resmi Kanallar ---
 anadoluajansi
 trthaberdijital
+ihaturkiye
+dhaturkiye
+tele1haberler
+haberler
+
+# --- Uluslararası Medya (Türkçe) ---
 sputnik_tr
+aljazeera_tr
 
+# --- Ana Akım Medya ---
+cnnturkhaber
+sabahgazete
+cumhuriyet
 
-pusholder
-ibrahimhaskologlu
+# --- Muhalefet & Bağımsız Medya ---
 solcugazete
-webtekno
+bianet_org
 
-
-
+# --- Gündem & Analiz ---
 gundemedairhs
 buzznews_tr
 conflict_tr
+pusholder
+ibrahimhaskologlu
+aliosmanonder
 bpthaber
 habermha
+
+# --- Ekonomi & Finans ---
+bloomberghttv
+ekonomimcom
+borsagundemtr
+
+# --- Spor ---
+beinsportsturkiye
+Galatasaray
+fenerbahcekulubu
+trabzonsporsevgisi
+
+# --- Teknoloji ---
+technopatnet
+webtekno

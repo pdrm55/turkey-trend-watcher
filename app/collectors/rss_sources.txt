@@ -1,39 +1,67 @@
-# Format: source_name,url
+# Format: source_name,url,tier,category,speed
+# tier:     1=official_agency, 2=reputable_newspaper, 3=other
+# category: gundem, ekonomi, spor, teknoloji, afet, saglik
+# speed:    1=breaking(~60s), 2=fast(~300s), 3=standard(~900s)
+# Note: sources with category=afet are always polled at breaking speed regardless of speed column.
 
-anadolu_tr,https://www.aa.com.tr/tr/rss/default?cat=guncel
-trthaber,https://www.trthaber.com/sondakika.rss
-hurriyet,https://www.hurriyet.com.tr/rss/anasayfa
-milliyet,https://www.milliyet.com.tr/rss/rssNew/gundemRss.xml
-sabah,https://www.sabah.com.tr/rss/anasayfa.xml
-haberturk,https://www.haberturk.com/rss
-ntv,https://www.ntv.com.tr/gundem.rss
-cnnturk,https://www.cnnturk.com/feed/rss/all/news
-cumhuriyet,https://www.cumhuriyet.com.tr/rss/son_dakika.xml
-sozcu,https://www.sozcu.com.tr/rss/son-dakika.xml
-mynet,https://www.mynet.com/haber/rss
-ensonhaber,https://www.ensonhaber.com/rss/ensonhaber.xml
-haber7,https://i12.haber7.net/sondakika/news.xml
-t24,https://t24.com.tr/rss
-gazeteduvar,https://www.gazeteduvar.com.tr/export/rss
-yenisafak,https://www.yenisafak.com/rss
-euronews_tr,https://tr.euronews.com/rss?format=rss&level=theme&name=news
-bbc_turkce,http://feeds.bbci.co.uk/turkce/rss.xml
-dunya,https://www.dunya.com/rss
-ahaber,https://www.ahaber.com.tr/rss/gundem.xml
-bloomberght,https://www.bloomberght.com/rss
-paratic,https://paratic.com/feed/
-ekonomim,https://www.ekonomim.com/rss
-bigpara,https://bigpara.hurriyet.com.tr/rss/
-webtekno,https://www.webtekno.com/rss.xml
-shiftdelete,https://shiftdelete.net/feed
-egirisim,https://egirisim.com/feed/
-donanimhaber,https://www.donanimhaber.com/rss/tum/
-birgun,https://www.birgun.net/rss
-evrensel,https://www.evrensel.net/rss/haber.xml
-diken,https://www.diken.com.tr/feed/
-indyturk,https://www.indyturk.com/rss
-dw_turkce,https://rss.dw.com/xml/rss-tur-all
-voa_turkce,https://www.voaturkce.com/api/z$gite_tvi
-sputnik_tr,https://tr.sputniknews.com/export/rss2/archive/index.xml
-aspor,https://www.aspor.com.tr/rss/ana-sayfa.xml
-fanatik,https://www.fanatik.com.tr/rss
+# --- Tier 1: Haber Ajansları & Uluslararası Medya ---
+anadolu_tr,https://www.aa.com.tr/tr/rss/default?cat=guncel,1,gundem,1
+trthaber,https://www.trthaber.com/sondakika.rss,1,gundem,1
+bbc_turkce,http://feeds.bbci.co.uk/turkce/rss.xml,1,gundem,1
+dw_turkce,https://rss.dw.com/xml/rss-tur-all,1,gundem,1
+euronews_tr,https://tr.euronews.com/rss?format=rss&level=theme&name=news,2,gundem,1
+
+# --- Tier 2: Köklü Gazeteler & Güvenilir Medya ---
+hurriyet,https://www.hurriyet.com.tr/rss/anasayfa,2,gundem,2
+milliyet,https://www.milliyet.com.tr/rss/rssNew/gundemRss.xml,2,gundem,2
+haberturk,https://www.haberturk.com/rss,2,gundem,2
+ntv,https://www.ntv.com.tr/gundem.rss,2,gundem,2
+cnnturk,https://www.cnnturk.com/feed/rss/all/news,2,gundem,2
+cumhuriyet,https://www.cumhuriyet.com.tr/rss/son_dakika.xml,2,gundem,2
+sozcu,https://www.sozcu.com.tr/rss/son-dakika.xml,2,gundem,2
+t24,https://t24.com.tr/rss,2,gundem,2
+gazeteduvar,https://www.gazeteduvar.com.tr/export/rss,2,gundem,2
+medyascope,https://medyascope.tv/feed/,2,gundem,2
+indyturk,https://www.indyturk.com/rss,2,gundem,2
+hurriyet_ekonomi,https://www.hurriyet.com.tr/rss/ekonomi,2,ekonomi,2
+sozcu_ekonomi,https://www.sozcu.com.tr/rss/ekonomi.xml,2,ekonomi,2
+hurriyet_spor,https://www.hurriyet.com.tr/rss/spor,2,spor,2
+dunya,https://www.dunya.com/rss,2,ekonomi,2
+bloomberght,https://www.bloomberght.com/rss,2,ekonomi,2
+
+# --- Tier 3: Yaygın Medya & Gündem ---
+sabah,https://www.sabah.com.tr/rss/anasayfa.xml,3,gundem,2
+yenisafak,https://www.yenisafak.com/rss,3,gundem,2
+ahaber,https://www.ahaber.com.tr/rss/gundem.xml,3,gundem,2
+posta,https://www.posta.com.tr/rss/anasayfa.xml,3,gundem,2
+aksam,https://www.aksam.com.tr/rss,3,gundem,2
+takvim,https://www.takvim.com.tr/rss/anasayfa.xml,3,gundem,2
+star,https://www.star.com.tr/rss,3,gundem,2
+karar,https://www.karar.com/rss,3,gundem,2
+mynet,https://www.mynet.com/haber/rss,3,gundem,3
+ensonhaber,https://www.ensonhaber.com/rss/ensonhaber.xml,3,gundem,3
+haber7,https://i12.haber7.net/sondakika/news.xml,3,gundem,3
+birgun,https://www.birgun.net/rss,3,gundem,3
+evrensel,https://www.evrensel.net/rss/haber.xml,3,gundem,3
+diken,https://www.diken.com.tr/feed/,3,gundem,3
+voa_turkce,https://www.voaturkce.com/api/z$gite_tvi,3,gundem,3
+sputnik_tr,https://sputniknews.com.tr/export/rss2/archive/index.xml,3,gundem,3
+
+# --- Ekonomi & Finans ---
+paratic,https://paratic.com/feed/,3,ekonomi,2
+ekonomim,https://www.ekonomim.com/rss,3,ekonomi,2
+bigpara,https://bigpara.hurriyet.com.tr/rss/,3,ekonomi,3
+
+# --- Teknoloji ---
+webtekno,https://www.webtekno.com/rss.xml,3,teknoloji,3
+shiftdelete,https://shiftdelete.net/feed,3,teknoloji,3
+egirisim,https://egirisim.com/feed/,3,teknoloji,3
+donanimhaber,https://www.donanimhaber.com/rss/tum/,3,teknoloji,3
+technopat,https://www.technopat.net/feed/,3,teknoloji,3
+log_net,https://log.com.tr/feed/,3,teknoloji,3
+
+# --- Spor ---
+aspor,https://www.aspor.com.tr/rss/ana-sayfa.xml,3,spor,3
+fanatik,https://www.fanatik.com.tr/rss,3,spor,3
+sabah_spor,https://www.sabah.com.tr/rss/spor.xml,3,spor,2
+fotomac,https://www.fotomac.com.tr/rss/haberler.xml,3,spor,3
