@@ -47,7 +47,7 @@ USER_AGENTS = [
 # Tracked in media_meta->bing_tries; self-healing skips items at or above this limit.
 _MAX_BING_TRIES = 3
 
-_GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+_GOOGLE_API_KEY = os.getenv("IMAGEN_API_KEY")
 _google_imagen_client = None
 
 CATEGORY_COLORS = {
