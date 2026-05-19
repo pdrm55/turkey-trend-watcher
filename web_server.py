@@ -5,6 +5,7 @@ from app.api.routes import api_bp
 from app.api.api_v1 import bp as api_v1_bp
 from app.api.api_admin import bp as api_admin_b2b_bp
 from app.database.models import init_db
+from app.core.limiter import limiter
 
 # تنظیمات لاگر برای مانیتورینگ متمرکز سیستم
 logging.basicConfig(
@@ -29,8 +30,17 @@ def create_app():
                 static_folder=STATIC_DIR,
                 static_url_path='/static')
 
+    # Flask secret key (required for session signing and CSRF protection)
+    secret_key = os.getenv('SECRET_KEY', '')
+    if not secret_key:
+        raise RuntimeError("SECRET_KEY environment variable is not set. Refusing to start.")
+    app.config['SECRET_KEY'] = secret_key
+
     # افزایش محدودیت حجم آپلود به 50 مگابایت برای رفع ارور 413
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
+    # Rate limiter (Redis-backed)
+    limiter.init_app(app)
 
     # ثبت بلوپرینت اصلی API و مسیرهای مسیریابی (Routing)
     app.register_blueprint(api_bp)
@@ -59,4 +69,4 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     
     # در حالت اجرای مستقیم، Debug فعال می‌ماند (مشابه نسخه قبلی شما)
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)

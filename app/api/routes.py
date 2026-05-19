@@ -20,13 +20,15 @@ from werkzeug.utils import secure_filename
 # --- بازگرداندن ایمپورت‌ها به سطح ماژول برای بهبود سرعت پاسخگویی ---
 # استفاده از Lazy Loading باعث کندی شدید در اولین درخواست می‌شد.
 # لینوکس با مکانیزم Copy-on-Write حافظه را بین ورکرها به اشتراک می‌گذارد، پس مصرف رم بهینه می‌ماند.
-from app.core.ai_engine import ai_engine 
+from app.core.ai_engine import ai_engine
 from app.core.x_ai_service import generate_x_content, generate_x_thread
 from app.core.x_image_gen import generate_x_image
 from app.core.tg_notifier import notify_admin_x_draft
 from app.workers.summarizer import generate_summary_with_gemini
 from app.core.alert_service import alert_service
 from app.core.scoring_queue import scoring_queue, ScoringQueue
+from app.core.limiter import limiter
+from flask_limiter.errors import RateLimitExceeded
 
 # تنظیمات لاگر برای مانیتورینگ وضعیت کش
 logger = logging.getLogger(__name__)
@@ -97,8 +99,10 @@ def get_public_url():
 # --- Basic Auth Helper ---
 def check_auth(username, password):
     """بررسی نام کاربری و رمز عبور برای پنل ادمین"""
-    # در محیط واقعی باید از متغیرهای محیطی خوانده شود
-    return username == 'admin' and password == 'trendia2026'
+    expected = os.getenv('ADMIN_PASSWORD', '')
+    if not expected:
+        return False
+    return username == 'admin' and password == expected
 
 def authenticate():
     return Response('Login Required', 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
@@ -359,6 +363,7 @@ def get_comments(identifier):
         db.close()
 
 @api_bp.route('/api/comments/<identifier>', methods=['POST'])
+@limiter.limit("10 per minute; 50 per hour")
 def post_comment(identifier):
     """Post a new comment"""
     data = request.json or {}
@@ -391,11 +396,12 @@ def post_comment(identifier):
         return jsonify({"status": "success", "moderation_status": moderation_status, "id": comment.id})
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
 @api_bp.route('/api/comments/vote/<int:comment_id>', methods=['POST'])
+@limiter.limit("20 per minute")
 def vote_comment(comment_id):
     """Vote on a comment (like/dislike)"""
     data = request.json or {}
@@ -441,7 +447,7 @@ def vote_comment(comment_id):
         return jsonify({"status": "success", "likes": comment.likes, "dislikes": comment.dislikes})
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -510,7 +516,7 @@ def admin_delete_comment(comment_id):
         return jsonify({"status": "success"})
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -552,7 +558,7 @@ def generate_manual_news_draft():
         })
     except Exception as e:
         logger.error(f"Manual Draft Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
 
 @api_bp.route('/api/admin/news/publish', methods=['POST'])
 @requires_auth
@@ -622,9 +628,13 @@ def publish_manual_news():
                 folder_path = os.path.join(base_dir, 'static', 'media', 'videos', year, month, day)
                 os.makedirs(folder_path, exist_ok=True)
                 
-                # Generate unique filename retaining original extension or fallback to .mp4
-                ext = os.path.splitext(secure_filename(video_file.filename))[1]
-                if not ext: ext = ".mp4"
+                # Validate extension — only allow safe video formats
+                ALLOWED_VIDEO_EXTS = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
+                ext = os.path.splitext(secure_filename(video_file.filename))[1].lower()
+                if not ext:
+                    ext = ".mp4"
+                if ext not in ALLOWED_VIDEO_EXTS:
+                    return jsonify({"error": f"Invalid video format. Allowed: {', '.join(ALLOWED_VIDEO_EXTS)}"}), 400
                 filename = f"vid_{uuid.uuid4().hex}{ext}"
                 full_path = os.path.join(folder_path, filename)
                 
@@ -769,7 +779,7 @@ def publish_manual_news():
     except Exception as e:
         db.rollback()
         logger.error(f"Publish Editorial News Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -874,7 +884,7 @@ def generate_x_drafts():
     except Exception as e:
         db.rollback()
         logger.error(f"X Draft Generation Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -962,7 +972,7 @@ def action_x_draft(draft_id):
         return jsonify({"status": "success"})
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -1011,7 +1021,7 @@ def update_x_settings():
         return jsonify({"status": "success"})
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -1092,7 +1102,7 @@ def generate_x_draft_by_id():
     except Exception as e:
         db.rollback()
         logger.error(f"Manual X Draft Generation Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -1207,7 +1217,7 @@ def generate_x_thread_by_id():
     except Exception as e:
         db.rollback()
         logger.error(f"Manual X Thread Generation Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -1249,7 +1259,7 @@ def set_radar_tweet_id(trend_id):
         return jsonify({"status": "success", "radar_tweet_id": trend.radar_tweet_id})
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -1269,7 +1279,7 @@ def cancel_active_radar(trend_id):
         return jsonify({"status": "success"})
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -1336,6 +1346,7 @@ def get_trend_history(identifier=None, trend_id=None):
         db.close()
 
 @api_bp.route('/api/trends')
+@limiter.limit("60 per minute")
 def get_trends():
     """API لیست ترندها با قابلیت کشینگ هوشمند (فاز ۶)"""
     category = request.args.get('category', 'All')
@@ -1615,6 +1626,7 @@ def get_live_market_data():
         db.close()
 
 @api_bp.route('/api/contact', methods=['POST'])
+@limiter.limit("5 per minute; 20 per day")
 def submit_contact_form():
     """Handle contact form submissions via Telegram"""
     data = request.json or {}
@@ -1626,8 +1638,12 @@ def submit_contact_form():
         return jsonify({'error': 'Lütfen tüm alanları doldurun.'}), 400
         
     try:
-        text = f"📩 <b>Yeni İletişim Mesajı (TrendiaTR)</b>\n\n👤 <b>İsim:</b> {name}\n📧 <b>E-posta:</b> {email}\n\n📝 <b>Mesaj:</b>\n{message}"
-        
+        from html import escape as html_escape
+        safe_name = html_escape(str(name))
+        safe_email = html_escape(str(email))
+        safe_message = html_escape(str(message))
+        text = f"📩 <b>Yeni İletişim Mesajı (TrendiaTR)</b>\n\n👤 <b>İsim:</b> {safe_name}\n📧 <b>E-posta:</b> {safe_email}\n\n📝 <b>Mesaj:</b>\n{safe_message}"
+
         telegram_url = f"https://api.telegram.org/bot{Config.TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
             'chat_id': Config.ADMIN_CHAT_ID,
@@ -1808,7 +1824,7 @@ def admin_merge_trends():
     except Exception as e:
         db.rollback()
         logger.error(f"Merge API Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
 
@@ -1840,6 +1856,14 @@ def admin_update_trend(trend_id):
         return jsonify({"status": "success"})
     except Exception as e:
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
+
+@api_bp.app_errorhandler(429)
+def handle_rate_limit(e):
+    return jsonify({
+        "error": "rate_limit_exceeded",
+        "message": "Too many requests. Please slow down.",
+        "retry_after": str(e.description)
+    }), 429

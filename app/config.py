@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
 # بارگذاری متغیرها از فایل .env
@@ -17,7 +18,7 @@ class Config:
     DB_PORT = os.getenv("POSTGRES_PORT", "5433")
     DB_NAME = os.getenv("POSTGRES_DB", "trend_watcher_db")
     
-    SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{quote_plus(DB_PASS)}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # --- تنظیمات تلگرام (Core) ---
