@@ -47,6 +47,19 @@ USER_AGENTS = [
 # Tracked in media_meta->bing_tries; self-healing skips items at or above this limit.
 _MAX_BING_TRIES = 3
 
+_GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+_google_imagen_client = None
+
+CATEGORY_COLORS = {
+    "Siyaset":   ((30,  64, 175), "🏛️"),
+    "Ekonomi":   ((5,  150, 105), "📈"),
+    "Teknoloji": ((124, 58, 237), "💻"),
+    "Gündem":    ((220, 38,  38), "📰"),
+    "Spor":      ((245, 158, 11), "⚽"),
+    "Sanat":     ((219, 39, 119), "🎨"),
+    "Deprem":    ((185, 28,  28), "🌍"),
+}
+
 class ImageProcessor:
     def __init__(self):
         # مقداردهی کلاینت تلگرام (فقط یک بار متصل می‌شود)
@@ -319,6 +332,124 @@ class ImageProcessor:
             logger.error(f"Bing Extraction Error: {e}")
             return None, None
 
+    def download_from_wikipedia(self, entity_name: str):
+        """Stage 3: fetch a thumbnail from the Wikipedia pageimages API for a named entity."""
+        try:
+            encoded = urllib.parse.quote(entity_name)
+            url = (
+                f"https://en.wikipedia.org/w/api.php"
+                f"?action=query&titles={encoded}&prop=pageimages"
+                f"&format=json&pithumbsize=800"
+            )
+            resp = requests.get(url, headers={"User-Agent": "TrendiaTR/1.0 (trendia.tr)"}, timeout=8)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            pages = data.get("query", {}).get("pages", {})
+            for page_id, page in pages.items():
+                if page_id == "-1":
+                    continue
+                thumb_url = page.get("thumbnail", {}).get("source")
+                if thumb_url:
+                    img_resp = requests.get(thumb_url, headers={"User-Agent": "TrendiaTR/1.0"}, timeout=8)
+                    if img_resp.status_code == 200:
+                        return img_resp.content
+            return None
+        except Exception as e:
+            logger.error(f"Wikipedia Download Error ({entity_name}): {e}")
+            return None
+
+    def generate_from_imagen(self, trend_title: str, category: str = "Gündem"):
+        """Stage 4: generate a contextual illustration with Gemini Imagen 4 Fast."""
+        try:
+            if not _GOOGLE_API_KEY:
+                logger.warning("⚠️ GOOGLE_API_KEY not set — skipping Imagen 4.")
+                return None
+            from google import genai as _genai
+            from google.genai import types as _types
+            global _google_imagen_client
+            if _google_imagen_client is None:
+                _google_imagen_client = _genai.Client(api_key=_GOOGLE_API_KEY)
+            prompt = (
+                f"Professional Turkish news editorial photograph, high quality, photojournalism style: "
+                f"{trend_title}. Category: {category}. "
+                f"Realistic, dramatic lighting, no text, no watermarks, no logos."
+            )
+            response = _google_imagen_client.models.generate_images(
+                model="imagen-4.0-fast-generate-001",
+                prompt=prompt,
+                config=_types.GenerateImagesConfig(
+                    number_of_images=1,
+                    aspect_ratio="16:9",
+                ),
+            )
+            if response.generated_images:
+                return response.generated_images[0].image.image_bytes
+            return None
+        except Exception as e:
+            logger.error(f"Imagen 4 Generation Error ({trend_title[:30]}): {e}")
+            return None
+
+    def generate_pil_placeholder(self, trend_title: str, category: str = "Gündem"):
+        """Stage 5: create a branded category card using PIL — always succeeds when a title exists."""
+        try:
+            bg_color, _ = CATEGORY_COLORS.get(category, ((37, 99, 235), "📰"))
+            w, h = 800, 450
+            img = Image.new("RGB", (w, h), bg_color)
+            draw = ImageDraw.Draw(img)
+
+            # Dark gradient overlay at the bottom for text readability
+            for y in range(200, h):
+                fade = int((y - 200) / (h - 200) * 160)
+                draw.line(
+                    [(0, y), (w, y)],
+                    fill=(max(0, bg_color[0] - fade), max(0, bg_color[1] - fade), max(0, bg_color[2] - fade)),
+                )
+
+            try:
+                font_bold  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+                font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+            except Exception:
+                font_bold = font_small = ImageFont.load_default()
+
+            # Category label (top-left)
+            draw.text((30, 28), category.upper(), font=font_small, fill=(255, 255, 255))
+            # Brand label (top-right)
+            try:
+                bw = font_small.getbbox(WATERMARK_TEXT)[2]
+            except Exception:
+                bw = len(WATERMARK_TEXT) * 11
+            draw.text((w - bw - 20, 28), WATERMARK_TEXT, font=font_small, fill=(255, 255, 255))
+
+            # Trend title — word-wrapped, max 3 lines
+            words = trend_title.split()
+            lines, cur = [], []
+            for word in words:
+                test = " ".join(cur + [word])
+                try:
+                    tw = font_bold.getbbox(test)[2]
+                except Exception:
+                    tw = len(test) * 18
+                if tw > w - 60 and cur:
+                    lines.append(" ".join(cur))
+                    cur = [word]
+                else:
+                    cur.append(word)
+            if cur:
+                lines.append(" ".join(cur))
+
+            y_text = h - len(lines[:3]) * 44 - 30
+            for line in lines[:3]:
+                draw.text((30, y_text), line, font=font_bold, fill=(255, 255, 255))
+                y_text += 44
+
+            output = io.BytesIO()
+            img.save(output, format="WEBP", quality=82)
+            return output.getvalue()
+        except Exception as e:
+            logger.error(f"PIL Placeholder Error: {e}")
+            return None
+
     def save_file(self, image_data, news_id):
         """ذخیره فایل در ساختار پوشه‌بندی تاریخ‌محور"""
         now = datetime.now()
@@ -351,9 +482,12 @@ class ImageProcessor:
 
             image_data = None
             source_url = None
+            source_label = None   # overrides source_name in watermark; e.g. "AI Görseli"
+            skip_processing = False  # True for PIL placeholder (already formatted as WebP)
             active_entity_name = None
+            trend = None
 
-            # ۱. منطق دانلود
+            # Stage 1: Source media (Telegram download / RSS og:image)
             if news.source_type == 'telegram':
                 image_data = await self.download_from_telegram(news.external_id)
                 source_url = news.external_id
@@ -372,8 +506,7 @@ class ImageProcessor:
                 loop = asyncio.get_event_loop()
                 image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id, news.media_url)
 
-            # --- 🌟 THE ULTIMATE BING IMAGES FALLBACK 🌟 ---
-            # Triggers for X-Trends (source='x') or if Telegram/RSS failed
+            # Stages 2–5: Bing → Wikipedia → Imagen 4 → PIL Placeholder
             if not image_data:
                 search_query = None
                 active_entity_name = None
@@ -418,48 +551,76 @@ class ImageProcessor:
                                     db.commit()
                                     return
                         else:
-                            # Fix 1: entities is None or {} (empty dict) — use title as fallback
-                            # instead of deferring to -2, which caused an infinite retry loop
+                            # Fix 1: entities is None or {} — use title as Bing query fallback
                             if trend.title:
                                 search_query = trend.title[:80]
                                 logger.info(
                                     f"🔍 Trend {trend.id} has no/empty entities — "
                                     f"using title as Bing query."
                                 )
-                            else:
-                                # No title, no entities — nothing to search; permanent fail
-                                _meta = news.media_meta if isinstance(news.media_meta, dict) else {}
-                                _meta['bing_tries'] = _MAX_BING_TRIES
-                                news.media_meta = _meta
-                                news.media_status = -1
-                                db.commit()
-                                return
 
+                # Stage 2: Bing image search
                 if search_query:
-                    # Fix: check retry budget before making the HTTP call
                     _meta = news.media_meta if isinstance(news.media_meta, dict) else {}
-                    if _meta.get('bing_tries', 0) >= _MAX_BING_TRIES:
-                        news.media_status = -1
-                        db.commit()
-                        return
-
-                    search_query = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
-                    logger.info(f"🔍 Ultimate Fallback: Searching Bing (TR) for '{search_query[:40]}...'")
-                    loop = asyncio.get_event_loop()
-                    image_data, fallback_url = await loop.run_in_executor(
-                        None, self.download_from_bing_images, search_query
-                    )
-                    if image_data:
-                        source_url = fallback_url
-                        logger.info("✅ Fallback image successfully downloaded from Bing Images.")
+                    bing_tries = _meta.get('bing_tries', 0)
+                    if bing_tries < _MAX_BING_TRIES:
+                        search_query = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
+                        logger.info(f"🔍 [Stage 2] Bing search (try {bing_tries + 1}/{_MAX_BING_TRIES}): '{search_query[:40]}'")
+                        loop = asyncio.get_event_loop()
+                        image_data, fallback_url = await loop.run_in_executor(
+                            None, self.download_from_bing_images, search_query
+                        )
+                        if image_data:
+                            source_url = fallback_url
+                            logger.info("✅ [Stage 2] Bing image downloaded.")
+                        else:
+                            _meta['bing_tries'] = bing_tries + 1
+                            news.media_meta = _meta
                     else:
-                        # Bing was tried and failed — increment attempt counter
-                        _meta['bing_tries'] = _meta.get('bing_tries', 0) + 1
-                        news.media_meta = _meta
+                        logger.info(f"⏭️ [Stage 2] Bing budget exhausted ({bing_tries}), proceeding to next stage.")
+
+                # Stage 3: Wikipedia (named entity thumbnail)
+                if not image_data and trend and trend.entities and isinstance(trend.entities, dict):
+                    people = trend.entities.get('people', [])
+                    orgs = trend.entities.get('organizations', [])
+                    loop = asyncio.get_event_loop()
+                    for entity in (people[:1] + orgs[:1]):
+                        if entity:
+                            logger.info(f"📖 [Stage 3] Wikipedia search for: {entity}")
+                            wiki_data = await loop.run_in_executor(None, self.download_from_wikipedia, entity)
+                            if wiki_data:
+                                image_data = wiki_data
+                                source_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(entity)}"
+                                source_label = "Wikipedia"
+                                logger.info(f"✅ [Stage 3] Wikipedia image found for: {entity}")
+                                break
+
+                # Stage 4: Gemini Imagen 4 Fast
+                if not image_data and trend and trend.title:
+                    logger.info(f"🤖 [Stage 4] Imagen 4 generating for: {trend.title[:40]}")
+                    loop = asyncio.get_event_loop()
+                    ai_data = await loop.run_in_executor(
+                        None, self.generate_from_imagen, trend.title, trend.category or "Gündem"
+                    )
+                    if ai_data:
+                        image_data = ai_data
+                        source_url = "ai_generated"
+                        source_label = "AI Görseli"
+                        logger.info("✅ [Stage 4] Imagen 4 image generated.")
+
+                # Stage 5: PIL placeholder (last resort — always succeeds when a title exists)
+                if not image_data and trend and trend.title:
+                    logger.info(f"🎨 [Stage 5] PIL placeholder for: {trend.title[:40]}")
+                    placeholder_data = self.generate_pil_placeholder(trend.title, trend.category or "Gündem")
+                    if placeholder_data:
+                        image_data = placeholder_data
+                        source_url = "placeholder"
+                        source_label = "TrendiaTR"
+                        skip_processing = True
+                        logger.info("✅ [Stage 5] PIL placeholder created.")
 
             if not image_data:
-                # Items that never reached Bing (no trend_id, no search possible) are
-                # marked permanent so self-healing does not keep re-queuing them.
+                # Truly no image possible (no trend_id, no title) — permanent fail
                 _meta = news.media_meta if isinstance(news.media_meta, dict) else {}
                 if 'bing_tries' not in _meta:
                     _meta['bing_tries'] = _MAX_BING_TRIES
@@ -469,8 +630,12 @@ class ImageProcessor:
                 return
 
             # ۲. منطق پردازش تصویر
-            current_source = news.source_name if news.source_name else "TrendiaTR"
-            processed_data, w, h = self.process_image_data(image_data, current_source)
+            current_source = source_label if source_label else (news.source_name if news.source_name else "TrendiaTR")
+            if skip_processing:
+                # PIL placeholder is already a fully formatted WebP at 800×450
+                processed_data, w, h = image_data, 800, 450
+            else:
+                processed_data, w, h = self.process_image_data(image_data, current_source)
 
             if not processed_data:
                 news.media_status = -1
@@ -486,8 +651,8 @@ class ImageProcessor:
             news.media_status = 2  # Ready
             news.media_meta = {"width": w, "height": h, "size": len(processed_data)}
 
-            # CACHE SAVE
-            if active_entity_name:
+            # CACHE SAVE (real photos only — Bing or Wikipedia, not AI/placeholder)
+            if active_entity_name and source_label not in ("AI Görseli",) and not skip_processing:
                 existing_cache = db.query(EntityImageCache).filter(
                     EntityImageCache.entity_name == active_entity_name
                 ).first()
@@ -502,7 +667,8 @@ class ImageProcessor:
 
             # ۵. منطق انتخاب بهترین تصویر برای ترند (Promotion Logic)
             if news.trend_id:
-                trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
+                if trend is None:
+                    trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
                 if trend:
                     if not trend.cover_image:
                         trend.cover_image = rel_path
@@ -577,6 +743,26 @@ class ImageProcessor:
                         ), {"ids": retry_ids})
                         db.commit()
                         logger.info(f"♻️ Re-queued {len(retry_ids)} failed items for retry (budget remaining).")
+
+                    # Re-queue Bing-exhausted items whose trend still has no cover — stages 3-5 can fill them
+                    stage3plus_ids = [row[0] for row in db.execute(sa_text("""
+                        SELECT rn.id
+                        FROM raw_news rn
+                        JOIN trends t ON t.id = rn.trend_id
+                        WHERE rn.media_status = -1
+                          AND rn.created_at >= :cutoff
+                          AND t.cover_image IS NULL
+                          AND t.is_active = TRUE
+                          AND COALESCE((rn.media_meta->>'bing_tries')::int, 0) >= :max_tries
+                        ORDER BY rn.created_at DESC
+                        LIMIT 30
+                    """), {"cutoff": heal_cutoff, "max_tries": _MAX_BING_TRIES}).fetchall()]
+                    if stage3plus_ids:
+                        db.execute(sa_text(
+                            "UPDATE raw_news SET media_status = 0 WHERE id = ANY(:ids)"
+                        ), {"ids": stage3plus_ids})
+                        db.commit()
+                        logger.info(f"♻️ Re-queued {len(stage3plus_ids)} Bing-exhausted items for stage 3-5 pipeline.")
 
                     # Fix 2: Backfill cover_image for trends missing a cover (e.g. after cluster merges)
                     no_cover_trends = db.query(Trend).filter(
