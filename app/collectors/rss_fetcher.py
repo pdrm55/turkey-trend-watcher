@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import time
 import random
 import feedparser
@@ -148,7 +149,7 @@ def fetch_and_process_rss(sources_override: dict = None):
                     except:
                         actual_pub_time = current_time_utc
 
-                # Extract Media from RSS (Two-Stage Image Extraction)
+                # Extract Media from RSS (multi-stage image extraction)
                 media_url = None
                 if 'media_content' in entry and len(entry.media_content) > 0:
                     media_url = entry.media_content[0].get('url')
@@ -157,6 +158,22 @@ def fetch_and_process_rss(sources_override: dict = None):
                         if link_item.get('type', '').startswith('image/'):
                             media_url = link_item.get('href')
                             break
+                # Stage 3: <image href="..."> inside entry (some Atom feeds)
+                if not media_url:
+                    img_obj = getattr(entry, 'image', None)
+                    if img_obj and isinstance(img_obj, dict):
+                        media_url = img_obj.get('href') or img_obj.get('url')
+                # Stage 4: first enclosure that is an image
+                if not media_url:
+                    for enc in getattr(entry, 'enclosures', []):
+                        if enc.get('type', '').startswith('image/') or enc.get('href', '').lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                            media_url = enc.get('href') or enc.get('url')
+                            break
+                # Stage 5: first <img src> in the summary HTML
+                if not media_url and summary:
+                    m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', summary, re.IGNORECASE)
+                    if m:
+                        media_url = m.group(1)
                 
                 full_text = f"{title}. {summary}"
                 if len(full_text) < 30:
