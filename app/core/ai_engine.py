@@ -46,18 +46,34 @@ OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/genera
 LOCAL_MODEL_NAME = "qwen2.5:1.5b"
 
 class AIEngine:
-    # Shared circuit breaker + mutex across all AI Engine instances
-    _ollama_lock = threading.Semaphore(1)        # Only 1 Ollama request at a time
+    # Shared circuit breaker + within-process mutex (per-container guard)
+    _ollama_lock = threading.Semaphore(1)        # Only 1 Ollama request at a time within this process
     _cb_failures = 0                             # Consecutive failure counter
     _cb_open_until = 0.0                         # Epoch timestamp: circuit open until
     _CB_THRESHOLD = 3                            # Failures before circuit opens
-    _CB_COOLDOWN = 60                            # Seconds to keep circuit open
+    _CB_COOLDOWN = 120                           # Seconds to keep circuit open (doubled: 60→120)
+
+    # Redis-based global Ollama lock — serializes calls across all containers
+    _REDIS_LOCK_KEY = "ttw:ollama:global_lock"
+    _REDIS_LOCK_TTL = 35                         # seconds: max HTTP timeout (25s) + overhead
+    _REDIS_LOCK_ACQUIRE_TIMEOUT = 20             # seconds to wait before giving up
+
+    # Lua script: atomically releases the lock only if we own it
+    _LUA_RELEASE = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+else
+    return 0
+end
+"""
 
     def __init__(self):
         """Initialize AI Engine and connect to Vector Database"""
         # Lazy load the model to save RAM on workers that don't need embedding
         self.model = None
-        
+        # Redis client: None = not yet initialised, False = unavailable
+        self._redis = None
+
         try:
             self.chroma_client = chromadb.HttpClient(
                 host=CHROMA_HOST,
@@ -75,6 +91,58 @@ class AIEngine:
 
         self.fast_dedup_ttl = max(10, getattr(Config, "AI_FAST_DEDUP_TTL_SECONDS", 180))
         self.fast_dedup_cache = {}
+
+        # Eagerly connect to Redis so the global lock is ready before the first Ollama call.
+        # _get_redis() is safe to call here: it catches all exceptions internally.
+        self._get_redis()
+
+    def _get_redis(self):
+        """Return a connected Redis client, or None if unavailable (graceful degradation)."""
+        if self._redis is not None:
+            return self._redis if self._redis is not False else None
+        try:
+            import redis as _redis_lib
+            client = _redis_lib.Redis.from_url(
+                Config.REDIS_URL,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+                decode_responses=True,
+            )
+            client.ping()
+            self._redis = client
+            logger.info("✅ Ollama Redis global lock connected.")
+        except Exception as exc:
+            logger.warning(f"⚠️ Redis unavailable — Ollama will use local semaphore only: {exc}")
+            self._redis = False
+        return self._redis if self._redis is not False else None
+
+    def _acquire_redis_lock(self, lock_value: str, acquire_timeout: float) -> bool:
+        """
+        Spin-acquire the global Ollama Redis lock.
+        Returns True if acquired, False if timed out.
+        Falls back to True (allow call) when Redis is unavailable.
+        """
+        r = self._get_redis()
+        if r is None:
+            return True  # graceful degradation: no Redis → proceed anyway
+        deadline = time.monotonic() + acquire_timeout
+        while True:
+            if r.set(self._REDIS_LOCK_KEY, lock_value, nx=True, ex=self._REDIS_LOCK_TTL):
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.3, remaining))
+
+    def _release_redis_lock(self, lock_value: str) -> None:
+        """Atomically release the Redis lock only if we own it."""
+        r = self._get_redis()
+        if r is None:
+            return
+        try:
+            r.eval(self._LUA_RELEASE, 1, self._REDIS_LOCK_KEY, lock_value)
+        except Exception as exc:
+            logger.warning(f"Redis lock release error (TTL will expire): {exc}")
 
     def get_embedding(self, text: str, is_query: bool = False):
         """Convert text to numerical vector using multilingual-e5-large.
@@ -95,12 +163,15 @@ class AIEngine:
             raise e
 
     def _ollama_post(self, payload: dict, timeout: int) -> dict:
-        """Send a single request to Ollama with circuit-breaker + single-entry mutex.
+        """Send a single request to Ollama with two-level locking + circuit-breaker.
 
-        Circuit breaker opens after _CB_THRESHOLD consecutive failures and stays open
-        for _CB_COOLDOWN seconds, returning {} immediately so callers fall back gracefully.
-        The semaphore ensures only one in-flight request at a time so Ollama is never
-        queue-flooded by concurrent workers.
+        Level 1 — local semaphore: prevents two threads within the same container
+                  from calling Ollama simultaneously (non-blocking: skips immediately).
+        Level 2 — Redis global lock: serializes calls across all containers so that
+                  ttw_rss, ttw_social, and ttw_merge never hammer Ollama concurrently.
+        Circuit breaker: after _CB_THRESHOLD consecutive failures the circuit opens for
+                  _CB_COOLDOWN seconds; all callers get {} until it resets.
+        Graceful degradation: if Redis is unavailable the call proceeds with local guard only.
         """
         now = time.monotonic()
         if now < AIEngine._cb_open_until:
@@ -110,10 +181,21 @@ class AIEngine:
             )
             return {}
 
-        acquired = AIEngine._ollama_lock.acquire(blocking=True, timeout=timeout)
-        if not acquired:
+        # Level 1: local within-process guard (non-blocking — skip if already in use)
+        acquired_local = AIEngine._ollama_lock.acquire(blocking=False)
+        if not acquired_local:
             return {}
+
+        lock_value = str(uuid.uuid4())
+        acquired_redis = False
         try:
+            # Level 2: Redis cross-container lock
+            acquire_timeout = min(timeout, self._REDIS_LOCK_ACQUIRE_TIMEOUT)
+            acquired_redis = self._acquire_redis_lock(lock_value, acquire_timeout)
+            if not acquired_redis:
+                logger.warning("Ollama Redis global lock timed out — skipping call")
+                return {}
+
             response = requests.post(OLLAMA_API_URL, json=payload, timeout=timeout)
             response.raise_for_status()
             AIEngine._cb_failures = 0
@@ -130,6 +212,8 @@ class AIEngine:
                 logger.error(f"Local LLM Verification Failed: {e}")
             return {}
         finally:
+            if acquired_redis:
+                self._release_redis_lock(lock_value)
             AIEngine._ollama_lock.release()
 
     def ask_local_llm(self, reference_news, candidate_news):
