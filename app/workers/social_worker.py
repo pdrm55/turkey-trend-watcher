@@ -21,6 +21,7 @@ from app.core.scoring_queue import scoring_queue, ScoringQueue
 from app.core.classifier import fast_classify
 from app.core.http_resilience import request_with_retry
 from app.core.observability import traced_span, emit_metric
+from app.core.multi_source_validator import multi_source_validator
 
 # Configure Logging
 logging.basicConfig(
@@ -229,13 +230,35 @@ class SocialWorker:
                         for item in trends:
                             name = item['name']
                             url = item['url']
-                            
-                            # --- NEW: Fetch Real-World Context ---
+
+                            # --- Fetch Real-World Context ---
                             best_title, enriched_content, ai_clustering_text = self.fetch_google_context(name)
 
-                            # --- NEW: Semantic Cross-Validation ---
+                            # --- Phase 2: Multi-Source Validation (Telegram + RSS DB signals) ---
+                            lookback = getattr(Config, 'VALIDATION_LOOKBACK_MINUTES', 30)
+                            validation_result = multi_source_validator.validate(name, db, lookback)
+
+                            # --- Semantic Cross-Validation (Qwen LLM) ---
                             is_validated = ai_engine.verify_cross_trend(name, best_title)
+
+                            # --- Phase 2 Override: bypass LLM rejection if multi-source score is high ---
+                            if (
+                                not is_validated
+                                and getattr(Config, 'VALIDATION_MULTI_SOURCE_OVERRIDE', True)
+                                and validation_result.total_score >= getattr(Config, 'VALIDATION_MULTI_SOURCE_MIN_SCORE', 15)
+                                and validation_result.platform_count >= getattr(Config, 'VALIDATION_MULTI_SOURCE_MIN_PLATFORMS', 2)
+                            ):
+                                is_validated = True
+                                logger.info(
+                                    f"✅ [Phase2] Multi-source override: '{name}' "
+                                    f"score={validation_result.total_score}, "
+                                    f"platforms={validation_result.platform_count}"
+                                )
+
                             trend_entities = {"cross_validated": True} if is_validated else {}
+                            if validation_result.total_score > 0:
+                                trend_entities["multi_source_score"] = validation_result.total_score
+                                trend_entities["multi_source_platforms"] = validation_result.platform_count
 
                             # Check if exists
                             existing = db.query(RawNews).filter(RawNews.external_id == url).first()
@@ -252,11 +275,19 @@ class SocialWorker:
                                 trend.message_count += 1
                                 trend.last_updated = max(trend.last_updated, current_time_utc)
                                 trend.needs_scoring = True
-                                # Add validation flag if it wasn't there
+                                current_entities = dict(trend.entities or {})
                                 if is_validated:
-                                    current_entities = dict(trend.entities or {})
                                     current_entities["cross_validated"] = True
-                                    trend.entities = current_entities
+                                if validation_result.total_score > 0:
+                                    prev_score = current_entities.get("multi_source_score", 0)
+                                    current_entities["multi_source_score"] = max(
+                                        prev_score, validation_result.total_score
+                                    )
+                                    current_entities["multi_source_platforms"] = max(
+                                        current_entities.get("multi_source_platforms", 0),
+                                        validation_result.platform_count,
+                                    )
+                                trend.entities = current_entities
                             else:
                                 # Use the pure AI text for initial classification to avoid bias
                                 initial_category = fast_classify(ai_clustering_text)

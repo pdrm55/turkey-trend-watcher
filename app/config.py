@@ -89,3 +89,12 @@ class Config:
     # --- آستانه‌های امتیازدهی (TPS Thresholds) ---
     THRESHOLD_ADMIN_ALERT = 20.0    # ارسال هشدار به ادمین برای بررسی
     THRESHOLD_AUTO_PUBLISH = 35.0   # انتشار خودکار در صورت عدم واکنش ادمین یا امتیاز بسیار بالا
+
+    # --- Phase 2: Multi-Source Validation ---
+    VALIDATION_LOOKBACK_MINUTES = int(os.getenv("VALIDATION_LOOKBACK_MINUTES", "30"))
+    VALIDATION_AUTO_DRAFT_THRESHOLD = int(os.getenv("VALIDATION_AUTO_DRAFT_THRESHOLD", "20"))
+    VALIDATION_MANUAL_REVIEW_THRESHOLD = int(os.getenv("VALIDATION_MANUAL_REVIEW_THRESHOLD", "10"))
+    VALIDATION_RECHECK_MINUTES = int(os.getenv("VALIDATION_RECHECK_MINUTES", "30"))
+    VALIDATION_MULTI_SOURCE_OVERRIDE = os.getenv("VALIDATION_MULTI_SOURCE_OVERRIDE", "true").lower() == "true"
+    VALIDATION_MULTI_SOURCE_MIN_SCORE = int(os.getenv("VALIDATION_MULTI_SOURCE_MIN_SCORE", "15"))
+    VALIDATION_MULTI_SOURCE_MIN_PLATFORMS = int(os.getenv("VALIDATION_MULTI_SOURCE_MIN_PLATFORMS", "2"))
