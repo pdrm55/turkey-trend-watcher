@@ -397,122 +397,114 @@ class ImageProcessor:
             return None
 
     def generate_pil_placeholder(self, trend_title: str, category: str = "Gündem"):
-        """Stage 5: branded breaking-news card — bold design, always succeeds with a title."""
+        """Stage 5: Branded breaking-news card with modern social media aesthetics and official logo."""
         try:
-            accent, _ = CATEGORY_COLORS.get(category, ((37, 99, 235), "📰"))
+            accent_colors = {
+                "Siyaset":   ((220, 38, 38),  (30, 41, 59)),
+                "Ekonomi":   ((5, 150, 105),  (15, 23, 42)),
+                "Teknoloji": ((124, 58, 237), (15, 23, 42)),
+                "Spor":      ((245, 158, 11), (28, 25, 23)),
+                "Gündem":    ((239, 68, 68),  (17, 24, 39)),
+            }
+            primary_color, base_dark = accent_colors.get(category, ((239, 68, 68), (17, 24, 39)))
             w, h = 800, 450
-
-            # Background: mid-dark base so elements are clearly visible
-            base = tuple(max(18, c // 3) for c in accent)
-            img = Image.new("RGB", (w, h), base)
+            img = Image.new("RGB", (w, h), base_dark)
             draw = ImageDraw.Draw(img)
 
-            # Radial-like vignette: darken corners, keep center brighter
-            for y in range(h):
-                for band in range(0, w, 4):   # step-4 for speed
-                    dx = abs(band - w // 2) / (w // 2)
-                    dy = abs(y - h // 2) / (h // 2)
-                    dist = min(1.0, (dx ** 2 + dy ** 2) ** 0.5)
-                    fade = int(dist * 55)
-                    px = (max(0, base[0] - fade), max(0, base[1] - fade), max(0, base[2] - fade))
-                    draw.line([(band, y), (min(w - 1, band + 3), y)], fill=px)
+            # Linear gradient background (left → right blend with accent)
+            for x in range(w):
+                mix = x / w
+                r = int(base_dark[0] * (1 - mix) + primary_color[0] * mix * 0.35)
+                g = int(base_dark[1] * (1 - mix) + primary_color[1] * mix * 0.25)
+                b = int(base_dark[2] * (1 - mix) + primary_color[2] * mix * 0.25)
+                draw.line([(x, 0), (x, h)], fill=(r, g, b))
 
-            # Full-width top accent stripe
-            draw.rectangle([(0, 0), (w, 10)], fill=accent)
+            # Subtle diagonal tech lines
+            for i in range(0, w + h, 40):
+                draw.line([(i, 0), (i - h, h)], fill=(255, 255, 255, 10), width=1)
 
-            # Fonts
-            try:
-                f_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 46)
-                f_badge = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
-                f_cat   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
-                f_brand = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 19)
-                f_url   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",      16)
-            except Exception:
-                f_title = f_badge = f_cat = f_brand = f_url = ImageFont.load_default()
+            # Fonts — try common Linux paths in order
+            font_paths = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            ]
+            f_title = f_badge = f_brand = None
+            for path in font_paths:
+                try:
+                    if os.path.exists(path):
+                        f_title = ImageFont.truetype(path, 42)
+                        f_badge = ImageFont.truetype(path, 22)
+                        f_brand = ImageFont.truetype(path, 24)
+                        break
+                except Exception:
+                    continue
+            if not f_title:
+                f_title = f_badge = f_brand = ImageFont.load_default()
 
-            # ── SON DAKİKA badge ──────────────────────────────────────
-            badge_text = "SON DAKİKA"
-            try:
-                bb = f_badge.getbbox(badge_text)
-                bw, bh = bb[2] - bb[0] + 36, bb[3] - bb[1] + 18
-            except Exception:
-                bw, bh = 230, 52
-            bx, by = 24, 22
-            # drop-shadow
-            draw.rectangle([(bx + 4, by + 4), (bx + bw + 4, by + bh + 4)], fill=(0, 0, 0))
-            # red background
-            draw.rectangle([(bx, by), (bx + bw, by + bh)], fill=(220, 30, 30))
-            # live dot (animated feel)
-            dot_r = 7
-            draw.ellipse([(bx + 12, by + bh // 2 - dot_r),
-                           (bx + 12 + dot_r * 2, by + bh // 2 + dot_r)], fill=(255, 255, 255))
-            draw.text((bx + 30, by + 9), badge_text, font=f_badge, fill=(255, 255, 255))
+            # TT logo — red rounded square (matches index.html logo)
+            logo_size = 64
+            logo_x, logo_y = 30, 30
+            draw.rounded_rectangle(
+                [(logo_x, logo_y), (logo_x + logo_size, logo_y + logo_size)],
+                radius=14,
+                fill=(239, 68, 68),
+            )
+            draw.text((logo_x + 14, logo_y + 16), "TT", font=f_brand, fill=(255, 255, 255))
 
-            # Category label (right of badge, bold)
-            cat_x = bx + bw + 22
-            cat_y = by + (bh - 22) // 2
-            draw.text((cat_x, cat_y), category.upper(), font=f_cat, fill=(255, 255, 255))
+            # SON DAKİKA label + category next to logo
+            draw.text((logo_x + logo_size + 20, logo_y + 6),  "SON DAKİKA",       font=f_title, fill=(239, 68, 68))
+            draw.text((logo_x + logo_size + 22, logo_y + 42), f"// {category.upper()}", font=f_badge, fill=(156, 163, 175))
 
-            # Horizontal divider below badge
-            div_y = by + bh + 18
-            draw.line([(24, div_y), (w - 24, div_y)], fill=accent, width=2)
+            # Divider below header
+            draw.line([(30, 120), (w - 30, 120)], fill=(239, 68, 68), width=3)
 
-            # ── Title ────────────────────────────────────────────────
-            words = trend_title.split()
-            lines, cur = [], []
+            # Title — word-wrap with drop-shadow
+            def _clean(text_in):
+                for k, v in {"ç":"Ç","ğ":"Ğ","ı":"I","i":"İ","ö":"Ö","ş":"Ş","ü":"Ü"}.items():
+                    text_in = text_in.replace(k, v)
+                return text_in.upper()
+
+            words = _clean(trend_title).split()
+            lines, current_line = [], []
             for word in words:
-                test = " ".join(cur + [word])
+                test_line = " ".join(current_line + [word])
                 try:
-                    tw = f_title.getbbox(test)[2]
+                    tw = f_title.getbbox(test_line)[2] if hasattr(f_title, 'getbbox') else f_title.getsize(test_line)[0]
                 except Exception:
-                    tw = len(test) * 28
-                if tw > w - 80 and cur:
-                    lines.append(" ".join(cur))
-                    cur = [word]
+                    tw = len(test_line) * 24
+                if tw > (w - 80) and current_line:
+                    lines.append(" ".join(current_line))
+                    current_line = [word]
                 else:
-                    cur.append(word)
-            if cur:
-                lines.append(" ".join(cur))
-            lines = lines[:3]
+                    current_line = current_line + [word]
+            if current_line:
+                lines.append(" ".join(current_line))
 
-            line_h = 60
-            title_top = div_y + 22
-            title_bot = h - 58
-            y_text = title_top + max(0, (title_bot - title_top - len(lines) * line_h) // 2)
+            y_text = 160
+            for line in lines[:4]:
+                draw.text((32, y_text + 2), line, font=f_title, fill=(0, 0, 0))        # shadow
+                draw.text((30, y_text),      line, font=f_title, fill=(255, 255, 255))  # text
+                y_text += 54
 
-            for line in lines:
-                try:
-                    lw = f_title.getbbox(line)[2]
-                except Exception:
-                    lw = len(line) * 30
-                x_c = max(24, (w - lw) // 2)
-                draw.text((x_c + 3, y_text + 3), line, font=f_title, fill=(0, 0, 0))       # shadow
-                draw.text((x_c, y_text),           line, font=f_title, fill=(255, 255, 255)) # text
-                y_text += line_h
+            # Footer bar
+            draw.rectangle([(0, h - 45), (w, h)], fill=(15, 23, 42))
+            draw.line([(0, h - 45), (w, h - 45)], fill=primary_color, width=2)
 
-            # ── Bottom bar ───────────────────────────────────────────
-            bar_y = h - 50
-            draw.rectangle([(0, bar_y), (w, h)], fill=(12, 12, 12))
-            draw.line([(0, bar_y), (w, bar_y)], fill=accent, width=3)
-
-            # Dot + TrendiaTR
-            bc_x, bc_y = 22, bar_y + 25
-            draw.ellipse([(bc_x - 10, bc_y - 10), (bc_x + 10, bc_y + 10)], fill=accent)
-            draw.text((bc_x + 18, bar_y + 15), "TrendiaTR", font=f_brand, fill=(255, 255, 255))
-
-            # URL right
-            site = "trendiatr.com"
+            site_text = "trendiatr.com"
             try:
-                sw = f_url.getbbox(site)[2]
+                sw = f_badge.getbbox(site_text)[2] if hasattr(f_badge, 'getbbox') else f_badge.getsize(site_text)[0]
             except Exception:
-                sw = 110
-            draw.text((w - sw - 20, bar_y + 18), site, font=f_url, fill=(160, 160, 160))
+                sw = 120
+            draw.text((w - sw - 30, h - 35), site_text, font=f_badge, fill=(156, 163, 175))
+            draw.text((30, h - 35), "TrendiaTR Yapay Zeka Haber Analizi", font=f_badge, fill=(100, 116, 139))
 
             output = io.BytesIO()
-            img.save(output, format="WEBP", quality=87)
+            img.save(output, format="WEBP", quality=90)
             return output.getvalue()
+
         except Exception as e:
-            logger.error(f"PIL Placeholder Error: {e}")
+            logger.error(f"PIL Placeholder Generation Failed: {e}")
             return None
 
     def save_file(self, image_data, news_id):
