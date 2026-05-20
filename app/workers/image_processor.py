@@ -7,6 +7,7 @@ import requests
 import io
 import re
 import random
+import threading
 import urllib.parse
 import time
 from datetime import datetime, timedelta, timezone
@@ -49,6 +50,8 @@ _MAX_BING_TRIES = 3
 
 _GOOGLE_API_KEY = os.getenv("IMAGEN_API_KEY")
 _google_imagen_client = None
+# Serialise concurrent Pollinations requests — free tier allows 1 at a time per IP
+_pollinations_lock = threading.Semaphore(1)
 
 CATEGORY_COLORS = {
     "Siyaset":   ((30,  64, 175), "🏛️"),
@@ -360,91 +363,153 @@ class ImageProcessor:
             return None
 
     def generate_from_imagen(self, trend_title: str, category: str = "Gündem"):
-        """Stage 4: generate a contextual illustration with Gemini Imagen 4 Fast."""
+        """Stage 4: generate a realistic news image via Pollinations.ai Flux (free, no API key)."""
         try:
-            if not _GOOGLE_API_KEY:
-                logger.warning("⚠️ GOOGLE_API_KEY not set — skipping Imagen 4.")
-                return None
-            from google import genai as _genai
-            from google.genai import types as _types
-            global _google_imagen_client
-            if _google_imagen_client is None:
-                _google_imagen_client = _genai.Client(api_key=_GOOGLE_API_KEY)
             prompt = (
-                f"Professional Turkish news editorial photograph, high quality, photojournalism style: "
-                f"{trend_title}. Category: {category}. "
-                f"Realistic, dramatic lighting, no text, no watermarks, no logos."
+                f"Turkish breaking news scene: {trend_title}, category {category}, "
+                f"photojournalism style, news photography, realistic, "
+                f"shot on 35mm lens, candid, authentic"
             )
-            response = _google_imagen_client.models.generate_images(
-                model="imagen-4.0-fast-generate-001",
-                prompt=prompt,
-                config=_types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio="16:9",
-                ),
+            encoded = urllib.parse.quote(prompt)
+            seed = random.randint(1, 999999)
+            url = (
+                f"https://image.pollinations.ai/prompt/{encoded}"
+                f"?width=1024&height=576&model=flux&seed={seed}&nologo=true&nofeed=true"
             )
-            if response.generated_images:
-                return response.generated_images[0].image.image_bytes
-            return None
+            # Non-blocking: if another thread is already calling Pollinations, skip
+            # rather than queuing (free tier allows exactly 1 concurrent request per IP).
+            if not _pollinations_lock.acquire(blocking=False):
+                logger.info("[Stage 4] Pollinations busy — skipping to Stage 5.")
+                return None
+            try:
+                resp = requests.get(url, timeout=45)
+                # Pause before releasing so the server clears its per-IP queue slot.
+                time.sleep(4)
+                if resp.status_code == 200 and "image" in resp.headers.get("Content-Type", ""):
+                    logger.info(f"✅ [Stage 4] Pollinations/Flux image downloaded ({len(resp.content)//1024}KB).")
+                    return resp.content
+                logger.warning(f"⚠️ [Stage 4] Pollinations returned HTTP {resp.status_code}.")
+                return None
+            finally:
+                _pollinations_lock.release()
         except Exception as e:
-            logger.error(f"Imagen 4 Generation Error ({trend_title[:30]}): {e}")
+            logger.error(f"Pollinations/Flux Error ({trend_title[:30]}): {e}")
             return None
 
     def generate_pil_placeholder(self, trend_title: str, category: str = "Gündem"):
-        """Stage 5: create a branded category card using PIL — always succeeds when a title exists."""
+        """Stage 5: branded breaking-news card — bold design, always succeeds with a title."""
         try:
-            bg_color, _ = CATEGORY_COLORS.get(category, ((37, 99, 235), "📰"))
+            accent, _ = CATEGORY_COLORS.get(category, ((37, 99, 235), "📰"))
             w, h = 800, 450
-            img = Image.new("RGB", (w, h), bg_color)
+
+            # Background: mid-dark base so elements are clearly visible
+            base = tuple(max(18, c // 3) for c in accent)
+            img = Image.new("RGB", (w, h), base)
             draw = ImageDraw.Draw(img)
 
-            # Dark gradient overlay at the bottom for text readability
-            for y in range(200, h):
-                fade = int((y - 200) / (h - 200) * 160)
-                draw.line(
-                    [(0, y), (w, y)],
-                    fill=(max(0, bg_color[0] - fade), max(0, bg_color[1] - fade), max(0, bg_color[2] - fade)),
-                )
+            # Radial-like vignette: darken corners, keep center brighter
+            for y in range(h):
+                for band in range(0, w, 4):   # step-4 for speed
+                    dx = abs(band - w // 2) / (w // 2)
+                    dy = abs(y - h // 2) / (h // 2)
+                    dist = min(1.0, (dx ** 2 + dy ** 2) ** 0.5)
+                    fade = int(dist * 55)
+                    px = (max(0, base[0] - fade), max(0, base[1] - fade), max(0, base[2] - fade))
+                    draw.line([(band, y), (min(w - 1, band + 3), y)], fill=px)
 
+            # Full-width top accent stripe
+            draw.rectangle([(0, 0), (w, 10)], fill=accent)
+
+            # Fonts
             try:
-                font_bold  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
-                font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+                f_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 46)
+                f_badge = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+                f_cat   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+                f_brand = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 19)
+                f_url   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",      16)
             except Exception:
-                font_bold = font_small = ImageFont.load_default()
+                f_title = f_badge = f_cat = f_brand = f_url = ImageFont.load_default()
 
-            # Category label (top-left)
-            draw.text((30, 28), category.upper(), font=font_small, fill=(255, 255, 255))
-            # Brand label (top-right)
+            # ── SON DAKİKA badge ──────────────────────────────────────
+            badge_text = "SON DAKİKA"
             try:
-                bw = font_small.getbbox(WATERMARK_TEXT)[2]
+                bb = f_badge.getbbox(badge_text)
+                bw, bh = bb[2] - bb[0] + 36, bb[3] - bb[1] + 18
             except Exception:
-                bw = len(WATERMARK_TEXT) * 11
-            draw.text((w - bw - 20, 28), WATERMARK_TEXT, font=font_small, fill=(255, 255, 255))
+                bw, bh = 230, 52
+            bx, by = 24, 22
+            # drop-shadow
+            draw.rectangle([(bx + 4, by + 4), (bx + bw + 4, by + bh + 4)], fill=(0, 0, 0))
+            # red background
+            draw.rectangle([(bx, by), (bx + bw, by + bh)], fill=(220, 30, 30))
+            # live dot (animated feel)
+            dot_r = 7
+            draw.ellipse([(bx + 12, by + bh // 2 - dot_r),
+                           (bx + 12 + dot_r * 2, by + bh // 2 + dot_r)], fill=(255, 255, 255))
+            draw.text((bx + 30, by + 9), badge_text, font=f_badge, fill=(255, 255, 255))
 
-            # Trend title — word-wrapped, max 3 lines
+            # Category label (right of badge, bold)
+            cat_x = bx + bw + 22
+            cat_y = by + (bh - 22) // 2
+            draw.text((cat_x, cat_y), category.upper(), font=f_cat, fill=(255, 255, 255))
+
+            # Horizontal divider below badge
+            div_y = by + bh + 18
+            draw.line([(24, div_y), (w - 24, div_y)], fill=accent, width=2)
+
+            # ── Title ────────────────────────────────────────────────
             words = trend_title.split()
             lines, cur = [], []
             for word in words:
                 test = " ".join(cur + [word])
                 try:
-                    tw = font_bold.getbbox(test)[2]
+                    tw = f_title.getbbox(test)[2]
                 except Exception:
-                    tw = len(test) * 18
-                if tw > w - 60 and cur:
+                    tw = len(test) * 28
+                if tw > w - 80 and cur:
                     lines.append(" ".join(cur))
                     cur = [word]
                 else:
                     cur.append(word)
             if cur:
                 lines.append(" ".join(cur))
+            lines = lines[:3]
 
-            y_text = h - len(lines[:3]) * 44 - 30
-            for line in lines[:3]:
-                draw.text((30, y_text), line, font=font_bold, fill=(255, 255, 255))
-                y_text += 44
+            line_h = 60
+            title_top = div_y + 22
+            title_bot = h - 58
+            y_text = title_top + max(0, (title_bot - title_top - len(lines) * line_h) // 2)
+
+            for line in lines:
+                try:
+                    lw = f_title.getbbox(line)[2]
+                except Exception:
+                    lw = len(line) * 30
+                x_c = max(24, (w - lw) // 2)
+                draw.text((x_c + 3, y_text + 3), line, font=f_title, fill=(0, 0, 0))       # shadow
+                draw.text((x_c, y_text),           line, font=f_title, fill=(255, 255, 255)) # text
+                y_text += line_h
+
+            # ── Bottom bar ───────────────────────────────────────────
+            bar_y = h - 50
+            draw.rectangle([(0, bar_y), (w, h)], fill=(12, 12, 12))
+            draw.line([(0, bar_y), (w, bar_y)], fill=accent, width=3)
+
+            # Dot + TrendiaTR
+            bc_x, bc_y = 22, bar_y + 25
+            draw.ellipse([(bc_x - 10, bc_y - 10), (bc_x + 10, bc_y + 10)], fill=accent)
+            draw.text((bc_x + 18, bar_y + 15), "TrendiaTR", font=f_brand, fill=(255, 255, 255))
+
+            # URL right
+            site = "trendiatr.com"
+            try:
+                sw = f_url.getbbox(site)[2]
+            except Exception:
+                sw = 110
+            draw.text((w - sw - 20, bar_y + 18), site, font=f_url, fill=(160, 160, 160))
 
             output = io.BytesIO()
-            img.save(output, format="WEBP", quality=82)
+            img.save(output, format="WEBP", quality=87)
             return output.getvalue()
         except Exception as e:
             logger.error(f"PIL Placeholder Error: {e}")
@@ -595,9 +660,9 @@ class ImageProcessor:
                                 logger.info(f"✅ [Stage 3] Wikipedia image found for: {entity}")
                                 break
 
-                # Stage 4: Gemini Imagen 4 Fast
+                # Stage 4: Pollinations.ai Flux
                 if not image_data and trend and trend.title:
-                    logger.info(f"🤖 [Stage 4] Imagen 4 generating for: {trend.title[:40]}")
+                    logger.info(f"🤖 [Stage 4] Pollinations/Flux generating for: {trend.title[:40]}")
                     loop = asyncio.get_event_loop()
                     ai_data = await loop.run_in_executor(
                         None, self.generate_from_imagen, trend.title, trend.category or "Gündem"
@@ -606,7 +671,7 @@ class ImageProcessor:
                         image_data = ai_data
                         source_url = "ai_generated"
                         source_label = "AI Görseli"
-                        logger.info("✅ [Stage 4] Imagen 4 image generated.")
+                        logger.info("✅ [Stage 4] Pollinations/Flux image generated.")
 
                 # Stage 5: PIL placeholder (last resort — always succeeds when a title exists)
                 if not image_data and trend and trend.title:
