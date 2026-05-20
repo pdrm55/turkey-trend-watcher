@@ -48,10 +48,7 @@ USER_AGENTS = [
 # Tracked in media_meta->bing_tries; self-healing skips items at or above this limit.
 _MAX_BING_TRIES = 3
 
-_GOOGLE_API_KEY = os.getenv("IMAGEN_API_KEY")
-_google_imagen_client = None
-# Serialise concurrent Pollinations requests — free tier allows 1 at a time per IP
-_pollinations_lock = threading.Semaphore(1)
+_OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
 
 CATEGORY_COLORS = {
     "Siyaset":   ((30,  64, 175), "🏛️"),
@@ -284,7 +281,7 @@ class ImageProcessor:
 
             # 📍 Force Turkey Geolocation (all aspect ratios for wider image pool)
             encoded_query = urllib.parse.quote_plus(clean_query + " haber")
-            url = f"https://www.bing.com/images/search?q={encoded_query}&cc=TR&setmkt=tr-TR&setlang=tr&qft=+filterui:photo-photo"
+            url = f"https://www.bing.com/images/search?q={encoded_query}&cc=TR&setmkt=tr-TR&setlang=tr"
 
             # 🕵️ Stealth Headers to look like a local user
             headers = {
@@ -377,39 +374,89 @@ class ImageProcessor:
             logger.error(f"Wikipedia Download Error ({entity_name}): {e}")
             return None
 
-    def generate_from_imagen(self, trend_title: str, category: str = "Gündem"):
-        """Stage 4: generate a realistic news image via Pollinations.ai Flux (free, no API key)."""
+    def generate_visual_query_with_ollama(self, trend_title: str) -> str:
+        """Use local Ollama (qwen2.5) to extract 2-4 visual keywords from a Turkish trend title."""
         try:
             prompt = (
-                f"Turkish breaking news scene: {trend_title}, category {category}, "
-                f"photojournalism style, news photography, realistic, "
-                f"shot on 35mm lens, candid, authentic"
+                "Sen bir görsel arama uzmanısın. Aşağıdaki Türkçe haber başlığından "
+                "görsel arama için en iyi 2-4 anahtar kelimeyi çıkar. "
+                "Sadece isim, kişi adı, kurum adı veya yer adı gibi görsel açıdan zengin kelimeleri seç. "
+                "Clickbait ifadeleri (flaş, son dakika, bakın ne oldu, şok, açıkladı, final yapıyor) "
+                "ve fiilleri ÇIKART. "
+                "SADECE kelimeleri boşlukla ayırarak yaz. Açıklama, tırnak, madde işareti veya markdown YAZMA.\n\n"
+                f"Başlık: {trend_title}"
             )
-            encoded = urllib.parse.quote(prompt)
-            seed = random.randint(1, 999999)
-            url = (
-                f"https://image.pollinations.ai/prompt/{encoded}"
-                f"?width=1024&height=576&model=flux&seed={seed}&nologo=true&nofeed=true"
-            )
-            # Non-blocking: if another thread is already calling Pollinations, skip
-            # rather than queuing (free tier allows exactly 1 concurrent request per IP).
-            if not _pollinations_lock.acquire(blocking=False):
-                logger.info("[Stage 4] Pollinations busy — skipping to Stage 5.")
-                return None
-            try:
-                resp = requests.get(url, timeout=45)
-                # Pause before releasing so the server clears its per-IP queue slot.
-                time.sleep(4)
-                if resp.status_code == 200 and "image" in resp.headers.get("Content-Type", ""):
-                    logger.info(f"✅ [Stage 4] Pollinations/Flux image downloaded ({len(resp.content)//1024}KB).")
-                    return resp.content
-                logger.warning(f"⚠️ [Stage 4] Pollinations returned HTTP {resp.status_code}.")
-                return None
-            finally:
-                _pollinations_lock.release()
+            payload = {
+                "model": "qwen2.5",
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.1, "top_p": 0.9},
+            }
+            resp = requests.post(_OLLAMA_API_URL, json=payload, timeout=8)
+            if resp.status_code == 200:
+                result = resp.json().get("response", "").strip()
+                result = re.sub(r'[^\w\s]', ' ', result)
+                result = " ".join(result.split()[:6])
+                if result:
+                    logger.info(f"🧠 Ollama visual query: '{result}' ← '{trend_title[:40]}'")
+                    return result
         except Exception as e:
-            logger.error(f"Pollinations/Flux Error ({trend_title[:30]}): {e}")
-            return None
+            logger.warning(f"Ollama query generation failed ({e}), falling back to title words.")
+        return " ".join(trend_title.split()[:4])
+
+    def download_from_duckduckgo_images(self, query: str):
+        """Stage 3: DuckDuckGo image search (Bing-backed, native structured JSON)."""
+        try:
+            encoded = urllib.parse.quote_plus(query)
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept-Language": "tr-TR,tr;q=0.9",
+            }
+            # Step 1: acquire vdir session token
+            token_resp = requests.get(
+                f"https://duckduckgo.com/?q={encoded}&iax=images&ia=images",
+                headers=headers, timeout=8
+            )
+            vdir = None
+            if token_resp.status_code == 200:
+                m = re.search(r"vdir\s*=\s*['\"]?([0-9a-fA-F-]+)['\"]?", token_resp.text)
+                if m:
+                    vdir = m.group(1)
+            if not vdir:
+                logger.warning("⚠️ [DDG] Could not extract vdir token.")
+                return None, None
+
+            # Step 2: fetch image results JSON
+            results_resp = requests.get(
+                f"https://duckduckgo.com/i.js?q={encoded}&o=json&vdir={vdir}",
+                headers=headers, timeout=8
+            )
+            if results_resp.status_code != 200:
+                return None, None
+
+            bad_domains = ['tiktok', 'instagram', 'pinterest', 'facebook', 'meme', 'tenor', 'giphy']
+            for item in results_resp.json().get("results", [])[:5]:
+                img_url = item.get("image") or item.get("url")
+                if not img_url or not img_url.startswith("http"):
+                    continue
+                if any(d in img_url.lower() for d in bad_domains):
+                    continue
+                try:
+                    img_resp = requests.get(
+                        img_url,
+                        headers={"User-Agent": headers["User-Agent"], "Referer": "https://duckduckgo.com/"},
+                        timeout=7
+                    )
+                    if img_resp.status_code == 200 and "image" in img_resp.headers.get("Content-Type", ""):
+                        logger.info(f"🦆 [DDG] Downloaded image from {img_url[:50]}")
+                        return img_resp.content, img_url
+                except Exception as e:
+                    logger.warning(f"⚠️ [DDG] Download failed ({e})")
+                    continue
+            return None, None
+        except Exception as e:
+            logger.error(f"DuckDuckGo Search Error: {e}")
+            return None, None
 
     def generate_pil_placeholder(self, trend_title: str = "", category: str = "Gündem") -> bytes:
         """Stage 5: Branded breaking-news card — TrendiaTR visual identity."""
@@ -601,14 +648,16 @@ class ImageProcessor:
                 loop = asyncio.get_event_loop()
                 image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id, news.media_url)
 
-            # Stages 2–5: Bing → Wikipedia → Imagen 4 → PIL Placeholder
+            # Stages 2–5: Bing → DuckDuckGo → Wikipedia → PIL Placeholder
             if not image_data:
                 search_query = None
                 active_entity_name = None
+                loop = asyncio.get_event_loop()
 
                 if news.trend_id:
                     trend = db.query(Trend).filter(Trend.id == news.trend_id).first()
                     if trend:
+                        # Build search query from stored entities first
                         if trend.entities and isinstance(trend.entities, dict):
                             ai_image_query = trend.entities.get('image_search_query')
                             if ai_image_query and len(ai_image_query) > 2:
@@ -617,53 +666,42 @@ class ImageProcessor:
                                 people = trend.entities.get('people', [])
                                 orgs = trend.entities.get('organizations', [])
                                 if people or orgs:
-                                    search_query = " ".join(people[:1] + orgs[:1])
+                                    search_query = " ".join(people[:2] + orgs[:1])
 
-                            # Fallback: entities exist but no usable query — use trend title
-                            if not search_query and trend.title:
-                                search_query = ' '.join(trend.title.split()[:6])
-                                logger.info(
-                                    f"🔍 Trend {trend.id}: entities empty/incomplete — "
-                                    f"using title as Bing query: '{search_query}'"
-                                )
+                        # No good query yet — ask Ollama for visual keywords
+                        if not search_query and trend.title:
+                            search_query = await loop.run_in_executor(
+                                None, self.generate_visual_query_with_ollama, trend.title
+                            )
 
-                            active_entity_name = search_query
+                        active_entity_name = search_query
 
-                            # CACHE CHECK
-                            if active_entity_name:
-                                cached_entity = db.query(EntityImageCache).filter(
-                                    EntityImageCache.entity_name == active_entity_name
-                                ).first()
-                                if cached_entity:
-                                    logger.info(f"⚡ CACHE HIT! Using verified image for entity: {active_entity_name}")
-                                    news.media_path = cached_entity.local_path
-                                    news.media_url = cached_entity.image_url
-                                    news.media_status = 2
-                                    news.media_meta = {"cached": True}
-                                    if not trend.cover_image or news.source_tier == 1:
-                                        trend.cover_image = cached_entity.local_path
-                                        logger.info(f"🖼️ Set/Upgraded cover for Trend {trend.id} from Cache")
-                                    db.commit()
-                                    return
-                        else:
-                            # Fix 1: entities is None or {} — use title as Bing query fallback
-                            if trend.title:
-                                search_query = trend.title[:80]
-                                logger.info(
-                                    f"🔍 Trend {trend.id} has no/empty entities — "
-                                    f"using title as Bing query."
-                                )
+                        # CACHE CHECK
+                        if active_entity_name:
+                            cached_entity = db.query(EntityImageCache).filter(
+                                EntityImageCache.entity_name == active_entity_name
+                            ).first()
+                            if cached_entity:
+                                logger.info(f"⚡ CACHE HIT! Using verified image for entity: {active_entity_name}")
+                                news.media_path = cached_entity.local_path
+                                news.media_url = cached_entity.image_url
+                                news.media_status = 2
+                                news.media_meta = {"cached": True}
+                                if not trend.cover_image or news.source_tier == 1:
+                                    trend.cover_image = cached_entity.local_path
+                                    logger.info(f"🖼️ Set/Upgraded cover for Trend {trend.id} from Cache")
+                                db.commit()
+                                return
 
                 # Stage 2: Bing image search
                 if search_query:
                     _meta = news.media_meta if isinstance(news.media_meta, dict) else {}
                     bing_tries = _meta.get('bing_tries', 0)
                     if bing_tries < _MAX_BING_TRIES:
-                        search_query = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
-                        logger.info(f"🔍 [Stage 2] Bing search (try {bing_tries + 1}/{_MAX_BING_TRIES}): '{search_query[:40]}'")
-                        loop = asyncio.get_event_loop()
+                        clean_sq = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
+                        logger.info(f"🔍 [Stage 2] Bing search (try {bing_tries + 1}/{_MAX_BING_TRIES}): '{clean_sq[:40]}'")
                         image_data, fallback_url = await loop.run_in_executor(
-                            None, self.download_from_bing_images, search_query
+                            None, self.download_from_bing_images, clean_sq
                         )
                         if image_data:
                             source_url = fallback_url
@@ -672,35 +710,35 @@ class ImageProcessor:
                             _meta['bing_tries'] = bing_tries + 1
                             news.media_meta = _meta
                     else:
-                        logger.info(f"⏭️ [Stage 2] Bing budget exhausted ({bing_tries}), proceeding to next stage.")
+                        logger.info(f"⏭️ [Stage 2] Bing budget exhausted ({bing_tries}), skipping to Stage 3.")
 
-                # Stage 3: Wikipedia (named entity thumbnail)
+                # Stage 3: DuckDuckGo image search
+                if not image_data and search_query:
+                    logger.info(f"🦆 [Stage 3] DuckDuckGo search: '{search_query[:40]}'")
+                    image_data, fallback_url = await loop.run_in_executor(
+                        None, self.download_from_duckduckgo_images, search_query
+                    )
+                    if image_data:
+                        source_url = fallback_url
+                        logger.info("✅ [Stage 3] DuckDuckGo image downloaded.")
+
+                # Stage 4: Wikipedia (up to 3 named entities)
                 if not image_data and trend and trend.entities and isinstance(trend.entities, dict):
                     people = trend.entities.get('people', [])
                     orgs = trend.entities.get('organizations', [])
-                    loop = asyncio.get_event_loop()
-                    for entity in (people[:1] + orgs[:1]):
-                        if entity:
-                            logger.info(f"📖 [Stage 3] Wikipedia search for: {entity}")
-                            wiki_data = await loop.run_in_executor(None, self.download_from_wikipedia, entity)
-                            if wiki_data:
-                                image_data = wiki_data
-                                source_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(entity)}"
-                                source_label = "Wikipedia"
-                                logger.info(f"✅ [Stage 3] Wikipedia image found for: {entity}")
-                                break
+                    for entity in (people[:2] + orgs[:1])[:3]:
+                        if not entity:
+                            continue
+                        logger.info(f"📖 [Stage 4] Wikipedia search for: {entity}")
+                        wiki_data = await loop.run_in_executor(None, self.download_from_wikipedia, entity)
+                        if wiki_data:
+                            image_data = wiki_data
+                            source_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(entity)}"
+                            source_label = "Wikipedia"
+                            logger.info(f"✅ [Stage 4] Wikipedia image found for: {entity}")
+                            break
 
-                # Stage 4: Pollinations.ai Flux — DISABLED (irrelevant images, pending better solution)
-                # if not image_data and trend and trend.title:
-                #     ai_data = await loop.run_in_executor(
-                #         None, self.generate_from_imagen, trend.title, trend.category or "Gündem"
-                #     )
-                #     if ai_data:
-                #         image_data = ai_data
-                #         source_url = "ai_generated"
-                #         source_label = "AI Görseli"
-
-                # Stage 5: PIL placeholder (last resort — always succeeds when a title exists)
+                # Stage 5: PIL placeholder (final safety net)
                 if not image_data and trend and trend.title:
                     logger.info(f"🎨 [Stage 5] PIL placeholder for: {trend.title[:40]}")
                     placeholder_data = self.generate_pil_placeholder(trend.title, trend.category or "Gündem")
