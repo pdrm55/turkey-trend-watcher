@@ -1,7 +1,7 @@
 import re
 
 # ==========================================
-# Turkish Categorical Keyword Optimization (Elite Version 2.2)
+# Turkish Categorical Keyword Optimization (Elite Version 2.3)
 # ==========================================
 
 SPORTS_KEYWORDS = {
@@ -18,10 +18,14 @@ SPORTS_KEYWORDS = {
         "griezmann", "bernardo silva", "kimmich", "valverde", "courtois", "alisson", "van dijk",
         "arda güler", "kenan yıldız", "hakan çalhanoğlu", "barış alper yılmaz", "icardi",
         "dzeko", "osimhen", "tadic", "fred", "rafa silva", "en-nesyri",
-        "futbol", "süper lig", "şampiyonlar ligi", "uefa", "avrupa ligi", "konferans ligi",
-        "derbi", "transfer", "teknik direktör", "euroleague", "nba", "voleybol", "tenis"
+        "futbol", "şampiyonlar ligi", "uefa", "avrupa ligi", "konferans ligi",
+        "derbi", "transfer", "teknik direktör", "euroleague", "nba", "voleybol", "tenis",
+        "milli takım", "a milli", "puan durumu", "lig sıralaması", "maç sonucu", "golcü",
+        "kırmızı kart", "sarı kart", "fatih terim", "ali koç", "dursun özbek", "ahmet nur çebi",
+        "formula 1", "f1", "motogp", "atletizm", "yüzme", "olimpiyat", "dünya şampiyonası",
+        "basketbol", "hentbol", "güreş", "boks", "mma", "ufc", "tff", "türkiye kupası"
     ],
-    "medium": ["penaltı", "gol", "maç", "skor", "kupa", "madalya", "stadyum", "idman", "fikstür", "antrenman"],
+    "medium": ["penaltı", "gol", "maç", "skor", "kupa", "madalya", "stadyum", "idman", "fikstür", "antrenman", "maç iptal", "sportif direktör", "deplasman", "ev sahibi", "galibiyet", "yenilgi", "beraberlik"],
     "low": ["takım", "oyuncu", "hakem", "sporcu", "kulüp"]
 }
 
@@ -33,10 +37,14 @@ ECONOMY_KEYWORDS = {
         "borsa istanbul", "bist 100", "nasdaq", "dow jones", "s&p 500", "wall street", "nikkei", "dax",
         "dolar/tl", "euro/tl", "döviz kuru", "altın fiyatları", "gram altın", "çeyrek altın", "ons altın",
         "kripto para", "bitcoin", "btc", "ethereum", "eth", "binance", "blockchain", "altcoin",
-        "halka arz", "temettü", "kap bildirimi", "vergi paketi", "cari açık", "gsyh", "büyüme rakamları", 
-        "resesyon", "stagflasyon", "konkordato", "moody's", "fitch", "s&p", "msci", "jpmorgan"
+        "halka arz", "temettü", "kap bildirimi", "vergi paketi", "cari açık", "gsyh", "büyüme rakamları",
+        "resesyon", "stagflasyon", "konkordato", "moody's", "fitch", "s&p", "msci", "jpmorgan",
+        "şimşek", "spk", "bddk", "tüik", "tahvil", "bono", "hisse senedi", "işsizlik oranı",
+        "şirket birleşmesi", "bankacılık sektörü", "doğalgaz fiyatı", "elektrik fiyatı", "döviz rezervi",
+        "küresel piyasalar", "petrol fiyatı", "brent petrol", "ham petrol", "opec",
+        "enerji maliyeti", "faiz artışı", "faiz indirimi", "politika faizi"
     ],
-    "medium": ["ihracat", "ithalat", "mevduat", "swap", "kredi notu", "bütçe açığı", "alım gücü", "maliyet", "tüketici", "ekonomi", "finans"],
+    "medium": ["ihracat", "ithalat", "mevduat", "swap", "kredi notu", "bütçe açığı", "alım gücü", "maliyet", "tüketici", "ekonomi", "finans", "genel müdür", "hazine", "küresel ekonomi", "vergi indirimi", "teşvik paketi", "iflас", "haciz", "iflas", "sermaye"],
     "low": ["fiyat", "artış", "borç", "şirket", "piyasa", "kar", "zarar", "zam", "endeks"]
 }
 
@@ -48,21 +56,57 @@ TECHNOLOGY_KEYWORDS = {
         "baykar", "tusaş", "aselsan", "savunma sanayii", "togg", "iha", "siha", "kaaan", "hürjet",
         "yarı iletken", "çip krizi", "işlemci", "intel", "amd", "tsmc", "5g", "6g", "fiber internet",
         "siber güvenlik", "siber saldırı", "hacker", "veri sızıntısı", "kuantum", "blockchain",
-        "uzay", "nasa", "roket", "fırlatma", "uydu", "mavi orijin"
+        "uzay", "nasa", "roket", "fırlatma", "uydu", "mavi orijin",
+        "samsung", "huawei", "xiaomi", "sony", "playstation", "nintendo", "steam",
+        "lg", "qualcomm", "snapdragon", "veri merkezi", "cloud computing",
+        "elektrikli araç", "otonom araç", "sürücüsüz", "teknoloji devi", "teknoloji şirketi"
     ],
-    "medium": ["yazılım", "donanım", "bulut bilişim", "cloud", "robot", "drone", "uygulama", "android", "ios", "windows"],
+    "medium": ["yazılım", "donanım", "bulut bilişim", "cloud", "robot", "drone", "uygulama", "android", "ios", "windows", "state of play", "oyun konsolu", "kablosuz kulaklık", "bilimsel araştırma", "tıbbi cihaz", "akıllı saat", "akıllı ev", "nesnelerin interneti", "iot", "siber", "güvenlik açığı"],
     "low": ["dijital", "internet", "platform", "akıllı telefon", "otonom", "güncelleme", "şifre"]
 }
 
 POLITICS_KEYWORDS = {
-    "high": ["cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "mansur yavaş", "ak parti", "chp", "mhp", "dem partisi", "iyi parti", "zafer partisi", "tbmm", "meclis", "kabine", "ysk", "anayasa", "beyاز saray", "kremlin", "pentagon", "diplomasi", "dışişleri", "israil", "filistin", "gazze", "lübnan", "suriye", "abd", "rusya", "ukrayna", "netanyahu", "putin", "biden"],
-    "medium": ["seçim anketi", "erken seçim", "ittifak", "yasa", "kanun", "zirve", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge", "koalisyon", "gensoru", "torba yasa", "belediye başkanı"],
+    "high": [
+        "cumhurbaşkanı", "erdoğan", "özgür özel", "bahçeli", "imamoğlu", "mansur yavaş",
+        "ak parti", "chp", "mhp", "dem partisi", "iyi parti", "zafer partisi",
+        "tbmm", "meclis", "kabine", "ysk", "anayasa", "kremlin", "pentagon",
+        "diplomasi", "dışişleri", "israil", "filistin", "gazze", "lübnan", "suriye",
+        "abd", "rusya", "ukrayna", "netanyahu", "putin", "biden",
+        "trump", "dışişleri bakanı", "büyükelçi", "yaptırım", "savunma bakanı", "adalet bakanı",
+        "imamoğlu davası", "ikili ilişkiler", "dışişleri bakanlığı", "cumhurbaşkanlığı kararnamesi",
+        "yargıtay", "anayasa mahkemesi kararı", "muhalefet lideri", "meclis oturumu",
+        "bakan atama", "hükümet krizi", "diplomatik kriz", "vize krizi", "sınır dışı",
+        "kemal kılıçdaroğlu", "siyasi tutuklama", "kayyum", "bakanlar kurulu",
+        "ab üyeliği", "avrupa birliği", "schengen", "şanghay işbirliği", "brics"
+    ],
+    "medium": ["seçim anketi", "erken seçim", "ittifak", "yasa", "kanun", "zirve", "nato", "bm", "birleşmiş milletler", "istifa", "gözaltı", "tutuklama", "önerge", "koalisyon", "gensoru", "torba yasa", "belediye başkanı", "muhalefet", "siyasi kriz", "görüşme", "telefon görüşmesi", "yargı reformu", "seçim", "referandum", "siyasi baskı"],
     "low": ["açıklama", "toplantı", "karar", "bakanlık", "lider", "tepki", "eleştiri", "ziyaret", "gündem", "diplomatik"]
 }
 
 ART_KEYWORDS = {
-    "high": ["sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "oyuncuları", "başrol", "televizyon", "ekranlarda", "vizyon", "albüm", "tarkan", "sezen aksu", "cem yılmaz", "oscar", "altın portakal", "cannes", "bienal", "netflix", "disney+", "bluetv", "sanatçı", "müzik", "şarkıcı", "sahne performansı", "kültür sanat", "edebiyat", "roman", "şiir", "ressam", "heykeltıraş", "müze", "galeri", "orkestra", "opera", "bale", "tiyatro oyunu", "stand-up", "belgesel", "kısa film", "altın küre", "grammy", "emmy", "tony ödülleri", "eurovision", "spotify", "youtube music", "apple music", "exxen", "gain", "amazon prime video", "mubi"],
-    "medium": ["gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik", "fenomen", "influencer", "gişe rekoru", "tiyatro", "prömiyer", "senaryo", "yapımcı", "karakter", "izleyici", "beyaz perde", "turne", "imza günü", "söyleşi", "eleştirmen", "küratör", "koleksiyoner", "müzayede", "beste", "güfte", "aranjman", "klip", "single", "plak", "kaset", "dijital platform", "yayın akışı", "sezon finali", "yeni sezon", "oyuncu kadrosu", "kırmızı halı", "magazin gündemi", "paparazzi", "ünlüler dünyası", "sosyal medya fenomeni", "youtuber", "tiktoker", "instagrammer", "podcast"],
+    "high": [
+        "sinema", "film", "dizi", "konser", "festival", "sergi", "kitap", "yazar", "oyuncu", "oyuncuları",
+        "başrol", "televizyon", "ekranlarda", "vizyon", "albüm", "tarkan", "sezen aksu", "cem yılmaz",
+        "oscar", "altın portakal", "cannes", "bienal", "netflix", "disney+", "bluetv",
+        "sanatçı", "müzik", "şarkıcı", "sahne performansı", "kültür sanat", "edebiyat", "roman", "şiir",
+        "ressam", "heykeltıraş", "müze", "galeri", "orkestra", "opera", "bale", "tiyatro oyunu",
+        "stand-up", "belgesel", "kısa film", "altın küre", "grammy", "emmy", "tony ödülleri",
+        "eurovision", "spotify", "youtube music", "apple music", "exxen", "gain", "amazon prime video", "mubi",
+        "survivor", "dizi finali", "gastronomi", "şef", "konser turnesi", "stat konseri",
+        "müzik festivali", "yemek programı", "reality show", "yarışma programı",
+        "dünya turu", "dünya prömiyeri", "kırmızı halı töreni",
+        "masterchef", "yemekteyiz", "çukur", "kızılcık şerbeti", "gönül dağı"
+    ],
+    "medium": [
+        "gala", "sahne", "yönetmen", "fragman", "reyting", "aşk", "ayrılık", "boşanma", "evlilik",
+        "fenomen", "influencer", "gişe rekoru", "tiyatro", "prömiyer", "senaryo", "yapımcı",
+        "karakter", "izleyici", "beyaz perde", "turne", "imza günü", "söyleşi", "eleştirmen",
+        "küratör", "koleksiyoner", "müzayede", "beste", "güfte", "aranjman", "klip", "single",
+        "plak", "kaset", "dijital platform", "yayın akışı", "sezon finali", "yeni sezon",
+        "oyuncu kadrosu", "kırmızı halı", "magazin gündemi", "paparazzi", "ünlüler dünyası",
+        "sosyal medya fenomeni", "youtuber", "tiktoker", "instagrammer", "podcast",
+        "mutfak", "yemek tarifi", "dizi sezonu", "fragman yayınlandı", "klip yayınlandı"
+    ],
     "low": ["izle", "dinle", "eğlence", "magazin", "ünlü", "moda", "tarz", "viral", "ödül töreni", "paylaşım", "takipçi", "beğeni", "yorum", "trend", "stil", "kombin", "makyaj", "estetik", "dedikodu", "skandal", "itiraf", "samimi açıklamalar"]
 }
 
@@ -74,7 +118,7 @@ GUNDEM_KEYWORDS = {
         "saldırı", "hava saldırısı", "savaş", "çatışma", "şehit", "bombalı", "füze", "katliam", "can kaybı", "operasyon"
     ],
     "medium": [
-        "vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "sağanak", "ağır ceza", "müebbet", 
+        "vefat", "kayıp", "arama kurtarma", "trafik kazası", "gözaltı", "adliye", "asayiş", "uyarı", "sağanak", "ağır ceza", "müebbet",
         "inşa etti", "hizmete açıldı", "baraj", "tesis", "altyapı", "üstyapı", "dolandırıcılık", "gasp", "hırsızlık",
         "hayatını kaybetti", "yaralandı", "kurban"
     ],
@@ -102,10 +146,10 @@ NEGATIVE_KEYWORDS = {
         "penalty": -80, "affects": ["Siyaset", "Ekonomi"]
     },
     "politics_exclusive": {
-        "dominant_category": "Siyaset", 
+        "dominant_category": "Siyaset",
         "keywords": ["resmi gazete", "kararname", "kanun teklifi", "tbmm", "anayasa mahkemesi", "genel kurul", "grup toplantısı"],
         "penalty": -50, "affects": ["Spor", "Sanat", "Teknoloji", "Gündem"],
-        "soft_penalty": -20, "soft_affects": ["Ekonomi"] 
+        "soft_penalty": -20, "soft_affects": ["Ekonomi"]
     },
     "economy_exclusive": {
         "dominant_category": "Ekonomi",
@@ -127,7 +171,7 @@ def calculate_keyword_score(text: str, keywords_dict: dict) -> int:
         for word in keywords_dict[level]:
             # (?<!\w) and (?!\w) act as boundary checks that support Turkish characters better than \b
             pattern = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
-            if re.search(pattern, text): 
+            if re.search(pattern, text):
                 score += weight
     return score
 
@@ -140,7 +184,7 @@ def apply_negative_logic(scores: dict, text: str) -> dict:
             if re.search(pattern, text):
                 found = True
                 break
-                
+
         if found:
             for target in config["affects"]:
                 if target in scores: scores[target] = max(0, scores[target] + config["penalty"])
@@ -155,7 +199,7 @@ def fast_classify(text: str) -> str:
     Logic: Winner must have at least 60 points (1 High Match) AND beat Gündem by 1.8x.
     """
     text_norm = normalize_text(text)
-    
+
     scores = {}
     for cat_name, keywords in CAT_MAP.items():
         scores[cat_name] = calculate_keyword_score(text_norm, keywords)
@@ -167,17 +211,17 @@ def fast_classify(text: str) -> str:
         return "Gündem"
 
     top_cat = max(scores, key=scores.get)
-    
+
     # --- Strict Winner Rules ---
     if top_cat != "Gündem":
         # Rule 1: A specific category must have at least ONE high match (60 pts) to trigger
         if scores[top_cat] < 60:
             return "Gündem"
-            
+
         # Rule 2: Dominance check
         if scores[top_cat] < (1.8 * scores["Gündem"]):
             return "Gündem"
-            
+
     return top_cat
 
 def decide_final_category(ai_category: str, text: str) -> tuple:
@@ -192,14 +236,14 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
     match_counts = {}
     for cat_name, keywords in CAT_MAP.items():
         score = calculate_keyword_score(text_norm, keywords)
-        
+
         matches = 0
         for level in ["high", "medium", "low"]:
             for word in keywords[level]:
                 pattern = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
-                if re.search(pattern, text_norm): 
+                if re.search(pattern, text_norm):
                     matches += 1
-            
+
         scores[cat_name] = score
         match_counts[cat_name] = matches
 
@@ -210,15 +254,15 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
 
     densities = {k: v / word_count for k, v in scores.items()}
     top_cat = max(densities, key=densities.get)
-    
+
     if top_cat != "Gündem":
-        if match_counts[top_cat] < 2: 
+        if match_counts[top_cat] < 2:
             top_cat = "Gündem"
-        elif densities[top_cat] < (1.8 * densities["Gündem"]): 
+        elif densities[top_cat] < (1.8 * densities["Gündem"]):
             top_cat = "Gündem"
 
     if ai_category == top_cat: return top_cat, False
     if densities.get(top_cat, 0) > 0.8 and match_counts[top_cat] >= 3:
         return top_cat, True
-    
+
     return ai_category, False

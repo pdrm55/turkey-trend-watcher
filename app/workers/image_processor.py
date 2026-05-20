@@ -224,12 +224,23 @@ class ImageProcessor:
             logger.error(f"Telegram Download Error ({external_id}): {e}")
             return None
 
+    # Non-image URL patterns that should not be used as image sources
+    _VIDEO_URL_PATTERNS = (
+        'youtube.com/embed', 'youtube.com/watch', 'youtu.be',
+        'vimeo.com', 'dailymotion.com', 'twitter.com/i/video',
+        'tiktok.com', 'instagram.com/reel', 'facebook.com/video',
+    )
+
     def download_from_rss(self, external_id, pre_extracted_media_url=None):
         """استخراج تصویر از لینک خبرگزاری (اولویت با لینک مستقیم RSS)"""
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
 
             img_url = pre_extracted_media_url
+
+            # Skip video/embed URLs — they return HTML, not image bytes
+            if img_url and any(p in img_url for p in self._VIDEO_URL_PATTERNS):
+                img_url = None
 
             # اگر لینک مستقیم نداشتیم، صفحه را اسکرپ می‌کنیم
             if not img_url:
@@ -258,6 +269,47 @@ class ImageProcessor:
 
         except Exception as e:
             logger.error(f"RSS Download Error ({external_id}): {e}")
+            return None, None
+
+    def download_person_image_from_news(self, person_name: str):
+        """Fetch a person's photo via Bing news search → og:image of the first relevant article.
+        Used as Stage 2b fallback when Bing image search returns irrelevant results for Turkish names."""
+        try:
+            encoded = urllib.parse.quote_plus(person_name)
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept-Language": "tr-TR,tr;q=0.9",
+            }
+            news_url = f"https://www.bing.com/news/search?q={encoded}&cc=TR&setlang=tr&count=5"
+            resp = requests.get(news_url, headers=headers, timeout=8)
+            if resp.status_code != 200:
+                return None, None
+
+            soup = BeautifulSoup(resp.content, "html.parser")
+            for link in soup.find_all("a", class_="title")[:4]:
+                href = link.get("href", "")
+                if not href.startswith("http") or "bing.com" in href:
+                    continue
+                try:
+                    article = requests.get(href, headers=headers, timeout=7)
+                    asoup = BeautifulSoup(article.content, "html.parser")
+                    og = (asoup.find("meta", property="og:image") or
+                          asoup.find("meta", attrs={"name": "og:image"}) or
+                          asoup.find("meta", property="twitter:image"))
+                    if og:
+                        img_url = og.get("content", "")
+                        if img_url and any(p in img_url for p in self._VIDEO_URL_PATTERNS):
+                            continue
+                        if img_url and img_url.startswith("http"):
+                            img_resp = requests.get(img_url, headers=headers, timeout=7)
+                            if img_resp.status_code == 200 and len(img_resp.content) > 5000:
+                                logger.info(f"📰 [Stage 2b] News image found for '{person_name}': {img_url[:60]}")
+                                return img_resp.content, img_url
+                except Exception:
+                    continue
+            return None, None
+        except Exception as e:
+            logger.error(f"News Image Download Error ({person_name}): {e}")
             return None, None
 
     def download_from_bing_images(self, query):
@@ -348,31 +400,32 @@ class ImageProcessor:
             return None, None
 
     def download_from_wikipedia(self, entity_name: str):
-        """Stage 3: fetch a thumbnail from the Wikipedia pageimages API for a named entity."""
-        try:
-            encoded = urllib.parse.quote(entity_name)
-            url = (
-                f"https://en.wikipedia.org/w/api.php"
-                f"?action=query&titles={encoded}&prop=pageimages"
-                f"&format=json&pithumbsize=800"
-            )
-            resp = requests.get(url, headers={"User-Agent": "TrendiaTR/1.0 (trendia.tr)"}, timeout=8)
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            pages = data.get("query", {}).get("pages", {})
-            for page_id, page in pages.items():
-                if page_id == "-1":
+        """Stage 4: fetch thumbnail from Wikipedia — tries TR first, then EN."""
+        for lang in ('tr', 'en'):
+            try:
+                encoded = urllib.parse.quote(entity_name)
+                url = (
+                    f"https://{lang}.wikipedia.org/w/api.php"
+                    f"?action=query&titles={encoded}&prop=pageimages"
+                    f"&format=json&pithumbsize=800"
+                )
+                resp = requests.get(url, headers={"User-Agent": "TrendiaTR/1.0 (trendia.tr)"}, timeout=8)
+                if resp.status_code != 200:
                     continue
-                thumb_url = page.get("thumbnail", {}).get("source")
-                if thumb_url:
-                    img_resp = requests.get(thumb_url, headers={"User-Agent": "TrendiaTR/1.0"}, timeout=8)
-                    if img_resp.status_code == 200:
-                        return img_resp.content
-            return None
-        except Exception as e:
-            logger.error(f"Wikipedia Download Error ({entity_name}): {e}")
-            return None
+                data = resp.json()
+                pages = data.get("query", {}).get("pages", {})
+                for page_id, page in pages.items():
+                    if page_id == "-1":
+                        continue
+                    thumb_url = page.get("thumbnail", {}).get("source")
+                    if thumb_url:
+                        img_resp = requests.get(thumb_url, headers={"User-Agent": "TrendiaTR/1.0"}, timeout=8)
+                        if img_resp.status_code == 200:
+                            logger.info(f"📖 Wikipedia ({lang}) thumbnail found for: {entity_name}")
+                            return img_resp.content
+            except Exception as e:
+                logger.error(f"Wikipedia Download Error ({lang}/{entity_name}): {e}")
+        return None
 
     def generate_visual_query_with_ollama(self, trend_title: str) -> str:
         """Use local Ollama (qwen2.5) to extract 2-4 visual keywords from a Turkish trend title."""
@@ -652,6 +705,7 @@ class ImageProcessor:
             if not image_data:
                 search_query = None
                 active_entity_name = None
+                person_fallback_query = None
                 loop = asyncio.get_event_loop()
 
                 if news.trend_id:
@@ -675,6 +729,11 @@ class ImageProcessor:
                             )
 
                         active_entity_name = search_query
+
+                        # Build a clean person-name fallback query for Bing/DDG retries.
+                        # Used when the primary query is context-heavy (e.g. "Taylan sahte video").
+                        _people = trend.entities.get('people', []) if trend.entities else []
+                        person_fallback_query = _people[0] if _people else None
 
                         # CACHE CHECK
                         if active_entity_name:
@@ -707,8 +766,18 @@ class ImageProcessor:
                             source_url = fallback_url
                             logger.info("✅ [Stage 2] Bing image downloaded.")
                         else:
-                            _meta['bing_tries'] = bing_tries + 1
-                            news.media_meta = _meta
+                            # Fallback: Bing news search → og:image from article (works from cloud IPs)
+                            # Use person name if available, otherwise fall back to the main search query
+                            news_query = person_fallback_query or search_query
+                            if news_query:
+                                image_data, fallback_url = await loop.run_in_executor(
+                                    None, self.download_person_image_from_news, news_query
+                                )
+                                if image_data:
+                                    source_url = fallback_url
+                            if not image_data:
+                                _meta['bing_tries'] = bing_tries + 1
+                                news.media_meta = _meta
                     else:
                         logger.info(f"⏭️ [Stage 2] Bing budget exhausted ({bing_tries}), skipping to Stage 3.")
 
@@ -721,6 +790,15 @@ class ImageProcessor:
                     if image_data:
                         source_url = fallback_url
                         logger.info("✅ [Stage 3] DuckDuckGo image downloaded.")
+                    elif person_fallback_query and person_fallback_query.strip().lower() != search_query.lower():
+                        # Fallback: retry DDG with just the person name
+                        logger.info(f"🦆 [Stage 3b] DuckDuckGo person-name fallback: '{person_fallback_query[:40]}'")
+                        image_data, fallback_url = await loop.run_in_executor(
+                            None, self.download_from_duckduckgo_images, person_fallback_query
+                        )
+                        if image_data:
+                            source_url = fallback_url
+                            logger.info("✅ [Stage 3b] DuckDuckGo person-name fallback downloaded.")
 
                 # Stage 4: Wikipedia (up to 3 named entities)
                 if not image_data and trend and trend.entities and isinstance(trend.entities, dict):
@@ -814,6 +892,11 @@ class ImageProcessor:
             try:
                 news_row = db.query(RawNews).filter(RawNews.id == news_id).first()
                 if news_row:
+                    # Write bing_tries so self-heal doesn't re-queue this in an infinite loop
+                    _err_meta = news_row.media_meta if isinstance(news_row.media_meta, dict) else {}
+                    if 'bing_tries' not in _err_meta:
+                        _err_meta['bing_tries'] = _MAX_BING_TRIES
+                        news_row.media_meta = _err_meta
                     news_row.media_status = -1
                     db.commit()
             except Exception:
