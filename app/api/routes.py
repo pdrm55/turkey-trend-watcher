@@ -1968,13 +1968,39 @@ def admin_delete_trend_media(trend_id):
 
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+        from sqlalchemy import text as _sa_text
+
         if media_type == 'image':
             if not trend.cover_image:
                 return jsonify({"error": "No image to delete"}), 404
-            file_path = os.path.join(base_dir, 'static', trend.cover_image)
+            old_cover = trend.cover_image
+            file_path = os.path.join(base_dir, 'static', old_cover)
             if os.path.exists(file_path):
                 os.remove(file_path)
             trend.cover_image = None
+
+            # Reset the raw_news row(s) that produced this cover so the image
+            # worker re-queues them (Slot A: cover_image IS NULL + media_status=0).
+            reset_count = db.execute(_sa_text("""
+                UPDATE raw_news
+                SET media_status = 0, media_path = NULL, media_url = NULL
+                WHERE trend_id = :tid AND media_path = :path
+            """), {"tid": trend_id, "path": old_cover}).rowcount
+
+            # Fallback: cover may have been set by editorial / admin upload —
+            # reset the most-recent raw_news for this trend so the worker retries.
+            if reset_count == 0:
+                db.execute(_sa_text("""
+                    UPDATE raw_news
+                    SET media_status = 0, media_path = NULL, media_url = NULL
+                    WHERE id = (
+                        SELECT id FROM raw_news
+                        WHERE trend_id = :tid
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    )
+                """), {"tid": trend_id})
+
         else:
             if not trend.video_path:
                 return jsonify({"error": "No video to delete"}), 404
