@@ -21,3 +21,6 @@ __pycache__/
 
 # اسکریپت‌های تست و موقت
 test_*.py
+
+# فایل‌های رسانه‌ای (از طریق volume mount تامین می‌شوند)
+app/static/media/
