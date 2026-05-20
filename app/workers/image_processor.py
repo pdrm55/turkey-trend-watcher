@@ -652,18 +652,15 @@ class ImageProcessor:
                                 logger.info(f"✅ [Stage 3] Wikipedia image found for: {entity}")
                                 break
 
-                # Stage 4: Pollinations.ai Flux
-                if not image_data and trend and trend.title:
-                    logger.info(f"🤖 [Stage 4] Pollinations/Flux generating for: {trend.title[:40]}")
-                    loop = asyncio.get_event_loop()
-                    ai_data = await loop.run_in_executor(
-                        None, self.generate_from_imagen, trend.title, trend.category or "Gündem"
-                    )
-                    if ai_data:
-                        image_data = ai_data
-                        source_url = "ai_generated"
-                        source_label = "AI Görseli"
-                        logger.info("✅ [Stage 4] Pollinations/Flux image generated.")
+                # Stage 4: Pollinations.ai Flux — DISABLED (irrelevant images, pending better solution)
+                # if not image_data and trend and trend.title:
+                #     ai_data = await loop.run_in_executor(
+                #         None, self.generate_from_imagen, trend.title, trend.category or "Gündem"
+                #     )
+                #     if ai_data:
+                #         image_data = ai_data
+                #         source_url = "ai_generated"
+                #         source_label = "AI Görseli"
 
                 # Stage 5: PIL placeholder (last resort — always succeeds when a title exists)
                 if not image_data and trend and trend.title:
