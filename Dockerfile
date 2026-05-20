@@ -15,6 +15,7 @@ ENV TOKENIZERS_PARALLELISM=false
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
+    fonts-noto \
     && rm -rf /var/lib/apt/lists/*
 
 # تنظیم پوشه کاری

@@ -396,108 +396,131 @@ class ImageProcessor:
             logger.error(f"Pollinations/Flux Error ({trend_title[:30]}): {e}")
             return None
 
-    def generate_pil_placeholder(self, trend_title: str, category: str = "Gündem"):
-        """Stage 5: Branded breaking-news card with modern social media aesthetics and official logo."""
+    def generate_pil_placeholder(self, trend_title: str = "", category: str = "Gündem") -> bytes:
+        """Stage 5: Branded breaking-news card — TrendiaTR visual identity."""
         try:
-            accent_colors = {
-                "Siyaset":   ((220, 38, 38),  (30, 41, 59)),
-                "Ekonomi":   ((5, 150, 105),  (15, 23, 42)),
-                "Teknoloji": ((124, 58, 237), (15, 23, 42)),
-                "Spor":      ((245, 158, 11), (28, 25, 23)),
-                "Gündem":    ((239, 68, 68),  (17, 24, 39)),
-            }
-            primary_color, base_dark = accent_colors.get(category, ((239, 68, 68), (17, 24, 39)))
+            FONT_BLACK   = "/usr/share/fonts/truetype/noto/NotoSans-Black.ttf"
+            FONT_BOLD    = "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"
+            FONT_REGULAR = "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"
+
             w, h = 800, 450
-            img = Image.new("RGB", (w, h), base_dark)
+            RED_DARK   = (100,  8,  8)
+            RED_BRIGHT = (210, 38, 38)
+
+            # ── 1. Background gradient (dark left → brighter centre-right) ──
+            img = Image.new("RGB", (w, h), RED_DARK)
             draw = ImageDraw.Draw(img)
 
-            # Linear gradient background (left → right blend with accent)
-            for x in range(w):
-                mix = x / w
-                r = int(base_dark[0] * (1 - mix) + primary_color[0] * mix * 0.35)
-                g = int(base_dark[1] * (1 - mix) + primary_color[1] * mix * 0.25)
-                b = int(base_dark[2] * (1 - mix) + primary_color[2] * mix * 0.25)
-                draw.line([(x, 0), (x, h)], fill=(r, g, b))
+            for y in range(h):
+                for x in range(0, w, 2):
+                    fx = x / w
+                    fy = y / h
+                    t = fx * 0.55 + (1 - abs(fy - 0.5) * 2) * 0.45
+                    t = max(0.0, min(1.0, t))
+                    r = int(RED_DARK[0] + (RED_BRIGHT[0] - RED_DARK[0]) * t)
+                    g = int(RED_DARK[1] + (RED_BRIGHT[1] - RED_DARK[1]) * t)
+                    b = int(RED_DARK[2] + (RED_BRIGHT[2] - RED_DARK[2]) * t)
+                    draw.line([(x, y), (x + 1, y)], fill=(r, g, b))
 
-            # Subtle diagonal tech lines
-            for i in range(0, w + h, 40):
-                draw.line([(i, 0), (i - h, h)], fill=(255, 255, 255, 10), width=1)
+            # ── 2. Diagonal lines ──
+            for i in range(-h, w + h, 38):
+                draw.line([(i, 0), (i + h, h)], fill=(160, 25, 25), width=1)
 
-            # Fonts — try common Linux paths in order
-            font_paths = [
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
-                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-            ]
-            f_title = f_badge = f_brand = None
-            for path in font_paths:
+            # ── 3. Fonts ──
+            def _load_font(path, size):
                 try:
-                    if os.path.exists(path):
-                        f_title = ImageFont.truetype(path, 42)
-                        f_badge = ImageFont.truetype(path, 22)
-                        f_brand = ImageFont.truetype(path, 24)
-                        break
+                    return ImageFont.truetype(path, size)
                 except Exception:
-                    continue
-            if not f_title:
-                f_title = f_badge = f_brand = ImageFont.load_default()
+                    return ImageFont.load_default()
 
-            # TT logo — red rounded square (matches index.html logo)
-            logo_size = 64
-            logo_x, logo_y = 30, 30
+            f_tt      = _load_font(FONT_BLACK,   46)
+            f_brand   = _load_font(FONT_BLACK,   54)
+            f_sondak  = _load_font(FONT_BLACK,  118)
+            f_sub     = _load_font(FONT_REGULAR,  25)
+            f_footer  = _load_font(FONT_BOLD,    19)
+
+            # ── 4. TT logo square with glow ──
+            logo_size = 76
+            logo_x, logo_y = 36, 28
+
+            for g_off in [8, 5, 3, 1]:
+                fade = 20 + g_off * 6
+                draw.rounded_rectangle(
+                    [(logo_x - g_off, logo_y - g_off),
+                     (logo_x + logo_size + g_off, logo_y + logo_size + g_off)],
+                    radius=22 + g_off,
+                    fill=(min(255, 100 + fade), min(255, 30 + fade // 3), min(255, 30 + fade // 3))
+                )
+
             draw.rounded_rectangle(
                 [(logo_x, logo_y), (logo_x + logo_size, logo_y + logo_size)],
-                radius=14,
-                fill=(239, 68, 68),
+                radius=18, fill=(220, 38, 38)
             )
-            draw.text((logo_x + 14, logo_y + 16), "TT", font=f_brand, fill=(255, 255, 255))
 
-            # SON DAKİKA label + category next to logo
-            draw.text((logo_x + logo_size + 20, logo_y + 6),  "SON DAKİKA",       font=f_title, fill=(239, 68, 68))
-            draw.text((logo_x + logo_size + 22, logo_y + 42), f"// {category.upper()}", font=f_badge, fill=(156, 163, 175))
+            tt_bbox = f_tt.getbbox("TT")
+            tt_w = tt_bbox[2] - tt_bbox[0]
+            tt_h = tt_bbox[3] - tt_bbox[1]
+            tt_x = logo_x + (logo_size - tt_w) // 2 - tt_bbox[0]
+            tt_y = logo_y + (logo_size - tt_h) // 2 - tt_bbox[1]
+            draw.text((tt_x, tt_y), "TT", font=f_tt, fill=(255, 255, 255))
 
-            # Divider below header
-            draw.line([(30, 120), (w - 30, 120)], fill=(239, 68, 68), width=3)
+            # ── 5. "TrendiaTR" brand ──
+            brand_x = logo_x + logo_size + 18
+            brand_y = logo_y + (logo_size - 54) // 2
 
-            # Title — word-wrap with drop-shadow
-            def _clean(text_in):
-                for k, v in {"ç":"Ç","ğ":"Ğ","ı":"I","i":"İ","ö":"Ö","ş":"Ş","ü":"Ü"}.items():
-                    text_in = text_in.replace(k, v)
-                return text_in.upper()
+            draw.text((brand_x + 3, brand_y + 3), "Trendia", font=f_brand, fill=(40, 0, 0))
+            draw.text((brand_x, brand_y), "Trendia", font=f_brand, fill=(255, 255, 255))
 
-            words = _clean(trend_title).split()
-            lines, current_line = [], []
-            for word in words:
-                test_line = " ".join(current_line + [word])
-                try:
-                    tw = f_title.getbbox(test_line)[2] if hasattr(f_title, 'getbbox') else f_title.getsize(test_line)[0]
-                except Exception:
-                    tw = len(test_line) * 24
-                if tw > (w - 80) and current_line:
-                    lines.append(" ".join(current_line))
-                    current_line = [word]
-                else:
-                    current_line = current_line + [word]
-            if current_line:
-                lines.append(" ".join(current_line))
+            trendia_w = f_brand.getbbox("Trendia")[2] - f_brand.getbbox("Trendia")[0]
+            tr_x = brand_x + trendia_w
 
-            y_text = 160
-            for line in lines[:4]:
-                draw.text((32, y_text + 2), line, font=f_title, fill=(0, 0, 0))        # shadow
-                draw.text((30, y_text),      line, font=f_title, fill=(255, 255, 255))  # text
-                y_text += 54
+            draw.text((tr_x + 3, brand_y + 3), "TR", font=f_brand, fill=(80, 0, 0))
+            draw.text((tr_x, brand_y), "TR", font=f_brand, fill=(255, 100, 100))
 
-            # Footer bar
-            draw.rectangle([(0, h - 45), (w, h)], fill=(15, 23, 42))
-            draw.line([(0, h - 45), (w, h - 45)], fill=primary_color, width=2)
+            # ── 6. SONDAKİKA — centred, huge, with shadow ──
+            sdk_text = "SONDAKİKA"
+            sdk_bbox = f_sondak.getbbox(sdk_text)
+            sdk_w = sdk_bbox[2] - sdk_bbox[0]
+            sdk_x = (w - sdk_w) // 2
+            sdk_y = 148
 
-            site_text = "trendiatr.com"
-            try:
-                sw = f_badge.getbbox(site_text)[2] if hasattr(f_badge, 'getbbox') else f_badge.getsize(site_text)[0]
-            except Exception:
-                sw = 120
-            draw.text((w - sw - 30, h - 35), site_text, font=f_badge, fill=(156, 163, 175))
-            draw.text((30, h - 35), "TrendiaTR Yapay Zeka Haber Analizi", font=f_badge, fill=(100, 116, 139))
+            for sx, sy in [(5, 5), (4, 4), (3, 3)]:
+                draw.text((sdk_x + sx, sdk_y + sy), sdk_text, font=f_sondak, fill=(40, 0, 0))
+            draw.text((sdk_x, sdk_y), sdk_text, font=f_sondak, fill=(230, 55, 55))
+
+            # ── 7. Subtitle ──
+            sub_text = "Yapay Zeka Destekli Gerçek Zamanlı Analiz"
+            sub_bbox = f_sub.getbbox(sub_text)
+            sub_w = sub_bbox[2] - sub_bbox[0]
+            sub_x = (w - sub_w) // 2
+            draw.text((sub_x, sdk_y + 152), sub_text, font=f_sub, fill=(210, 160, 160))
+
+            # ── 8. Footer bar ──
+            footer_y = h - 42
+            draw.rectangle([(0, footer_y), (w, h)], fill=(15, 5, 5))
+            draw.line([(0, footer_y), (w, footer_y)], fill=(180, 35, 35), width=2)
+
+            footer_bar_h = h - footer_y
+
+            left_text = "TrendiaTR Yapay Zeka Haber Analizi"
+            left_bbox = f_footer.getbbox(left_text)
+            left_h = left_bbox[3] - left_bbox[1]
+            left_y = footer_y + (footer_bar_h - left_h) // 2 - left_bbox[1]
+            draw.text((28, left_y), left_text, font=f_footer, fill=(255, 255, 255))
+
+            right_text = "trendiatr.com"
+            right_bbox = f_footer.getbbox(right_text)
+            right_w = right_bbox[2] - right_bbox[0]
+            right_h = right_bbox[3] - right_bbox[1]
+            right_y = footer_y + (footer_bar_h - right_h) // 2 - right_bbox[1]
+            draw.text((w - right_w - 28, right_y), right_text, font=f_footer, fill=(255, 255, 255))
+
+            # ── 9. Diamond accent (bottom-right) ──
+            dx, dy = w - 48, h - 68
+            draw.polygon(
+                [(dx, dy - 11), (dx + 11, dy), (dx, dy + 11), (dx - 11, dy)],
+                fill=(190, 55, 55)
+            )
 
             output = io.BytesIO()
             img.save(output, format="WEBP", quality=90)
