@@ -105,11 +105,23 @@ class ImageProcessor:
             if h > 400:
                 img = img.crop((0, 0, w, h - 50))
 
-            # ۲. تغییر سایز با حفظ نسبت ابعاد (عرض ثابت ۸۰۰)
+            # ۲. Center-crop to 16:9 then resize to 800×450
+            TARGET_HEIGHT = 450
             w, h = img.size
-            aspect_ratio = h / w
-            new_h = int(TARGET_WIDTH * aspect_ratio)
-            img = img.resize((TARGET_WIDTH, new_h), Image.Resampling.LANCZOS)
+            target_ratio = TARGET_WIDTH / TARGET_HEIGHT  # 16:9
+            src_ratio = w / h
+            if src_ratio > target_ratio:
+                # wider than 16:9 — crop left/right
+                new_w = int(h * target_ratio)
+                x0 = (w - new_w) // 2
+                img = img.crop((x0, 0, x0 + new_w, h))
+            elif src_ratio < target_ratio:
+                # taller than 16:9 — crop top/bottom
+                new_h_crop = int(w / target_ratio)
+                y0 = (h - new_h_crop) // 2
+                img = img.crop((0, y0, w, y0 + new_h_crop))
+            img = img.resize((TARGET_WIDTH, TARGET_HEIGHT), Image.Resampling.LANCZOS)
+            new_h = TARGET_HEIGHT
 
             # ۳. تنظیمات واترمارک
             draw = ImageDraw.Draw(img)
@@ -259,17 +271,20 @@ class ImageProcessor:
             time.sleep(random.uniform(0.8, 1.5))
 
             # 🧹 Aggressive Query Cleaning: Remove phrases that trigger "Viral Social" results
-            noise = ['Sosyal Medya Trendi', 'İlgili Haber Başlıkları', '𝕏', '📰', '#']
+            noise = [
+                'Sosyal Medya Trendi', 'İlgili Haber Başlıkları', '𝕏', '📰', '#',
+                'flaş karar', 'flas karar', 'son dakika', 'şok gelişme', 'bakın ne oldu',
+            ]
             clean_query = query
-            for n in noise: clean_query = clean_query.replace(n, ' ')
+            for n in noise: clean_query = clean_query.replace(n, ' ').replace(n.upper(), ' ')
             clean_query = re.sub(r'[^\w\s]', ' ', clean_query)
             clean_query = " ".join(clean_query.split()[:6]).strip()
 
             if not clean_query: return None, None
 
-            # 📍 Force Turkey Geolocation + 🖼️ Wide Photos Only
+            # 📍 Force Turkey Geolocation (all aspect ratios for wider image pool)
             encoded_query = urllib.parse.quote_plus(clean_query + " haber")
-            url = f"https://www.bing.com/images/search?q={encoded_query}&cc=TR&setmkt=tr-TR&setlang=tr&qft=+filterui:photo-photo+filterui:aspect-wide"
+            url = f"https://www.bing.com/images/search?q={encoded_query}&cc=TR&setmkt=tr-TR&setlang=tr&qft=+filterui:photo-photo"
 
             # 🕵️ Stealth Headers to look like a local user
             headers = {
@@ -285,7 +300,7 @@ class ImageProcessor:
                 elements = soup.find_all('a', class_='iusc')
 
                 candidates = []
-                for i, el in enumerate(elements[:8]): # Check top 8 results
+                for i, el in enumerate(elements[:12]): # Check top 12 results
                     try:
                         m_data = json.loads(el.get('m', '{}'))
                         img_url = m_data.get('murl')
@@ -310,9 +325,9 @@ class ImageProcessor:
                 candidates.sort(key=lambda x: x["score"], reverse=True)
 
                 for rank, candidate in enumerate(candidates[:3]):
-                    if candidate["score"] < 40:
-                        logger.warning(f"⚠️ Best match score ({candidate['score']}) below threshold (40). Aborting.")
-                        break
+                    if candidate["score"] < 35:
+                        logger.warning(f"⚠️ Candidate score ({candidate['score']}) below threshold (35). Skipping.")
+                        continue
 
                     try:
                         img_url = candidate["url"]
