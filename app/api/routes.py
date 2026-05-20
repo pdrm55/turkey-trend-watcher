@@ -1712,23 +1712,25 @@ def admin_get_trends():
     q = request.args.get('q', '').strip()
     category = request.args.get('category', 'All')
     date_str = request.args.get('date', '')
+    trend_id_str = request.args.get('trend_id', '').strip()
 
     db = SessionLocal()
     try:
         query = db.query(Trend)
 
-        if category != 'All':
-            query = query.filter(Trend.category == category)
-        
-        if q:
-            query = query.filter(Trend.title.ilike(f'%{q}%'))
-            
-        if date_str:
-            try:
-                filter_date = datetime.strptime(date_str, '%Y-%m-%d')
-                query = query.filter(Trend.last_updated >= filter_date, Trend.last_updated < filter_date + timedelta(days=1))
-            except ValueError:
-                pass
+        if trend_id_str and trend_id_str.isdigit():
+            query = query.filter(Trend.id == int(trend_id_str))
+        else:
+            if category != 'All':
+                query = query.filter(Trend.category == category)
+            if q:
+                query = query.filter(Trend.title.ilike(f'%{q}%'))
+            if date_str:
+                try:
+                    filter_date = datetime.strptime(date_str, '%Y-%m-%d')
+                    query = query.filter(Trend.last_updated >= filter_date, Trend.last_updated < filter_date + timedelta(days=1))
+                except ValueError:
+                    pass
 
         trends = query.order_by(desc(Trend.last_updated)).offset(offset).limit(limit).all()
         results = []
@@ -1740,7 +1742,9 @@ def admin_get_trends():
                 "tps": round(t.final_tps, 1),
                 "is_active": t.is_active,
                 "category": t.category,
-                "last_updated": t.last_updated.strftime('%Y-%m-%d %H:%M') if t.last_updated else "-"
+                "last_updated": t.last_updated.strftime('%Y-%m-%d %H:%M') if t.last_updated else "-",
+                "cover_image": t.cover_image,
+                "video_path": t.video_path
             })
         return jsonify(results)
     finally:
@@ -1859,6 +1863,136 @@ def admin_update_trend(trend_id):
         return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
+
+@api_bp.route('/api/admin/trends/<int:trend_id>/media', methods=['POST'])
+@requires_auth
+def admin_upload_trend_media(trend_id):
+    """Upload a new cover image or video for a trend, replacing the existing one."""
+    db = SessionLocal()
+    try:
+        trend = db.query(Trend).filter(Trend.id == trend_id).first()
+        if not trend:
+            return jsonify({"error": "Trend not found"}), 404
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        now = datetime.utcnow()
+        year, month, day = now.strftime("%Y"), now.strftime("%m"), now.strftime("%d")
+
+        if 'image' in request.files:
+            file = request.files['image']
+            if not file or not file.filename:
+                return jsonify({"error": "Empty image file"}), 400
+            try:
+                img = Image.open(file)
+                if img.mode != 'RGB':
+                    if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                        bg = Image.new('RGB', img.size, (255, 255, 255))
+                        bg.paste(img, mask=img.convert('RGBA').split()[3])
+                        img = bg
+                    else:
+                        img = img.convert('RGB')
+                TARGET_WIDTH = 800
+                w, h = img.size
+                img = img.resize((TARGET_WIDTH, int(TARGET_WIDTH * h / w)), Image.Resampling.LANCZOS)
+
+                folder_path = os.path.join(base_dir, 'static', 'media', year, month, day)
+                os.makedirs(folder_path, exist_ok=True)
+
+                if trend.cover_image:
+                    old_path = os.path.join(base_dir, 'static', trend.cover_image)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+
+                filename = f"{uuid.uuid4().hex}.webp"
+                img.save(os.path.join(folder_path, filename), format="WEBP", quality=80)
+                image_url = f"media/{year}/{month}/{day}/{filename}"
+                trend.cover_image = image_url
+                db.commit()
+                invalidate_trend_caches([trend], clear_listing=False)
+                return jsonify({"status": "success", "cover_image": image_url})
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Admin image upload error (trend {trend_id}): {e}")
+                return jsonify({"error": "Image processing failed"}), 500
+
+        if 'video' in request.files:
+            video_file = request.files['video']
+            if not video_file or not video_file.filename:
+                return jsonify({"error": "Empty video file"}), 400
+            try:
+                ALLOWED_VIDEO_EXTS = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
+                ext = os.path.splitext(secure_filename(video_file.filename))[1].lower()
+                if not ext:
+                    ext = ".mp4"
+                if ext not in ALLOWED_VIDEO_EXTS:
+                    return jsonify({"error": f"Invalid format. Allowed: {', '.join(ALLOWED_VIDEO_EXTS)}"}), 400
+
+                folder_path = os.path.join(base_dir, 'static', 'media', 'videos', year, month, day)
+                os.makedirs(folder_path, exist_ok=True)
+
+                if trend.video_path:
+                    old_path = os.path.join(base_dir, 'static', trend.video_path)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+
+                filename = f"vid_{uuid.uuid4().hex}{ext}"
+                video_file.save(os.path.join(folder_path, filename))
+                video_url = f"media/videos/{year}/{month}/{day}/{filename}"
+                trend.video_path = video_url
+                db.commit()
+                invalidate_trend_caches([trend], clear_listing=False)
+                return jsonify({"status": "success", "video_path": video_url})
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Admin video upload error (trend {trend_id}): {e}")
+                return jsonify({"error": "Video processing failed"}), 500
+
+        return jsonify({"error": "No file provided"}), 400
+    finally:
+        db.close()
+
+
+@api_bp.route('/api/admin/trends/<int:trend_id>/media', methods=['DELETE'])
+@requires_auth
+def admin_delete_trend_media(trend_id):
+    """Delete cover image or video of a trend. Pass ?type=image or ?type=video."""
+    media_type = request.args.get('type', 'image')
+    if media_type not in ('image', 'video'):
+        return jsonify({"error": "Invalid type. Use 'image' or 'video'"}), 400
+
+    db = SessionLocal()
+    try:
+        trend = db.query(Trend).filter(Trend.id == trend_id).first()
+        if not trend:
+            return jsonify({"error": "Trend not found"}), 404
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        if media_type == 'image':
+            if not trend.cover_image:
+                return jsonify({"error": "No image to delete"}), 404
+            file_path = os.path.join(base_dir, 'static', trend.cover_image)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            trend.cover_image = None
+        else:
+            if not trend.video_path:
+                return jsonify({"error": "No video to delete"}), 404
+            file_path = os.path.join(base_dir, 'static', trend.video_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            trend.video_path = None
+
+        db.commit()
+        invalidate_trend_caches([trend], clear_listing=False)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Admin media delete error (trend {trend_id}): {e}")
+        return jsonify({"error": "internal_error"}), 500
+    finally:
+        db.close()
+
 
 @api_bp.app_errorhandler(429)
 def handle_rate_limit(e):
