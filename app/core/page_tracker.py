@@ -18,9 +18,32 @@ _HLL_TTL    = 60 * 60 * 24 * 35  # 35 days (HyperLogLog for unique visitors)
 
 _SKIP_PREFIXES = ("/static/", "/api/", "/admin/", "/sitemap", "/robots", "/favicon")
 
+# Substrings matched case-insensitively against User-Agent to identify bots/crawlers.
+# Covers all major search engines, SEO tools, monitoring services and headless browsers.
+_BOT_UA_TOKENS = (
+    "bot", "crawl", "spider", "slurp", "searchbot",
+    "googlebot", "bingbot", "yandex", "baidu", "duckduck",
+    "semrush", "ahrefs", "mj12", "dotbot", "petalbot",
+    "ia_archiver", "archive.org", "facebookexternalhit",
+    "twitterbot", "linkedinbot", "whatsapp", "telegrambot",
+    "applebot", "sogou", "seznambot", "pinterestbot",
+    "wget", "curl", "python-requests", "python-urllib",
+    "go-http-client", "java/", "okhttp", "axios",
+    "headlesschrome", "phantomjs", "puppeteer", "playwright",
+    "scrapy", "httpclient", "libwww", "lwp-", "mechanize",
+)
+
 
 def _hash_ip(ip: str) -> str:
     return hashlib.sha256(ip.encode()).hexdigest()[:16]
+
+
+def is_bot(user_agent: str) -> bool:
+    """Returns True if the User-Agent belongs to a known bot or automated client."""
+    if not user_agent:
+        return True  # empty UA → treat as bot
+    ua_lower = user_agent.lower()
+    return any(token in ua_lower for token in _BOT_UA_TOKENS)
 
 
 class PageTracker:
@@ -41,8 +64,10 @@ class PageTracker:
             self._redis = False
         return self._redis
 
-    def track(self, path: str, ip: str) -> None:
+    def track(self, path: str, ip: str, user_agent: str = "") -> None:
         if any(path.startswith(p) for p in _SKIP_PREFIXES):
+            return
+        if is_bot(user_agent):
             return
         r = self._get_redis()
         if not r:

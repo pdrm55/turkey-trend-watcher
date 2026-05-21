@@ -46,7 +46,8 @@ def _track_pageview(response):
             and response.content_type.startswith("text/html")
         ):
             ip = (request.headers.get("X-Forwarded-For", "") or request.remote_addr or "").split(",")[0].strip()
-            page_tracker.track(request.path, ip)
+            ua = request.headers.get("User-Agent", "")
+            page_tracker.track(request.path, ip, ua)
     except Exception:
         pass
     return response
