@@ -35,6 +35,22 @@ logger = logging.getLogger(__name__)
 
 api_bp = Blueprint('api', __name__)
 
+from app.core.page_tracker import page_tracker
+
+@api_bp.after_request
+def _track_pageview(response):
+    try:
+        if (
+            request.method == "GET"
+            and response.status_code == 200
+            and response.content_type.startswith("text/html")
+        ):
+            ip = (request.headers.get("X-Forwarded-For", "") or request.remote_addr or "").split(",")[0].strip()
+            page_tracker.track(request.path, ip)
+    except Exception:
+        pass
+    return response
+
 # اتصال به کلاینت Redis برای مدیریت لایه کش
 try:
     redis_client = redis.from_url(Config.REDIS_URL, decode_responses=True)

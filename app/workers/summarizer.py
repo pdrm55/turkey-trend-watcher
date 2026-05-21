@@ -51,12 +51,27 @@ if not os.path.exists(LOG_FILE):
         writer = csv.writer(f)
         writer.writerow(["timestamp", "trend_id", "model", "input_tokens", "output_tokens", "duration_sec", "category", "status", "cost_usd"])
 
+# Per-model pricing (input $/token, output $/token).  Update when Google changes rates.
+_MODEL_PRICING: dict = {
+    "gemini-2.5-flash-lite": (0.10 / 1_000_000, 0.40 / 1_000_000),
+    "gemini-2.5-flash":      (0.15 / 1_000_000, 0.60 / 1_000_000),
+    "gemini-2.0-flash-lite": (0.075 / 1_000_000, 0.30 / 1_000_000),
+    "gemini-1.5-flash":      (0.075 / 1_000_000, 0.30 / 1_000_000),
+}
+_DEFAULT_PRICING = (0.10 / 1_000_000, 0.40 / 1_000_000)
+
+def _get_model_pricing(model_name: str):
+    name_lower = (model_name or "").lower()
+    for key, pricing in _MODEL_PRICING.items():
+        if key in name_lower:
+            return pricing
+    return _DEFAULT_PRICING
+
 def log_to_csv(trend_id, model, in_tok, out_tok, duration, category, status):
     """Logs AI performance and token usage for cost monitoring and analytics"""
     try:
-        # Cost calculation based on Gemini 2.0 Flash Lite pricing
-        # Input: $0.075 / 1M | Output: $0.30 / 1M
-        cost = (in_tok * 0.000000075) + (out_tok * 0.00000030)
+        in_price, out_price = _get_model_pricing(model)
+        cost = (in_tok * in_price) + (out_tok * out_price)
         
         with open(LOG_FILE, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
