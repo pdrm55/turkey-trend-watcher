@@ -737,9 +737,15 @@
             const url = cat === "Hepsi" ? "/" : `/category/${cat.toLowerCase()}`;
             window.history.pushState(null, '', url);
 
+            const catTitle = cat === "Hepsi" ? "TrendiaTR | Yapay Zeka Haber Analizi" : `${cat} | TrendiaTR`;
+            document.title = catTitle;
             if (typeof gtag === 'function') {
                 gtag('event', 'select_category', {'category_name': cat});
-                gtag('config', 'G-3B9YSY997H', {'page_path': url});
+                gtag('event', 'page_view', {
+                    page_path: url,
+                    page_location: window.location.origin + url,
+                    page_title: catTitle,
+                });
             }
 
             const dynamicTitle = document.getElementById('dynamic-hot-title');
@@ -798,7 +804,7 @@
             event.preventDefault();
             openModal(identifier);
             window.history.pushState(null, '', `/trend/${identifier}`);
-            if (typeof gtag === 'function') gtag('config', 'G-3B9YSY997H', {'page_path': `/trend/${identifier}`});
+            // page_view fired inside openModal() after title is known from API
         }
 
         function handleCardPlayClick(event, identifier) {
@@ -854,6 +860,15 @@
                 }
 
                 document.getElementById('modal-title').innerText = data.title;
+                document.title = `${data.title} | TrendiaTR`;
+                if (typeof gtag === 'function') {
+                    const trendPath = `/trend/${identifier}`;
+                    gtag('event', 'page_view', {
+                        page_path: trendPath,
+                        page_location: window.location.origin + trendPath,
+                        page_title: document.title,
+                    });
+                }
                 const modalSummary = document.getElementById('modal-summary');
                 modalSummary.innerHTML = marked.parse(data.summary || '');
                 modalSummary.classList.add('news-content-area');
@@ -910,12 +925,20 @@
             } catch (e) {}
         }
 
-        function closeModal() { 
+        function closeModal() {
             document.getElementById('detail-modal').classList.add('hidden');
             document.body.style.overflow = 'auto';
             const url = activeCategory === "Hepsi" ? "/" : `/category/${activeCategory.toLowerCase()}`;
             window.history.pushState(null, '', url);
-            if (typeof gtag === 'function') gtag('config', 'G-3B9YSY997H', {'page_path': url});
+            const backTitle = activeCategory === "Hepsi" ? "TrendiaTR | Yapay Zeka Haber Analizi" : `${activeCategory} | TrendiaTR`;
+            document.title = backTitle;
+            if (typeof gtag === 'function') {
+                gtag('event', 'page_view', {
+                    page_path: url,
+                    page_location: window.location.origin + url,
+                    page_title: backTitle,
+                });
+            }
         }
 
         function openTpsModal() {
