@@ -43,7 +43,7 @@ def require_api_key(f):
         try:
             client = db.query(APIClient).filter_by(
                 api_key=api_key, is_active=True
-            ).with_for_update().first()
+            ).first()
 
             if not client:
                 return jsonify({

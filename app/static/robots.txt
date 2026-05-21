@@ -14,6 +14,13 @@ Disallow: /api/admin/
 Disallow: /?q=*
 Disallow: /api/trends?q=*
 
+# جلوگیری از خزش در مسیرهای API (اجتناب از خطاهای 401/404 برای ربات‌های جستجوگر)
+Disallow: /api/v1/
+Disallow: /api/trends
+Disallow: /api/stats
+Disallow: /api/market/
+Disallow: /api/contact
+
 # قوانین خاص برای ربات‌های هوش مصنوعی (اختیاری - اگر می‌خواهید محتوایتان را کپی نکنند)
 User-agent: GPTBot
 Disallow: /

@@ -1547,7 +1547,10 @@ def sitemap():
     db = SessionLocal()
     try:
         base_url = get_public_url()
-        trends = db.query(Trend).filter(Trend.is_active == True).order_by(desc(Trend.last_updated)).limit(3000).all()
+        trends = db.query(Trend).filter(
+            Trend.is_active == True,
+            Trend.summary.isnot(None)
+        ).order_by(desc(Trend.last_updated)).limit(3000).all()
         
         xml_lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',
@@ -2027,3 +2030,18 @@ def handle_rate_limit(e):
         "message": "Too many requests. Please slow down.",
         "retry_after": str(e.description)
     }), 429
+
+
+@api_bp.app_errorhandler(404)
+def handle_not_found(e):
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "not_found", "message": "The requested resource does not exist."}), 404
+    return render_template('404.html'), 404
+
+
+@api_bp.app_errorhandler(500)
+def handle_server_error(e):
+    logger.error(f"Unhandled 500 error: {e}", exc_info=True)
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "internal_error", "message": "An unexpected error occurred."}), 500
+    return render_template('500.html'), 500
