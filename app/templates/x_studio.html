@@ -6,66 +6,103 @@
     <title>X (Twitter) Studio | TrendiaTR</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <style>body { font-family: 'Inter', sans-serif; }</style>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+
+        /* ── Responsive table → cards on mobile ── */
+        @media (max-width: 639px) {
+            #xDraftsTable thead { display: none; }
+            #xDraftsTable,
+            #xDraftsTable tbody { display: block; }
+
+            #xDraftsTable tr {
+                display: block;
+                border-bottom: 2px solid rgb(51 65 85);
+                padding: 1rem 0;
+                margin-bottom: 0.5rem;
+            }
+
+            #xDraftsTable td {
+                display: block;
+                width: 100% !important;
+                box-sizing: border-box;
+            }
+
+            /* actions column: left-align on mobile */
+            #xDraftsTable td.actions-col {
+                text-align: left !important;
+            }
+
+            /* constrain preview image on mobile */
+            #xDraftsTable td:first-child img {
+                max-width: 180px;
+                width: auto;
+                height: auto;
+            }
+        }
+    </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen p-8">
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
 
     <div class="max-w-6xl mx-auto">
+
         <!-- Header -->
-        <header class="flex justify-between items-center mb-10">
-            <div class="flex items-center gap-4">
-                <a href="/admin" class="text-slate-400 hover:text-white transition-colors flex items-center gap-2 font-semibold">
+        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-8 md:mb-10">
+            <div class="flex items-center gap-4 flex-wrap">
+                <a href="/admin" class="text-slate-400 hover:text-white transition-colors flex items-center gap-2 font-semibold whitespace-nowrap">
                     ⬅️ Back to Admin
                 </a>
-                <h1 class="text-3xl font-black tracking-tight text-white">𝕏 Studio</h1>
+                <h1 class="text-2xl md:text-3xl font-black tracking-tight text-white">𝕏 Studio</h1>
             </div>
         </header>
 
         <!-- Auto-Pilot Configuration -->
-        <section class="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 shadow-lg">
+        <section class="bg-slate-800 p-4 md:p-6 rounded-2xl border border-slate-700 mb-8 shadow-lg">
             <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
                 ⚙️ Auto-Pilot Configuration
             </h2>
-            <div class="flex flex-wrap items-end gap-4">
-                <div class="flex-1 max-w-xs">
+            <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
+                <div class="w-full sm:flex-1 sm:max-w-xs">
                     <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Auto-Pilot Status</label>
                     <select id="xAutoPilot" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:outline-none">
                         <option value="True">Enabled (Active)</option>
                         <option value="False">Disabled (Paused)</option>
                     </select>
                 </div>
-                <div class="flex-1 max-w-xs">
+                <div class="w-full sm:flex-1 sm:max-w-xs">
                     <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Min TPS Threshold</label>
                     <input type="number" id="xThreshold" step="0.1"
                            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:outline-none">
                 </div>
-                <button onclick="saveXSettings()" id="btnSaveSettings" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md">
+                <button onclick="saveXSettings()" id="btnSaveSettings"
+                        class="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md">
                     💾 Save X Settings
                 </button>
             </div>
         </section>
 
         <!-- Manual Generation -->
-        <section class="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 shadow-lg">
+        <section class="bg-slate-800 p-4 md:p-6 rounded-2xl border border-slate-700 mb-8 shadow-lg">
             <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
                 ⚡ Manual Generation
             </h2>
-            <div class="flex flex-col gap-2">
-                <div class="flex items-end gap-4">
-                    <div class="flex-1 max-w-xs">
+            <div class="flex flex-col gap-3">
+                <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+                    <div class="w-full sm:flex-1 sm:max-w-xs">
                         <label class="block text-xs text-slate-400 uppercase tracking-wider mb-2">Trend ID</label>
                         <input type="number" id="manualTrendId" placeholder="e.g. 12345"
                                class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:outline-none">
                     </div>
                     <button onclick="generateById()" id="btnGenDraft"
-                        class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg shadow-md transition-colors">
+                        class="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg shadow-md transition-colors">
                         ⚡ Generate Draft
                     </button>
-                    <button onclick="generateThreadById()" id="btnGenerateThread" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md">
+                    <button onclick="generateThreadById()" id="btnGenerateThread"
+                        class="w-full sm:w-auto bg-purple-600 hover:bg-purple-500 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md">
                         🧵 Generate Analytical Thread
                     </button>
                 </div>
-                <p class="text-xs text-slate-500 mt-1">
+                <p class="text-xs text-slate-500">
                     <span class="font-bold text-blue-400">Note:</span>
                     Content type (Breaking / Politik / Afet) is detected automatically from the trend category.
                     Analytical threads use a separate multi-tweet format.
@@ -75,16 +112,16 @@
 
         <!-- Drafts Table -->
         <section class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-lg">
-            <div class="p-6 border-b border-slate-700">
+            <div class="p-4 md:p-6 border-b border-slate-700">
                 <h2 class="text-xl font-bold">Pending Drafts</h2>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
+                <table id="xDraftsTable" class="w-full text-left text-sm">
                     <thead class="bg-slate-900/50 text-slate-400 uppercase text-xs">
                         <tr>
-                            <th class="p-4 w-48">Preview</th>
+                            <th class="p-4 w-36 md:w-48">Preview</th>
                             <th class="p-4">Content</th>
-                            <th class="p-4 text-right w-64">Actions</th>
+                            <th class="p-4 text-right w-56 md:w-64">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="xDraftsTableBody" class="divide-y divide-slate-700">
@@ -93,6 +130,7 @@
                 </table>
             </div>
         </section>
+
     </div>
 
     <script>
@@ -101,10 +139,10 @@
             const thresholdVal = "{{ threshold }}";
 
             const apSelect = document.getElementById('xAutoPilot');
-            if(apSelect) apSelect.value = autoPilotVal;
+            if (apSelect) apSelect.value = autoPilotVal;
 
             const thInput = document.getElementById('xThreshold');
-            if(thInput) thInput.value = thresholdVal;
+            if (thInput) thInput.value = thresholdVal;
 
             loadXDrafts();
         });
@@ -124,12 +162,12 @@
                     body: JSON.stringify({ auto_pilot: autoPilot, threshold: threshold })
                 });
                 const data = await res.json();
-                if(data.status === 'success') {
+                if (data.status === 'success') {
                     alert('✅ Settings Saved!');
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
                 alert('Failed to save settings.');
             } finally {
@@ -140,7 +178,7 @@
 
         async function generateById() {
             const id = document.getElementById('manualTrendId').value;
-            if(!id) return alert('Please enter a Trend ID');
+            if (!id) return alert('Please enter a Trend ID');
             const btn = document.getElementById('btnGenDraft');
             const originalText = btn.innerText;
             btn.disabled = true;
@@ -152,14 +190,14 @@
                     body: JSON.stringify({ trend_id: id, phase_type: 'confirmed' })
                 });
                 const data = await res.json();
-                if(data.status === 'success') {
+                if (data.status === 'success') {
                     alert('✅ Draft Generated!');
                     document.getElementById('manualTrendId').value = '';
                     loadXDrafts();
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
                 alert('Failed to generate draft.');
             } finally {
@@ -170,7 +208,7 @@
 
         async function generateThreadById() {
             const id = document.getElementById('manualTrendId').value;
-            if(!id) return alert('Please enter a Trend ID');
+            if (!id) return alert('Please enter a Trend ID');
 
             const btn = document.getElementById('btnGenerateThread');
             btn.disabled = true;
@@ -183,14 +221,14 @@
                     body: JSON.stringify({ trend_id: id })
                 });
                 const data = await res.json();
-                if(data.status === 'success') {
+                if (data.status === 'success') {
                     alert('✅ Thread Draft Generated!');
                     document.getElementById('manualTrendId').value = '';
                     loadXDrafts();
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
                 alert('Failed to generate thread draft.');
             } finally {
@@ -236,7 +274,6 @@
                     if (d.caption.includes('====THREAD====')) {
                         // Thread Logic
                         const parts = d.caption.split('====THREAD====');
-
                         const threadLabels = [
                             "Part 1: Hook & TPS",
                             "Part 2: Context & Timeline",
@@ -245,18 +282,18 @@
                             "Part 5: Conclusion & CTA"
                         ];
 
-                        contentHtml = `<div class="border-l-2 border-purple-600 pl-4 ml-2 space-y-4">`;
+                        contentHtml = `<div class="border-l-2 border-purple-600 pl-3 sm:pl-4 ml-1 sm:ml-2 space-y-4">`;
                         parts.forEach((part, index) => {
                             const trimmedPart = part.trim();
                             const label = threadLabels[index] || `Tweet ${index + 1}`;
+                            const encodedPart = encodeURIComponent(trimmedPart).replace(/'/g, "%27");
 
                             contentHtml += `
                                 <div>
                                     <span class="text-xs text-purple-400 font-bold uppercase tracking-wider block mb-1">${label}</span>
-                                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 text-slate-300 text-sm font-mono whitespace-pre-wrap shadow-inner">${trimmedPart}</div>
+                                    <div class="bg-slate-900 p-3 sm:p-4 rounded-lg border border-slate-700 text-slate-300 text-sm font-mono whitespace-pre-wrap shadow-inner break-words">${trimmedPart}</div>
                                 </div>`;
 
-                            const encodedPart = encodeURIComponent(trimmedPart).replace(/'/g, "%27");
                             actionsHtml += `
                                 <button onclick="copyCaption(this, '${encodedPart}')" class="w-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm mb-2">
                                     📋 Copy ${label.split(':')[0]}
@@ -282,25 +319,22 @@
                         contentHtml = `
                             <div class="mb-4">
                                 <span class="text-xs text-slate-400 uppercase tracking-wider block mb-1">Main Tweet</span>
-                                <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 text-slate-300 text-sm font-mono whitespace-pre-wrap shadow-inner">${mainTweet}</div>
+                                <div class="bg-slate-900 p-3 sm:p-4 rounded-lg border border-slate-700 text-slate-300 text-sm font-mono whitespace-pre-wrap shadow-inner break-words">${mainTweet}</div>
                             </div>
-
                             ${replyTweet ? `
                             <div>
                                 <span class="text-xs text-slate-400 uppercase tracking-wider block mb-1">Reply Tweet (Link)</span>
-                                <div class="bg-slate-800 p-4 rounded-lg border-l-4 border-blue-500 text-slate-300 text-sm font-mono whitespace-pre-wrap shadow-inner">${replyTweet}</div>
+                                <div class="bg-slate-800 p-3 sm:p-4 rounded-lg border-l-4 border-blue-500 text-slate-300 text-sm font-mono whitespace-pre-wrap shadow-inner break-words">${replyTweet}</div>
                             </div>` : ''}`;
 
                         actionsHtml = `
                             <button onclick="copyCaption(this, '${encodedMain}')" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm">
                                 📋 Copy Main Post
                             </button>
-
                             ${replyTweet ? `
                             <button onclick="copyCaption(this, '${encodedReply}')" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded transition-colors flex items-center justify-center gap-2 shadow-sm mt-2">
                                 🔗 Copy Reply (Link)
                             </button>` : ''}
-
                             <button onclick="openXIntent('${encodedMain}', '${d.reply_to_tweet_id || ''}')" class="w-full bg-black hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded border border-slate-700 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2">
                                 𝕏 Open Intent
                             </button>`;
@@ -308,20 +342,20 @@
 
                     const row = `
                         <tr class="hover:bg-slate-700/50 transition-colors">
-                            <td class="p-4 align-top">
+                            <td class="p-3 sm:p-4 align-top">
                                 <a href="${d.image_path}" target="_blank">
                                     <img src="${d.image_path}" class="w-full h-auto rounded border border-slate-600 hover:opacity-80 transition-opacity shadow-sm">
                                 </a>
                             </td>
-                            <td class="p-4 align-top">
+                            <td class="p-3 sm:p-4 align-top">
                                 <div class="flex items-center gap-2 mb-3 flex-wrap">
-                                    <span class="font-bold text-white text-lg">${d.trend_title}</span>
-                                    <span class="bg-slate-700 text-green-400 px-2 py-0.5 rounded text-xs font-mono border border-slate-600">TPS: ${d.tps_score}</span>
+                                    <span class="font-bold text-white text-base sm:text-lg leading-tight">${d.trend_title}</span>
+                                    <span class="bg-slate-700 text-green-400 px-2 py-0.5 rounded text-xs font-mono border border-slate-600 shrink-0">TPS: ${d.tps_score}</span>
                                     ${getContentTypeBadge(d.category)}
                                 </div>
                                 ${contentHtml}
                             </td>
-                            <td class="p-4 align-top text-right space-y-2">
+                            <td class="p-3 sm:p-4 align-top actions-col text-right space-y-2">
                                 ${actionsHtml}
                                 <button onclick="downloadImage('${d.image_path}')" class="w-full bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-2 rounded border border-slate-600 transition-colors flex items-center justify-center gap-2 shadow-sm">
                                     ⬇️ Download Image
@@ -337,32 +371,67 @@
                     `;
                     tbody.insertAdjacentHTML('beforeend', row);
                 });
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
                 tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-red-400">Failed to load drafts</td></tr>';
             }
         }
 
+        // ── Copy with HTTPS + HTTP fallback ──
         function copyCaption(btn, encodedText) {
             const text = decodeURIComponent(encodedText);
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = btn.innerHTML;
+
+            const onSuccess = () => {
+                const originalHTML = btn.innerHTML;
+                const isThread = originalHTML.includes('Part');
+                const isIndigo = originalHTML.toLowerCase().includes('reply');
                 btn.innerHTML = '✅ Copied!';
-                btn.classList.remove('bg-blue-600', 'hover:bg-blue-500', 'bg-purple-600', 'hover:bg-purple-500');
+                btn.classList.remove(
+                    'bg-blue-600', 'hover:bg-blue-500',
+                    'bg-indigo-600', 'hover:bg-indigo-500',
+                    'bg-purple-600', 'hover:bg-purple-500'
+                );
                 btn.classList.add('bg-green-600', 'hover:bg-green-500');
                 setTimeout(() => {
-                    btn.innerHTML = originalText;
+                    btn.innerHTML = originalHTML;
                     btn.classList.remove('bg-green-600', 'hover:bg-green-500');
-                    if (originalText.includes('Part')) {
+                    if (isThread) {
                         btn.classList.add('bg-purple-600', 'hover:bg-purple-500');
+                    } else if (isIndigo) {
+                        btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
                     } else {
                         btn.classList.add('bg-blue-600', 'hover:bg-blue-500');
                     }
                 }, 2000);
-            }).catch(err => {
-                console.error('Failed to copy: ', err);
-                alert('Failed to copy caption.');
-            });
+            };
+
+            const fallbackCopy = () => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                try {
+                    const ok = document.execCommand('copy');
+                    if (ok) {
+                        onSuccess();
+                    } else {
+                        alert('Copy failed. Please select and copy the text manually.');
+                    }
+                } catch (err) {
+                    console.error('execCommand copy failed:', err);
+                    alert('Copy failed. Please select and copy the text manually.');
+                } finally {
+                    document.body.removeChild(ta);
+                }
+            };
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(onSuccess).catch(fallbackCopy);
+            } else {
+                fallbackCopy();
+            }
         }
 
         function openXIntent(encodedText, replyToId = '') {
@@ -383,8 +452,7 @@
         }
 
         async function markDraftSent(id) {
-            if(!confirm('Are you sure? This will mark the draft as sent and PERMANENTLY DELETE the image file from the server to save space.')) return;
-
+            if (!confirm('Are you sure? This will mark the draft as sent and PERMANENTLY DELETE the image file from the server to save space.')) return;
             try {
                 const res = await fetch(`/api/admin/x-drafts/${id}/action`, {
                     method: 'POST',
@@ -392,20 +460,19 @@
                     body: JSON.stringify({ action: 'mark_sent' })
                 });
                 const data = await res.json();
-                if(data.status === 'success') {
+                if (data.status === 'success') {
                     loadXDrafts();
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
                 alert('Error updating status');
             }
         }
 
         async function discardDraft(id) {
-            if(!confirm('Are you sure you want to discard this draft? It will be removed from this list and WILL NOT be auto-generated again for this phase.')) return;
-
+            if (!confirm('Are you sure you want to discard this draft? It will be removed from this list and WILL NOT be auto-generated again for this phase.')) return;
             try {
                 const res = await fetch(`/api/admin/x-drafts/${id}/action`, {
                     method: 'POST',
@@ -413,12 +480,12 @@
                     body: JSON.stringify({ action: 'discard' })
                 });
                 const data = await res.json();
-                if(data.status === 'success') {
+                if (data.status === 'success') {
                     loadXDrafts();
                 } else {
                     alert('Error: ' + (data.error || 'Unknown error'));
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
                 alert('Error discarding draft');
             }
