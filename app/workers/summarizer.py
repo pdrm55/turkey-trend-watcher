@@ -18,6 +18,18 @@ from app.core.indexing_utils import notify_google
 from app.core.text_utils import slugify_turkish 
 from app.core.alert_service import alert_service
 from app.core.classifier import decide_final_category, normalize_text, CAT_MAP
+from app.core.translation import clear_fa_cache, translate_for_summarizer
+
+# --- Redis client (used only for FA translation cache invalidation) ---
+try:
+    import redis as _redis_lib
+    _redis_fa = _redis_lib.from_url(
+        f"redis://{os.getenv('REDIS_HOST', 'ttw_redis')}:6379/0",
+        decode_responses=True, socket_connect_timeout=2
+    )
+    _redis_fa.ping()
+except Exception:
+    _redis_fa = None
 
 # --- Google AI & System Configuration ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -479,19 +491,41 @@ def process_pending_trends():
                     final_category, overridden = decide_final_category(ai_cat, cluster_text)
                     
                     # Update Trend Record
-                    trend.title = ai_result.get("headline", trend.title)
-                    
+                    new_headline = ai_result.get("headline", trend.title)
+                    title_changed = new_headline and new_headline != trend.title
+                    if title_changed:
+                        trend.fa_title = None       # DB: mark for re-translation
+                    trend.title = new_headline
+
                     # Handle cases where AI returns None or empty string
                     extracted_summary = ai_result.get("summary")
                     extracted_tg_caption = ai_result.get("telegram_caption")
-                    
+
                     # STRICT ENFORCEMENT: Reject the AI output completely if telegram_caption is missing
                     if not extracted_summary or extracted_summary.lower() == "none" or not extracted_tg_caption or extracted_tg_caption.lower() == "none":
                         print(f"   ⚠️ AI validation failed: missing summary or telegram_caption. Retrying next cycle.")
                         continue
 
                     trend.summary = extracted_summary
-                    trend.category = final_category 
+                    trend.category = final_category
+
+                    # ── FA Translation: translate immediately in same cycle ──
+                    # One Gemini call for both title + summary; sets ORM attrs
+                    # so the upcoming db.commit() persists them together.
+                    try:
+                        fa_title, fa_summary = translate_for_summarizer(
+                            trend.id, trend.title, extracted_summary, _redis_fa
+                        )
+                        trend.fa_title   = fa_title   or None
+                        trend.fa_summary = fa_summary or None
+                        if fa_title or fa_summary:
+                            print(f"   🇮🇷 FA translated: {trend.id}")
+                        else:
+                            print(f"   ⚠️ FA translation failed for {trend.id} — sweep will retry")
+                    except Exception as _fa_err:
+                        logger.warning(f"FA translation error for {trend.id}: {_fa_err}")
+                        trend.fa_title   = None
+                        trend.fa_summary = None
                     trend.tags = ai_result.get("tags")
                     
                     entities_dict = ai_result.get("entities", {})

@@ -11,7 +11,19 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 from app.database.models import SessionLocal, Trend, RawNews, TrendScoreHistory
 from app.core.scoring import TPSCalculator
 from app.core.scoring_queue import scoring_queue
+from app.core.translation import sweep_untranslated
 from app.config import Config
+
+# Redis client for FA translation sweep
+try:
+    import redis as _redis_lib
+    _redis_fa = _redis_lib.from_url(
+        f"redis://{os.getenv('REDIS_HOST', 'ttw_redis')}:6379/0",
+        decode_responses=True, socket_connect_timeout=2
+    )
+    _redis_fa.ping()
+except Exception:
+    _redis_fa = None
 
 # تنظیمات لاگینگ
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -39,9 +51,11 @@ AFET_DECAY_FACTOR = 0.82  # faster decay: emergency news loses relevance quickly
 GRAVITY_BATCH_SIZE = 100
 
 MIN_TPS_THRESHOLD = 3.0
-DECAY_CHECK_INTERVAL = 1800  # هر ۳۰ دقیقه برای Gravity
-SCORING_CHECK_INTERVAL = 5   # هر ۵ ثانیه برای امتیازدهی اخبار جدید (Async)
-GC_CHECK_INTERVAL = 21600    # هر ۶ ساعت برای پاکسازی فایل‌های مدیا (Garbage Collection)
+DECAY_CHECK_INTERVAL = 1800   # هر ۳۰ دقیقه برای Gravity
+SCORING_CHECK_INTERVAL = 5    # هر ۵ ثانیه برای امتیازدهی اخبار جدید (Async)
+GC_CHECK_INTERVAL = 21600     # هر ۶ ساعت برای پاکسازی فایل‌های مدیا (Garbage Collection)
+FA_SWEEP_INTERVAL = 1800      # هر ۳۰ دقیقه: ترجمه ترندهایی که fa_title/fa_summary ندارند
+FA_SWEEP_BATCH = 8            # تعداد ترند در هر دور sweep
 QUEUE_METRICS_LOG_INTERVAL = 60
 
 def _is_afet_trend(title: str) -> bool:
@@ -282,23 +296,34 @@ def main():
     
     last_decay_time = time.time()
     last_gc_time = time.time()
+    last_fa_sweep_time = time.time() - FA_SWEEP_INTERVAL  # run first sweep soon after start
     last_queue_metrics_time = time.time()
-    
+
     while True:
         try:
             # ۱. اولویت بالا: امتیازدهی به اخبار جدید
             did_work = process_pending_scores()
-            
+
             # ۲. اولویت پایین: بررسی زمان اجرای Gravity
             current_time = time.time()
             if current_time - last_decay_time > DECAY_CHECK_INTERVAL:
                 apply_gravity_decay()
                 last_decay_time = current_time
-                
+
             # ۳. Garbage Collection: Media Cleanup
             if current_time - last_gc_time > GC_CHECK_INTERVAL:
                 cleanup_inactive_media()
                 last_gc_time = current_time
+
+            # ۴. FA Translation Sweep: ترجمه ترندهای بدون fa_title/fa_summary
+            if current_time - last_fa_sweep_time > FA_SWEEP_INTERVAL:
+                try:
+                    count = sweep_untranslated(_redis_fa, batch_size=FA_SWEEP_BATCH)
+                    if count:
+                        logger.info(f"🇮🇷 [FA Sweep] Translated {count} trend(s)")
+                except Exception as sweep_err:
+                    logger.error(f"❌ [FA Sweep] Error: {sweep_err}")
+                last_fa_sweep_time = current_time
 
             if scoring_queue.enabled and (current_time - last_queue_metrics_time > QUEUE_METRICS_LOG_INTERVAL):
                 logger.info(f"📊 [Queue Metrics] scoring_pending={scoring_queue.size()}")

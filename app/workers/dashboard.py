@@ -90,11 +90,19 @@ if tab_selection == "🤖 AI Token Monitor":
         st.warning(f"Log file not found at {os.path.abspath(LOG_FILE)}. Waiting for AI activity...")
         st.stop()
 
-    # --- Date range filter ---
+    # --- Sidebar filters ---
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filters")
     days_back = st.sidebar.slider("Days to show", min_value=1, max_value=120, value=30)
     cutoff_dt = datetime.now() - timedelta(days=days_back)
+
+    # Call-type filter: All / Summarization only / Translation only
+    _FA_CATEGORIES = {"FA-Title", "FA-Summary", "FA-Batch"}
+    call_type_filter = st.sidebar.radio(
+        "Call Type",
+        ["All", "Summarization only", "FA Translation only"],
+        index=0,
+    )
 
     try:
         # Read with date filter — skip old rows for performance
@@ -110,10 +118,33 @@ if tab_selection == "🤖 AI Token Monitor":
             lambda r: _calc_cost(r["model"], r["input_tokens"], r["output_tokens"]), axis=1
         )
 
+        # Tag each row as summarization or translation
+        df["call_group"] = df["category"].apply(
+            lambda c: "FA Translation" if str(c) in _FA_CATEGORIES else "Summarization"
+        )
+
+        # Apply call-type filter
+        if call_type_filter == "Summarization only":
+            df = df[df["call_group"] == "Summarization"]
+        elif call_type_filter == "FA Translation only":
+            df = df[df["call_group"] == "FA Translation"]
+
+        if df.empty:
+            st.info("No records for the selected filter.")
+            st.stop()
+
         # Check if stored cost diverges from recalculated (pricing bug detection)
         stored_total  = pd.to_numeric(df["cost_usd"], errors="coerce").sum()
         correct_total = df["cost_correct"].sum()
         pricing_drift = abs(correct_total - stored_total) / max(correct_total, 1e-9)
+
+        # ── Summarization vs Translation cost split ───────────────
+        df_summ = df[df["call_group"] == "Summarization"]
+        df_trans = df[df["call_group"] == "FA Translation"]
+        cost_summ  = df_summ["cost_correct"].sum()
+        cost_trans = df_trans["cost_correct"].sum()
+        tok_trans_in  = int(df_trans["input_tokens"].sum())
+        tok_trans_out = int(df_trans["output_tokens"].sum())
 
         # ── KPI row ──────────────────────────────────────────
         total_input  = int(df["input_tokens"].sum())
@@ -135,6 +166,47 @@ if tab_selection == "🤖 AI Token Monitor":
                 f"(stored ${stored_total:.4f} vs corrected ${correct_total:.4f}). "
                 "This happens when model pricing was updated. Dashboard now shows corrected values."
             )
+
+        st.divider()
+
+        # ── Summarization vs FA Translation breakdown ─────────────
+        st.subheader("📊 Cost Breakdown: Summarization vs FA Translation")
+        col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+        col_b1.metric("Summarization Cost", f"${cost_summ:.4f}",
+                      f"{cost_summ/max(correct_total,1e-9)*100:.1f}% of total")
+        col_b2.metric("FA Translation Cost", f"${cost_trans:.4f}",
+                      f"{cost_trans/max(correct_total,1e-9)*100:.1f}% of total")
+        col_b3.metric("FA Input Tokens",  f"{tok_trans_in:,}")
+        col_b4.metric("FA Output Tokens", f"{tok_trans_out:,}")
+
+        # Cost by call group bar
+        df_group_cost = (
+            df.groupby("call_group")["cost_correct"]
+              .sum()
+              .rename("Cost ($)")
+              .to_frame()
+        )
+        st.bar_chart(df_group_cost)
+
+        # FA translation breakdown by call type (Title / Summary / Batch)
+        if not df_trans.empty:
+            with st.expander("🇮🇷 FA Translation — detail by call type"):
+                df_fa_detail = (
+                    df_trans.groupby("category")[["cost_correct", "input_tokens", "output_tokens"]]
+                    .agg({"cost_correct": "sum", "input_tokens": "sum", "output_tokens": "sum"})
+                    .rename(columns={"cost_correct": "Cost ($)", "input_tokens": "Input Tokens", "output_tokens": "Output Tokens"})
+                    .sort_values("Cost ($)", ascending=False)
+                )
+                st.dataframe(df_fa_detail, use_container_width=True)
+
+                fa_daily = (
+                    df_trans.set_index("timestamp")
+                    .resample("D")["cost_correct"]
+                    .sum()
+                    .rename("FA Translation Cost ($)")
+                )
+                if not fa_daily.empty:
+                    st.line_chart(fa_daily)
 
         st.divider()
 
@@ -192,11 +264,14 @@ if tab_selection == "🤖 AI Token Monitor":
         # ── Monthly projection ─────────────────────────────────
         days_spanned = max((df["timestamp"].max() - df["timestamp"].min()).days, 1)
         daily_avg    = correct_total / days_spanned
+        fa_daily_avg = cost_trans / days_spanned
         st.info(
             f"📈 **Projected monthly cost** (based on last {days_back}d avg): "
             f"**${daily_avg * 30:.4f}**  |  "
+            f"Summarization: **${cost_summ/days_spanned*30:.4f}**  |  "
+            f"FA Translation: **${fa_daily_avg * 30:.4f}**  |  "
             f"Daily avg: **${daily_avg:.4f}**  |  "
-            f"Total records shown: **{len(df):,}** of **{len(df_full):,}**"
+            f"Total records: **{len(df):,}** of **{len(df_full):,}**"
         )
 
         # ── Recent logs table ──────────────────────────────────
@@ -204,8 +279,8 @@ if tab_selection == "🤖 AI Token Monitor":
         st.subheader("Recent AI Logs")
         display_df = (
             df[["timestamp", "trend_id", "model", "input_tokens", "output_tokens",
-                "duration_sec", "category", "status", "cost_correct"]]
-            .rename(columns={"cost_correct": "cost_usd (corrected)"})
+                "duration_sec", "category", "call_group", "status", "cost_correct"]]
+            .rename(columns={"cost_correct": "cost_usd (corrected)", "call_group": "type"})
             .sort_values("timestamp", ascending=False)
             .head(200)
         )

@@ -1,20 +1,17 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- SEO: Server-side dynamic meta tags for categories and landing pages -->
-    <title>{{ page_title if page_title else 'TrendiaTR | Yapay Zeka Haber Analizi' }}</title>
-    <meta name="description" content="{{ page_description if page_description else 'TrendiaTR ile gerçek zamanlı yapay zeka haber analizi ve son dakika gelişmeleri.' }}">
-    
-    <!-- Favicon Design: Red Square with White TT -->
+    <title>{{ page_title if page_title else 'TrendiaTR | اخبار ترکیه به فارسی' }}</title>
+    <meta name="description" content="{{ page_description if page_description else 'اخبار لحظه‌ای ترکیه به زبان فارسی با تحلیل هوش مصنوعی — TrendiaTR' }}">
+
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23ef4444'/%3E%3Ctext x='50%25' y='53%25' dominant-baseline='middle' text-anchor='middle' font-family='Inter, sans-serif' font-weight='800' font-size='60' fill='white'%3ETT%3C/text%3E%3C/svg%3E">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;800&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+
     <!-- Global site tag (gtag.js) - Google Analytics -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-3B9YSY997H"></script>
     <script>
@@ -24,51 +21,23 @@
       gtag('config', 'G-3B9YSY997H');
     </script>
 
-    <!-- GEO & SEO: Organization and WebSite Schema -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "TrendiaTR",
-      "url": "https://trendiatr.com/",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://trendiatr.com/?q={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
-    </script>
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "TrendiaTR",
-      "url": "https://trendiatr.com/",
-      "logo": "https://trendiatr.com/static/logo.png",
-      "sameAs": [
-        "https://x.com/TrendiaTR",
-        "https://t.me/TrendiaTR"
-      ]
-    }
-    </script>
-
     <style>
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; color: #1e293b; }
+        body { font-family: 'Vazirmatn', 'Inter', -apple-system, sans-serif; background-color: #f8fafc; color: #1e293b; }
         .custom-scroll::-webkit-scrollbar { width: 8px; }
         .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        
+
         #hot-container, #timeline-container { min-height: 250px; }
 
-        .card-hot-section { 
-            border: 2px solid #ef4444; 
-            background: white; 
+        .card-hot-section {
+            border: 2px solid #ef4444;
+            background: white;
             box-shadow: 0 4px 15px rgba(239, 68, 68, 0.1);
         }
-        .card-hot-section:hover { 
-            border-color: #dc2626; 
+        .card-hot-section:hover {
+            border-color: #dc2626;
             box-shadow: 0 10px 25px rgba(239, 68, 68, 0.2);
-            transform: translateY(-2px); 
+            transform: translateY(-2px);
         }
 
         .trajectory-hot { color: #ef4444; animation: bounce-slight 1s infinite; }
@@ -79,101 +48,109 @@
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-3px); }
         }
-
         @keyframes slideDown {
             from { transform: translate(-50%, -100%); opacity: 0; }
             to { transform: translate(-50%, 0); opacity: 1; }
         }
         .new-posts-badge { animation: slideDown 0.3s ease-out forwards; }
-        
         .processing-pulse { animation: pulse-blue 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse-blue {
             0%, 100% { opacity: 1; }
             50% { opacity: .6; }
         }
-
-        /* Ticker Animation */
         @keyframes ticker-scroll {
-            0% { transform: translateX(100%); }
-            100% { transform: translateX(-100%); }
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
         }
         .ticker-content { animation: ticker-scroll 30s linear infinite; }
         .ticker-container:hover .ticker-content { animation-play-state: paused; }
         @media (max-width: 768px) { .ticker-content { animation-duration: 20s; } }
 
-        /* Skeleton Loading Animation */
         @keyframes shimmer {
             0% { background-position: -200% 0; }
             100% { background-position: 200% 0; }
         }
         .skeleton {
             background: #f1f5f9;
-            background-image: linear-gradient(to right, #f1f5f9 0%, #e2e8f0 20%, #f1f5f9 40%, #f1f5f9 100%);
+            background-image: linear-gradient(to left, #f1f5f9 0%, #e2e8f0 20%, #f1f5f9 40%, #f1f5f9 100%);
             background-repeat: no-repeat;
-            background-size: 200% 100%; 
+            background-size: 200% 100%;
             animation: shimmer 1.5s infinite linear;
         }
-
         @keyframes pulse-green {
             0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
             50% { opacity: 0.5; box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
         }
 
-        /* Slide-over Drawer CSS */
+        /* RTL Drawer (opens from left) */
         .drawer-overlay {
             position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px);
             z-index: 60; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
         }
         .drawer-overlay.open { opacity: 1; pointer-events: auto; }
-        
         .drawer-panel {
-            position: fixed; top: 0; right: -100%; width: 100%; max-width: 400px; height: 100%;
-            background: white; z-index: 70; box-shadow: -5px 0 25px rgba(0,0,0,0.1);
-            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column;
+            position: fixed; top: 0; left: -100%; width: 100%; max-width: 400px; height: 100%;
+            background: white; z-index: 70; box-shadow: 5px 0 25px rgba(0,0,0,0.1);
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column;
         }
-        .drawer-panel.open { right: 0; }
+        .drawer-panel.open { left: 0; }
         @media (max-width: 640px) {
-            .drawer-panel { top: auto; bottom: -100%; right: 0; width: 100%; max-width: 100%; height: 85vh; border-radius: 24px 24px 0 0; transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-            .drawer-panel.open { bottom: 0; right: 0; }
+            .drawer-panel { top: auto; bottom: -100%; left: 0; width: 100%; max-width: 100%; height: 85vh; border-radius: 24px 24px 0 0; transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+            .drawer-panel.open { bottom: 0; left: 0; }
         }
-    </style>
 
-    <style>
+        /* RTL content fixes */
         .news-content-area h3 {
-            border-left: 4px solid #ef4444;
+            border-right: 4px solid #ef4444;
+            border-left: none;
             font-weight: 700;
             font-size: 1.1rem;
-            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+            padding-left: 0;
             margin-top: 1.5rem;
         }
-        .news-content-area p {
-            margin-bottom: 1rem;
-            line-height: 1.6;
-        }
+        .news-content-area p { margin-bottom: 1rem; line-height: 1.8; }
         .news-content-area blockquote {
             background: #f3f4f6;
-            border-left: 4px solid #9ca3af;
+            border-right: 4px solid #9ca3af;
+            border-left: none;
             font-style: italic;
             padding: 1rem;
             margin: 1rem 0;
         }
-        .news-content-area ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
-        .news-content-area li { margin-bottom: 0.5rem; padding-left: 0.5rem; }
+        .news-content-area ul { list-style-type: disc; padding-right: 1.5rem; padding-left: 0; margin-bottom: 1rem; }
+        .news-content-area li { margin-bottom: 0.5rem; padding-right: 0.5rem; padding-left: 0; }
+
+        /* Loading spinner overlay */
+        #translate-overlay {
+            position: fixed; inset: 0; background: rgba(255,255,255,0.85); z-index: 200;
+            display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+        }
+        #translate-overlay.hidden { display: none; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 pb-20">
 
+    <!-- Translation loading overlay -->
+    <div id="translate-overlay">
+        <svg class="w-10 h-10 text-red-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <p class="text-slate-600 text-sm font-bold">در حال ترجمه اخبار...</p>
+    </div>
+
     <!-- Financial Ticker Bar -->
     <div class="bg-slate-900 text-white py-2 px-4 mb-6 rounded-xl shadow-sm overflow-hidden whitespace-nowrap ticker-container relative">
         <div id="market-ticker" class="flex items-center gap-8 text-[11px] font-bold tracking-wider min-w-max ticker-content">
-            <span class="text-slate-500 animate-pulse">Piyasa verileri yükleniyor...</span>
+            <span class="text-slate-500 animate-pulse">در حال بارگذاری داده‌های بازار...</span>
         </div>
     </div>
 
     <!-- Header Section -->
     <header class="max-w-7xl mx-auto mb-6 flex flex-col md:flex-row justify-between items-center border-b border-slate-200 pb-6">
         <div class="mb-4 md:mb-0 flex items-center gap-4">
-            <a href="/" class="w-14 h-14 bg-red-600 rounded-2xl shadow-lg flex items-center justify-center overflow-hidden transition-transform hover:scale-105">
+            <a href="/fa/" class="w-14 h-14 bg-red-600 rounded-2xl shadow-lg flex items-center justify-center overflow-hidden transition-transform hover:scale-105">
                 <svg viewBox="0 0 100 100" width="56" height="56" xmlns="http://www.w3.org/2000/svg">
                     <text x="50%" y="53%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="62" fill="white">TT</text>
                 </svg>
@@ -181,118 +158,99 @@
             <div>
                 <div class="text-4xl font-extrabold flex items-center tracking-tight">
                     <span class="text-black">Trendia</span><span class="text-red-600">TR</span>
+                    <span class="mr-3 text-base font-bold bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-lg">فارسی</span>
                 </div>
                 <p id="header-subtitle" class="text-slate-500 mt-1 text-sm font-medium">
                     {% if active_category and active_category != 'Hepsi' %}
-                        {{ active_category }} Dünyasından Gerçek Zamanlı Analizler
+                        اخبار {{ FA_CATS.get(active_category, active_category) }} — تحلیل لحظه‌ای
                     {% else %}
-                        Yapay Zeka Destekli Gerçek Zamanlı Analiz
+                        اخبار ترکیه — تحلیل هوش مصنوعی به زبان فارسی
                     {% endif %}
                 </p>
             </div>
         </div>
-        
-        <!-- Right side space reserved for future use (Stats removed) -->
         <div class="hidden md:flex items-center gap-5">
-            <!-- X (Twitter) -->
+            <!-- Switch to Turkish -->
+            <a href="/" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:border-red-300 hover:text-red-600 text-sm font-bold transition-colors">
+                TR
+            </a>
             <a href="https://x.com/TrendiaTR" target="_blank" class="text-slate-400 hover:text-black transition-colors" title="@TrendiaTR">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
             </a>
-            
-            <!-- Telegram -->
             <a href="https://t.me/TrendiaTR" target="_blank" class="text-slate-400 hover:text-blue-500 transition-colors" title="@TrendiaTR">
-                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
-            </a>
-
-            <!-- Persian Version Link -->
-            <a href="/fa/" class="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:border-green-400 hover:text-green-700 hover:bg-green-50 text-xs font-bold transition-colors" title="نسخه فارسی">
-                FA
-            </a>
-
-            <!-- Email -->
-            <a href="#" onclick="openContactModal(event)" class="text-slate-400 hover:text-red-500 transition-colors" title="Bize Ulaşın">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
             </a>
         </div>
     </header>
 
     <!-- Navigation / Category Filters -->
     <nav class="max-w-7xl mx-auto mb-8 sticky top-0 z-30 bg-white/80 backdrop-blur-md py-3 shadow-sm border-b border-slate-100 -mx-4 px-4 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div class="flex space-x-2 overflow-x-auto pb-1 custom-scroll w-full md:w-auto" id="category-filters">
-            {% set cats = ["Hepsi", "Siyaset", "Ekonomi", "Gündem", "Spor", "Teknoloji", "Sanat"] %}
-            {% for cat in cats %}
-                <a href="{{ '/' if cat == 'Hepsi' else '/category/' + cat.lower() }}" 
-                   onclick="setCategory(event, '{{ cat }}')"
-                   class="category-btn px-5 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap border 
-                   {{ 'bg-slate-900 text-white border-slate-900 shadow-md' if active_category == cat else 'bg-white text-slate-500 border-slate-200 hover:border-slate-400' }}">
-                    {{ cat }}
+        <div class="flex space-x-2 space-x-reverse overflow-x-auto pb-1 custom-scroll w-full md:w-auto" id="category-filters">
+            {% set cats = [("Hepsi","همه"), ("Siyaset","سیاست"), ("Ekonomi","اقتصاد"), ("Gündem","اخبار روز"), ("Spor","ورزش"), ("Teknoloji","فناوری"), ("Sanat","هنر")] %}
+            {% for cat_tr, cat_fa in cats %}
+                <a href="{{ '/fa/' if cat_tr == 'Hepsi' else '/fa/category/' + cat_tr.lower() }}"
+                   onclick="setCategory(event, '{{ cat_tr }}', '{{ cat_fa }}')"
+                   class="category-btn px-5 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap border
+                   {{ 'bg-slate-900 text-white border-slate-900 shadow-md' if active_category == cat_tr else 'bg-white text-slate-500 border-slate-200 hover:border-slate-400' }}">
+                    {{ cat_fa }}
                 </a>
             {% endfor %}
         </div>
 
-        <!-- Compact Search Toolbar -->
+        <!-- Search Toolbar -->
         <div class="flex items-center gap-2 w-full md:w-auto bg-slate-50 p-1.5 rounded-xl border border-slate-200">
             <div class="relative">
-                <input type="text" id="searchInput" placeholder="Haber ara..." 
-                       class="w-full md:w-40 md:focus:w-56 pl-2 pr-2 py-1 bg-transparent border-none focus:ring-0 text-sm transition-all placeholder:text-slate-400 outline-none"
+                <input type="text" id="searchInput" placeholder="جستجوی خبر..."
+                       class="w-full md:w-40 md:focus:w-56 pr-2 pl-2 py-1 bg-transparent border-none focus:ring-0 text-sm transition-all placeholder:text-slate-400 outline-none"
                        onkeypress="if(event.key === 'Enter') handleSearch()">
             </div>
-            
             <div class="h-5 w-px bg-slate-200"></div>
-
             <input type="date" id="dateInput" onchange="handleSearch()"
                    class="bg-transparent border-none focus:ring-0 text-transparent w-6 p-0 cursor-pointer outline-none relative [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:opacity-0" style="background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: center; background-size: 18px;">
-
             <button onclick="handleSearch()" class="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
             </button>
-            
             <button onclick="clearSearch()" id="clearSearchBtn" class="hidden p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
         </div>
     </nav>
 
-    <!-- HOT SECTION (Ranked by TPS) -->
+    <!-- HOT SECTION -->
     <section class="max-w-7xl mx-auto mb-12">
         <div class="flex items-center gap-2 mb-6">
             <span class="text-2xl">🔥</span>
             <h1 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">
-                <span id="dynamic-hot-title">{{ active_category if active_category and active_category != 'Hepsi' else '' }}</span> SIÇRAMA YAPANLAR
+                <span id="dynamic-hot-title">{{ FA_CATS.get(active_category, '') + ' ' if active_category and active_category != 'Hepsi' else '' }}</span>داغ‌ترین اخبار
             </h1>
-            <button onclick="openTpsModal()" class="text-[10px] font-bold text-red-500 ml-2 animate-pulse bg-red-50 px-2 py-0.5 rounded-full border border-red-100 cursor-pointer hover:scale-105 transition-transform">CANLI TPS</button>
+            <button onclick="openTpsModal()" class="text-[10px] font-bold text-red-500 mr-2 animate-pulse bg-red-50 px-2 py-0.5 rounded-full border border-red-100 cursor-pointer hover:scale-105 transition-transform">زنده TPS</button>
         </div>
         <div id="hot-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- Content loaded via JS -->
-            <div class="col-span-full text-center text-slate-400 py-10 font-medium italic">Potansiyel analiz ediliyor...</div>
+            <div class="col-span-full text-center text-slate-400 py-10 font-medium italic">در حال تحلیل...</div>
         </div>
     </section>
 
-    <!-- TIMELINE SECTION (Chronological) -->
-    <section class="max-w-7xl mx-auto relative">
-        <div id="new-posts-btn" onclick="refreshTimeline()" 
-             class="hidden fixed top-24 left-1/2 -translate-x-1/2 z-40 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2.5 px-8 rounded-full shadow-2xl cursor-pointer transition-all border border-blue-500 new-posts-badge flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7-7m-7-7v18"></path></svg>
-            Yeni Haberler Mevcut
-        </div>
+    <!-- New Posts Notification -->
+    <div id="new-posts-btn" class="hidden fixed top-20 left-1/2 z-40 new-posts-badge">
+        <button onclick="refreshTimeline()" class="bg-slate-900 text-white text-xs font-black py-2 px-5 rounded-full shadow-xl border border-slate-700 hover:bg-red-600 transition-colors flex items-center gap-2">
+            <svg class="w-3 h-3 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+            اخبار جدید رسید
+        </button>
+    </div>
 
-        <div class="flex items-center justify-between mb-6 border-t border-slate-200 pt-8">
+    <!-- Timeline Section -->
+    <section class="max-w-7xl mx-auto mb-12">
+        <div class="flex items-center justify-between mb-6 border-b border-slate-200 pb-4">
             <div class="flex items-center gap-3">
-                <div class="bg-white text-slate-700 px-4 py-1.5 rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
-                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    <span id="current-date-display" class="text-sm font-bold">...</span>
-                </div>
-                <h2 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">ZAMAN TÜNELİ</h2>
+                <span class="text-xl">⏳</span>
+                <h2 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">جدول زمانی اخبار</h2>
             </div>
+            <span id="current-date-display" class="text-xs font-bold text-slate-400 hidden md:block"></span>
         </div>
-
-        <div id="timeline-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
-            <!-- Content loaded via JS -->
-        </div>
-        
+        <div id="timeline-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12"></div>
         <div class="text-center">
             <button onclick="loadMoreTimeline()" id="load-more-btn" class="bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-10 rounded-full border border-slate-200 shadow-sm transition-all hidden">
-                Daha Fazla Yükle
+                بارگذاری بیشتر
             </button>
         </div>
     </section>
@@ -306,31 +264,25 @@
                     <span id="modal-category" class="text-[10px] font-bold px-2 py-1 rounded bg-blue-50 text-blue-600 mb-2 inline-block uppercase tracking-wider"></span>
                     <h2 id="modal-title" class="text-xl font-black text-slate-900 leading-snug"></h2>
                 </div>
-                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 p-2 hover:bg-white rounded-full transition-colors shadow-sm border border-transparent hover:border-slate-100">
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 p-2 hover:bg-white rounded-full transition-colors shadow-sm border border-transparent hover:border-slate-100 mr-2">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
             <div class="p-8 overflow-y-auto custom-scroll flex-1">
-                <!-- NEW: Modal Media Container -->
                 <div id="modal-media-container" class="w-full relative hidden mb-6 rounded-2xl overflow-hidden shadow-sm"></div>
-                
                 <div class="mb-8 bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
-                    <div class="text-[10px] text-blue-600 font-black uppercase mb-3 tracking-widest">Yapay Zeka Analizi</div>
+                    <div class="text-[10px] text-blue-600 font-black uppercase mb-3 tracking-widest">تحلیل هوش مصنوعی</div>
                     <div id="modal-summary"></div>
                     <div id="modal-seo-tags" class="mt-4"></div>
                 </div>
-                
                 <div class="mb-4 flex items-center justify-between">
-                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">Haber Kaynakları</h3>
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">منابع خبری</h3>
                     <div id="modal-tps-badge" class="text-[10px] font-black bg-red-600 text-white px-2 py-1 rounded"></div>
                 </div>
-                
                 <div id="modal-news-list" class="space-y-4 mb-10"></div>
-
-                <!-- Related News Section in Modal -->
                 <div id="modal-related-section" class="mt-12 pt-8 border-t border-slate-100 hidden">
                     <h3 class="text-lg font-black text-slate-900 mb-6 flex items-center gap-3">
-                        <span class="text-2xl">🔗</span> Benzer Gelişmeler
+                        <span class="text-2xl">🔗</span> اخبار مرتبط
                     </h3>
                     <div id="modal-related-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
@@ -343,132 +295,99 @@
         <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="closeTpsModal()"></div>
         <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 border border-white">
             <div class="flex justify-between items-start mb-4">
-                <h2 class="text-xl font-bold text-slate-900">TPS (Trend Potential Score) Nedir?</h2>
+                <h2 class="text-xl font-bold text-slate-900">TPS چیست؟</h2>
                 <button onclick="closeTpsModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-50 transition-colors">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            
             <p class="text-sm text-slate-600 mb-6 leading-relaxed">
-                TrendiaTR yapay zekası, her haberi 0 ile 100 arasında canlı olarak puanlar. Bu puan 4 ana kritere dayanır:
+                هوش مصنوعی TrendiaTR هر خبر را بین ۰ تا ۱۰۰ در لحظه امتیازدهی می‌کند. این امتیاز بر اساس ۴ معیار اصلی است:
             </p>
-            
             <div class="space-y-4 mb-6">
                 <div class="flex gap-3">
                     <div class="text-lg">⚡</div>
                     <div>
-                        <h4 class="text-sm font-bold text-slate-800">Yayılım Hızı &amp; İvme</h4>
-                        <p class="text-xs text-slate-500">Haberin farklı kaynaklarda ne kadar hızlı yayıldığı.</p>
+                        <h4 class="text-sm font-bold text-slate-800">سرعت انتشار</h4>
+                        <p class="text-xs text-slate-500">خبر چقدر سریع در منابع مختلف منتشر می‌شود.</p>
                     </div>
                 </div>
                 <div class="flex gap-3">
                     <div class="text-lg">🧠</div>
                     <div>
-                        <h4 class="text-sm font-bold text-slate-800">Yapay Zeka Analizi</h4>
-                        <p class="text-xs text-slate-500">Haberin içeriğindeki kritiklik seviyesi ve geçen isimlerin (liderler, kurumlar) önemi.</p>
+                        <h4 class="text-sm font-bold text-slate-800">تحلیل هوش مصنوعی</h4>
+                        <p class="text-xs text-slate-500">سطح اهمیت محتوا و چهره‌های مطرح در خبر.</p>
                     </div>
                 </div>
                 <div class="flex gap-3">
                     <div class="text-lg">🎯</div>
                     <div>
-                        <h4 class="text-sm font-bold text-slate-800">Özgünlük</h4>
-                        <p class="text-xs text-slate-500">Haberin tamamen yeni mi yoksa tekrar mı olduğu (Vektörel analiz).</p>
+                        <h4 class="text-sm font-bold text-slate-800">تازگی</h4>
+                        <p class="text-xs text-slate-500">خبر جدید است یا تکراری (تحلیل برداری).</p>
                     </div>
                 </div>
                 <div class="flex gap-3">
                     <div class="text-lg">🛡️</div>
                     <div>
-                        <h4 class="text-sm font-bold text-slate-800">Güven Endeksi</h4>
-                        <p class="text-xs text-slate-500">Haberi yayınlayan kaynakların resmiyeti ve çeşitliliği.</p>
+                        <h4 class="text-sm font-bold text-slate-800">اعتبار منابع</h4>
+                        <p class="text-xs text-slate-500">رسمی‌بودن و تنوع منابع خبری.</p>
                     </div>
                 </div>
             </div>
-            
             <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 mb-6">
                 <p class="text-[10px] text-blue-700 font-medium">
-                    <span class="font-bold">Not:</span> Spor haberleri hızlı soğurken, siyasi haberlerin etkisi daha uzun sürer (Dinamik Yerçekimi).
+                    <span class="font-bold">نکته:</span> اخبار ورزشی سریع‌تر سرد می‌شوند، در حالی که اخبار سیاسی تأثیر طولانی‌تری دارند.
                 </p>
             </div>
-
             <button onclick="closeTpsModal()" class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-colors">
-                Anladım
+                متوجه شدم
             </button>
         </div>
     </div>
 
-    <!-- Contact Modal -->
-    <div id="contact-modal" class="fixed inset-0 z-50 hidden">
-        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="closeContactModal()"></div>
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 border border-white">
-            <div class="flex justify-between items-start mb-4">
-                <h2 class="text-xl font-bold text-slate-900">Bize Ulaşın</h2>
-                <button onclick="closeContactModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-50 transition-colors">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-            
-            <form id="contactForm" onsubmit="submitContactForm(event)" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Ad Soyad</label>
-                    <input type="text" name="name" required class="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">E-posta</label>
-                    <input type="email" name="email" required class="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Mesajınız</label>
-                    <textarea name="message" rows="4" required class="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm resize-none"></textarea>
-                </div>
-                
-                <div id="contact-message" class="hidden p-3 rounded-xl text-xs font-bold text-center"></div>
-
-                <button type="submit" id="contact-submit-btn" class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-colors flex justify-center items-center gap-2">
-                    <span>Gönder</span>
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Comments Slide-over Drawer -->
+    <!-- Comments Slide-over Drawer (RTL: opens from left) -->
     <div id="comments-overlay" class="drawer-overlay" onclick="closeComments()"></div>
     <div id="comments-drawer" class="drawer-panel">
         <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
             <h2 class="text-lg font-black text-slate-900 flex items-center gap-2">
                 <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-                Yorumlar
+                نظرات
             </h2>
             <button onclick="closeComments()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200 transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
         </div>
-        
-        <!-- Tabs -->
         <div class="flex border-b border-slate-100">
-            <button onclick="loadComments('popular')" id="tab-popular" class="flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600">En Popüler</button>
-            <button onclick="loadComments('newest')" id="tab-newest" class="flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700">En Yeni</button>
+            <button onclick="loadComments('popular')" id="tab-popular" class="flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600">پربازدیدترین</button>
+            <button onclick="loadComments('newest')" id="tab-newest" class="flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700">جدیدترین</button>
         </div>
-
-        <!-- Comments List -->
         <div id="comments-list" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scroll bg-slate-50/50">
-            <div class="text-center text-slate-400 text-sm py-10">Yorumlar yükleniyor...</div>
+            <div class="text-center text-slate-400 text-sm py-10">در حال بارگذاری...</div>
         </div>
-
-        <!-- Comment Input -->
         <div class="p-4 border-t border-slate-100 bg-white">
             <div id="comment-form-msg" class="hidden text-xs font-bold mb-2 p-2 rounded"></div>
-            <input type="text" id="comment-name" placeholder="Adınız" class="w-full mb-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
+            <input type="text" id="comment-name" placeholder="نام شما" class="w-full mb-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
             <div class="relative">
-                <textarea id="comment-text" rows="2" placeholder="Düşüncelerinizi paylaşın..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 resize-none pr-12"></textarea>
-                <button onclick="submitComment()" class="absolute bottom-2 right-2 p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                <textarea id="comment-text" rows="2" placeholder="نظر خود را بنویسید..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 resize-none pl-12"></textarea>
+                <button onclick="submitComment()" class="absolute bottom-2 left-2 p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                 </button>
             </div>
         </div>
     </div>
 
+    <!-- Footer -->
+    <footer class="max-w-7xl mx-auto mt-16 border-t border-slate-200 pt-8 pb-4 text-center">
+        <div class="flex justify-center items-center gap-2 mb-3">
+            <div class="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center">
+                <svg viewBox="0 0 100 100" width="32" height="32"><text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle" font-family="Inter" font-weight="800" font-size="62" fill="white">TT</text></svg>
+            </div>
+            <span class="text-lg font-extrabold"><span class="text-black">Trendia</span><span class="text-red-600">TR</span></span>
+        </div>
+        <p class="text-xs text-slate-400 mb-2">اخبار ترکیه با تحلیل هوش مصنوعی • نسخه فارسی</p>
+        <a href="/" class="text-xs text-blue-500 hover:underline">🇹🇷 بازگشت به نسخه ترکی</a>
+    </footer>
+
     <script>
-        // Session Fingerprint Management
         function getSessionId() {
             let sid = localStorage.getItem('trendia_session_id');
             if (!sid) {
@@ -479,50 +398,49 @@
         }
         const SESSION_ID = getSessionId();
 
-        // Global Text Formatter for News Sources (Entity Decoder + HTML Stripper + Paragraphing)
+        // Persian category name map
+        const FA_CAT_MAP = {
+            "Siyaset": "سیاست",
+            "Ekonomi": "اقتصاد",
+            "Gündem": "اخبار روز",
+            "Spor": "ورزش",
+            "Teknoloji": "فناوری",
+            "Sanat": "هنر",
+            "Hepsi": "همه"
+        };
+
         function formatRawText(text) {
             if (!text) return "";
-            
-            // 1. Decode HTML entities (handle potential double encoding)
             let decodedText = text;
             const decoder = document.createElement("textarea");
             for (let i = 0; i < 2; i++) {
                 decoder.innerHTML = decodedText;
                 decodedText = decoder.value;
             }
-            
-            // 2. Strip unwanted HTML tags using the browser's DOM
             const tmp = document.createElement("DIV");
             tmp.innerHTML = decodedText;
             let plainText = tmp.textContent || tmp.innerText || "";
-            
-            // Fallback regex to strip any leftover literal tags that survived DOM parsing
             plainText = plainText.replace(/<\/?[^>]+(>|$)/g, "");
-            
-            // 3. Clean up extra spaces and split the clean text by newlines
             let chunks = plainText.split(/\n+/).map(c => c.trim()).filter(c => c.length > 0);
-
-            // 4. If the text is still one massive block, split by sentences
             if (chunks.length === 1 && chunks[0].length > 200) {
                 chunks = chunks[0].replace(/(\. )/g, "$1|SPLIT|").split("|SPLIT|");
             }
-
-            // 5. Return chunks wrapped in styled paragraph tags
             return chunks.map(c => {
-                // Escape special characters for security against XSS
                 const safeChunk = c.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
                 return `<p class="mb-3 leading-relaxed text-slate-600">${safeChunk}</p>`;
             }).join('');
         }
 
-        // State Management
         let activeCategory = "{{ active_category if active_category else 'Hepsi' }}";
+        let activeCategoryFa = FA_CAT_MAP[activeCategory] || "همه";
         let timelineOffset = 0;
-        let lastUpdateCheck = new Date().toISOString();
         let currentSearchQuery = "";
         let currentDateFilter = "";
         let currentCommentTrendId = null;
         let currentCommentSort = 'popular';
+
+        // Shared translation cache (trend_id → fa_title)
+        const titleCache = {};
 
         const CAT_COLORS = {
             "Siyaset": "bg-red-50 text-red-600 border-red-100",
@@ -541,19 +459,13 @@
 
         function escapeHtml(text) {
             if (!text) return "";
-            return text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
         function getTrajectory(score, lastUpdate) {
             const now = new Date();
             const last = new Date(lastUpdate);
             const diffMins = (now - last) / 60000;
-            
             if (score > 40 && diffMins < 20) return 'hot';
             if (diffMins > 180) return 'cooling';
             return 'steady';
@@ -562,7 +474,7 @@
         function formatTime(isoString) {
             if (!isoString) return "--:--";
             let date = new Date(isoString);
-            return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
         }
 
         function renderCard(trend, isHot) {
@@ -570,47 +482,37 @@
             const icon = TRAJECTORY_ICONS[trajectory];
             const catClass = CAT_COLORS[trend.category] || "bg-slate-100 text-slate-600 border-slate-200";
             const wrapperClass = isHot ? "card-hot-section" : "bg-white border-slate-200 hover:border-blue-300 hover:shadow-xl";
-            const identifier = trend.slug ? `${trend.trend_id}-${trend.slug}` : trend.id; 
+            const identifier = trend.slug ? `${trend.trend_id}-${trend.slug}` : trend.id;
+            const catFa = FA_CAT_MAP[trend.category] || trend.category;
 
             const hasImage = !!trend.image || !!trend.video_path;
             const containerPadding = hasImage ? "p-0" : "p-6";
             const contentPadding = hasImage ? "p-6" : "";
-            
+
             let imageHtml = '';
             if (trend.video_path) {
-                const bgImg = trend.image ? `<img src="/static/${trend.image}" alt="${escapeHtml(trend.title)}" class="h-48 w-full object-cover rounded-t-2xl" loading="lazy" onerror="this.style.display='none'">` : `<div class="h-48 w-full bg-slate-800 rounded-t-2xl"></div>`;
-                imageHtml = `
-                <div class="relative h-48 w-full mb-4 group">
-                    ${bgImg}
-                    <div class="absolute inset-0 bg-black/20 rounded-t-2xl pointer-events-none"></div>
-                    <button onclick="handleCardPlayClick(event, '${identifier}')" class="absolute inset-0 flex items-center justify-center w-full h-full z-10 focus:outline-none">
-                        <div class="w-12 h-12 bg-white/30 backdrop-blur-md border border-white/50 rounded-full flex items-center justify-center group-hover:bg-red-600 group-hover:border-red-600 transition-all duration-300 shadow-lg group-hover:scale-110">
-                            <svg class="w-6 h-6 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                        </div>
-                    </button>
-                </div>`;
+                const bgImg = trend.image ? `<img src="/static/${trend.image}" alt="" class="h-48 w-full object-cover rounded-t-2xl" loading="lazy" onerror="this.style.display='none'">` : `<div class="h-48 w-full bg-slate-800 rounded-t-2xl"></div>`;
+                imageHtml = `<div class="relative h-48 w-full mb-4 group">${bgImg}<div class="absolute inset-0 bg-black/20 rounded-t-2xl pointer-events-none"></div><button onclick="handleCardPlayClick(event, '${identifier}')" class="absolute inset-0 flex items-center justify-center w-full h-full z-10 focus:outline-none"><div class="w-12 h-12 bg-white/30 backdrop-blur-md border border-white/50 rounded-full flex items-center justify-center group-hover:bg-red-600 group-hover:border-red-600 transition-all duration-300 shadow-lg group-hover:scale-110"><svg class="w-6 h-6 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div></button></div>`;
             } else if (trend.image) {
-                imageHtml = `<img src="/static/${trend.image}" alt="${escapeHtml(trend.title)}" class="h-48 w-full object-cover rounded-t-2xl mb-4" loading="lazy" onerror="this.style.display='none'">`;
+                imageHtml = `<img src="/static/${trend.image}" alt="" class="h-48 w-full object-cover rounded-t-2xl mb-4" loading="lazy" onerror="this.style.display='none'">`;
             }
+
+            const faTitle = titleCache[trend.trend_id] || titleCache[trend.id] || trend.title;
 
             return `
             <div class="trend-card ${wrapperClass} rounded-2xl ${containerPadding} border relative overflow-hidden group transition-all flex flex-col h-full">
-                <a href="/trend/${identifier}" onclick="handleTrendClick(event, '${identifier}')" class="block flex-1">
+                <a href="/fa/trend/${identifier}" onclick="handleTrendClick(event, '${identifier}')" class="block flex-1">
                     ${imageHtml}
                     <div class="flex flex-col h-full ${contentPadding}">
                         <div class="flex justify-between items-start mb-4">
-                            <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border uppercase tracking-wider ${catClass}">
-                                ${trend.category || 'Gündem'}
-                            </span>
+                            <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border uppercase tracking-wider ${catClass}">${catFa}</span>
                             <div class="flex items-center gap-1.5">
                                 ${icon}
-                                <span class="text-[10px] font-bold ${trajectory === 'hot' ? 'text-red-600' : 'text-slate-500'}">
-                                    ${Math.round(trend.score)} TPS
-                                </span>
+                                <span class="text-[10px] font-bold ${trajectory === 'hot' ? 'text-red-600' : 'text-slate-500'}">${Math.round(trend.score)} TPS</span>
                             </div>
                         </div>
-                        <h3 class="text-base font-bold mb-4 leading-snug text-slate-800 group-hover:text-red-600 transition-colors line-clamp-3">
-                            ${escapeHtml(trend.title)}
+                        <h3 class="text-base font-bold mb-4 leading-snug text-slate-800 group-hover:text-red-600 transition-colors line-clamp-3 fa-title" data-id="${trend.trend_id || trend.id}">
+                            ${escapeHtml(faTitle)}
                         </h3>
                         <div class="mt-auto flex items-center justify-between pt-4 border-t border-slate-50">
                             <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
@@ -618,74 +520,70 @@
                                 <span class="opacity-30">•</span>
                                 <span>${formatTime(trend.last_update)}</span>
                             </div>
-                            <div class="text-[9px] font-black text-slate-300">${trend.count} KAYNAK</div>
+                            <div class="text-[9px] font-black text-slate-300">${trend.count} منبع</div>
                         </div>
                     </div>
                 </a>
-                <!-- Comment Button Overlay -->
-                <button onclick="openComments('${identifier}')" class="absolute bottom-4 right-4 bg-white/90 backdrop-blur border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 rounded-full p-2 shadow-sm transition-all flex items-center gap-1 z-10">
+                <button onclick="openComments('${identifier}')" class="absolute bottom-4 left-4 bg-white/90 backdrop-blur border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 rounded-full p-2 shadow-sm transition-all flex items-center gap-1 z-10">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
                     ${trend.comments_count > 0 ? `<span class="text-[10px] font-bold">${trend.comments_count}</span>` : ''}
                 </button>
             </div>`;
         }
 
-        const SKELETON_CARD = `
-            <div class="rounded-2xl bg-white border border-slate-200 overflow-hidden flex flex-col h-full">
-                <div class="h-48 w-full skeleton"></div>
-                <div class="p-6 flex flex-col flex-1">
-                    <div class="flex justify-between items-start mb-4">
-                        <div class="h-5 w-16 rounded-lg skeleton"></div>
-                        <div class="h-5 w-12 rounded skeleton"></div>
-                    </div>
-                    <div class="space-y-3 mb-4">
-                        <div class="h-4 w-full rounded skeleton"></div>
-                        <div class="h-4 w-5/6 rounded skeleton"></div>
-                        <div class="h-4 w-4/6 rounded skeleton"></div>
-                    </div>
-                    <div class="mt-auto pt-4 border-t border-slate-50 flex justify-between items-center">
-                        <div class="h-3 w-24 rounded skeleton"></div>
-                        <div class="h-3 w-12 rounded skeleton"></div>
-                    </div>
-                </div>
-            </div>`;
+        const SKELETON_CARD = `<div class="rounded-2xl bg-white border border-slate-200 overflow-hidden flex flex-col h-full"><div class="h-48 w-full skeleton"></div><div class="p-6 flex flex-col flex-1"><div class="flex justify-between items-start mb-4"><div class="h-5 w-16 rounded-lg skeleton"></div><div class="h-5 w-12 rounded skeleton"></div></div><div class="space-y-3 mb-4"><div class="h-4 w-full rounded skeleton"></div><div class="h-4 w-5/6 rounded skeleton"></div><div class="h-4 w-4/6 rounded skeleton"></div></div><div class="mt-auto pt-4 border-t border-slate-50 flex justify-between items-center"><div class="h-3 w-24 rounded skeleton"></div><div class="h-3 w-12 rounded skeleton"></div></div></div></div>`;
+
+        async function translateAndUpdateTitles(trends) {
+            const ids = trends.map(t => t.trend_id || t.id);
+            if (!ids.length) return;
+            try {
+                const res = await fetch('/api/fa/translate-titles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                });
+                const data = await res.json();
+                Object.assign(titleCache, data);
+                // Update already-rendered cards
+                document.querySelectorAll('.fa-title').forEach(el => {
+                    const tid = el.dataset.id;
+                    if (data[tid]) el.textContent = data[tid];
+                });
+            } catch (e) {}
+        }
 
         async function fetchHot(showLoading = true) {
-            if (showLoading) {
-                document.getElementById('hot-container').innerHTML = Array(4).fill(SKELETON_CARD).join('');
-            }
+            if (showLoading) document.getElementById('hot-container').innerHTML = Array(4).fill(SKELETON_CARD).join('');
             try {
                 const apiCat = activeCategory === "Hepsi" ? "All" : activeCategory;
                 let url = `/api/trends?type=hot&category=${apiCat}`;
                 if (currentSearchQuery) url += `&q=${encodeURIComponent(currentSearchQuery)}`;
                 if (currentDateFilter) url += `&date=${currentDateFilter}`;
-
                 const res = await fetch(url);
                 const trends = await res.json();
                 const container = document.getElementById('hot-container');
-                container.innerHTML = trends.length === 0 ? 
-                    '<div class="col-span-full py-10 text-center italic text-slate-400">Bu kategori için şu an sıcak gelişme yok.</div>' : 
+                container.innerHTML = trends.length === 0 ?
+                    '<div class="col-span-full py-10 text-center italic text-slate-400">در این دسته‌بندی خبر داغی نیست.</div>' :
                     trends.map(t => renderCard(t, true)).join('');
+                await translateAndUpdateTitles(trends);
             } catch (e) {}
         }
 
         async function fetchTimeline(append = false) {
             const container = document.getElementById('timeline-container');
-            if (!append) {
-                container.innerHTML = Array(8).fill(SKELETON_CARD).join('');
-            }
+            if (!append) container.innerHTML = Array(8).fill(SKELETON_CARD).join('');
             try {
                 const limit = 32;
                 const apiCat = activeCategory === "Hepsi" ? "All" : activeCategory;
                 let url = `/api/trends?type=timeline&category=${apiCat}&offset=${timelineOffset}&limit=${limit}`;
                 if (currentSearchQuery) url += `&q=${encodeURIComponent(currentSearchQuery)}`;
                 if (currentDateFilter) url += `&date=${currentDateFilter}`;
-
                 const res = await fetch(url);
                 const trends = await res.json();
                 if (!append) container.innerHTML = '';
                 container.insertAdjacentHTML('beforeend', trends.map(t => renderCard(t, false)).join(''));
                 document.getElementById('load-more-btn').classList.toggle('hidden', trends.length < limit);
+                await translateAndUpdateTitles(trends);
             } catch (e) {}
         }
 
@@ -694,76 +592,38 @@
                 const res = await fetch('/api/market/live');
                 const data = await res.json();
                 const container = document.getElementById('market-ticker');
-                
                 if (Object.keys(data).length === 0) return;
-
-                const liveIndicator = `
-                    <div class="flex items-center gap-2 mr-6">
-                        <div class="w-2 h-2 bg-green-400 rounded-full" style="animation: pulse-green 2s infinite;"></div>
-                        <span class="text-green-400 text-[10px] font-black tracking-widest">CANLI</span>
-                    </div>`;
-
+                const liveIndicator = `<div class="flex items-center gap-2 ml-6"><div class="w-2 h-2 bg-green-400 rounded-full" style="animation: pulse-green 2s infinite;"></div><span class="text-green-400 text-[10px] font-black tracking-widest">زنده</span></div>`;
                 const tickerItems = Object.entries(data).map(([symbol, values]) => {
                     const changeClass = values.change >= 0 ? 'text-emerald-400' : 'text-rose-400';
                     const arrow = values.change >= 0 ? '▲' : '▼';
-                    
-                    let displayName = symbol.replace('USDTRY', 'DOLAR').replace('EURTRY', 'EURO').replace('GOLD-USD', 'ONS ALTIN').replace('BIST100', 'BIST 100').replace('BTC-USD', 'BITCOIN');
+                    let displayName = symbol.replace('USDTRY', 'دلار').replace('EURTRY', 'یورو').replace('GOLD-USD', 'طلا').replace('BIST100', 'بورس استانبول').replace('BTC-USD', 'بیتکوین');
                     let priceDisplay = values.price.toFixed(2);
-
-                    if (symbol === 'BTC-USD' || symbol === 'GOLD-USD') {
-                        priceDisplay = '$' + priceDisplay;
-                    } else if (symbol === 'USDTRY' || symbol === 'EURTRY') {
-                        priceDisplay += ' ₺';
-                    }
-                    
-                    return `
-                        <div class="flex items-center gap-2">
-                            <span class="text-slate-400">${displayName}</span>
-                            <span class="text-white">${priceDisplay}</span>
-                            <span class="${changeClass} flex items-center gap-0.5">
-                                ${arrow} %${Math.abs(values.change).toFixed(2)}
-                            </span>
-                        </div>
-                        <div class="w-px h-3 bg-slate-700 mx-2"></div>
-                    `;
+                    if (symbol === 'BTC-USD' || symbol === 'GOLD-USD') priceDisplay = '$' + priceDisplay;
+                    else if (symbol === 'USDTRY' || symbol === 'EURTRY') priceDisplay += ' ₺';
+                    return `<div class="flex items-center gap-2"><span class="text-slate-400">${displayName}</span><span class="text-white">${priceDisplay}</span><span class="${changeClass} flex items-center gap-0.5">${arrow} %${Math.abs(values.change).toFixed(2)}</span></div><div class="w-px h-3 bg-slate-700 mx-2"></div>`;
                 }).join('').slice(0, -42);
-
                 container.innerHTML = liveIndicator + tickerItems;
             } catch (e) {}
         }
 
-        function setCategory(event, cat) {
-            if (event && (event.ctrlKey || event.metaKey)) return; 
+        function setCategory(event, catTr, catFa) {
+            if (event && (event.ctrlKey || event.metaKey)) return;
             if (event) event.preventDefault();
-            
-            activeCategory = cat;
+            activeCategory = catTr;
+            activeCategoryFa = catFa;
             timelineOffset = 0;
-            
-            const url = cat === "Hepsi" ? "/" : `/category/${cat.toLowerCase()}`;
+            const url = catTr === "Hepsi" ? "/fa/" : `/fa/category/${catTr.toLowerCase()}`;
             window.history.pushState(null, '', url);
-
-            const catTitle = cat === "Hepsi" ? "TrendiaTR | Yapay Zeka Haber Analizi" : `${cat} | TrendiaTR`;
-            document.title = catTitle;
-            if (typeof gtag === 'function') {
-                gtag('event', 'select_category', {'category_name': cat});
-                gtag('event', 'page_view', {
-                    page_path: url,
-                    page_location: window.location.origin + url,
-                    page_title: catTitle,
-                });
-            }
-
+            document.title = catTr === "Hepsi" ? "TrendiaTR | اخبار ترکیه به فارسی" : `${catFa} | TrendiaTR فارسی`;
             const dynamicTitle = document.getElementById('dynamic-hot-title');
-            if (dynamicTitle) dynamicTitle.innerText = cat === "Hepsi" ? "" : cat + " ";
-
+            if (dynamicTitle) dynamicTitle.innerText = catTr === "Hepsi" ? "" : catFa + " ";
             const headerSubtitle = document.getElementById('header-subtitle');
-            if (headerSubtitle) headerSubtitle.innerText = cat === "Hepsi" ? "Yapay Zeka Destekli Gerçek Zamanlı Analiz" : `${cat} Dünyasından Gerçek Zamanlı Analizler`;
-
+            if (headerSubtitle) headerSubtitle.innerText = catTr === "Hepsi" ? "اخبار ترکیه — تحلیل هوش مصنوعی به زبان فارسی" : `اخبار ${catFa} — تحلیل لحظه‌ای`;
             document.querySelectorAll('.category-btn').forEach(btn => {
-                const isMatch = btn.innerText.trim() === cat;
+                const isMatch = btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(`'${catTr}'`);
                 btn.className = `category-btn px-5 py-2 rounded-xl text-sm font-bold transition-all border ${isMatch ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`;
             });
-
             refreshTimeline();
             fetchHot();
         }
@@ -782,14 +642,9 @@
         function handleSearch() {
             const q = document.getElementById('searchInput').value.trim();
             const date = document.getElementById('dateInput').value;
-            
             currentSearchQuery = q;
             currentDateFilter = date;
-            
-            const clearBtn = document.getElementById('clearSearchBtn');
-            if (q || date) clearBtn.classList.remove('hidden');
-            else clearBtn.classList.add('hidden');
-            
+            document.getElementById('clearSearchBtn').classList.toggle('hidden', !q && !date);
             fetchHot();
             refreshTimeline();
         }
@@ -805,17 +660,16 @@
         }
 
         function handleTrendClick(event, identifier) {
-            if (event.ctrlKey || event.metaKey) return; 
+            if (event.ctrlKey || event.metaKey) return;
             event.preventDefault();
             openModal(identifier);
-            window.history.pushState(null, '', `/trend/${identifier}`);
-            // page_view fired inside openModal() after title is known from API
+            window.history.pushState(null, '', `/fa/trend/${identifier}`);
         }
 
         function handleCardPlayClick(event, identifier) {
             event.preventDefault();
             event.stopPropagation();
-            openModal(identifier, true); // true = autoPlay video when modal opens
+            openModal(identifier, true);
         }
 
         function playModalVideo(videoPath) {
@@ -828,62 +682,51 @@
             const modal = document.getElementById('detail-modal');
             modal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
-            
-            document.getElementById('modal-title').innerText = "Yükleniyor...";
+            document.getElementById('modal-title').innerText = "در حال بارگذاری...";
             document.getElementById('modal-summary').innerText = "";
             document.getElementById('modal-news-list').innerHTML = "";
             document.getElementById('modal-seo-tags').innerHTML = "";
             document.getElementById('modal-tps-badge').innerText = "";
-            
             const modalMedia = document.getElementById('modal-media-container');
             modalMedia.innerHTML = '';
             modalMedia.classList.add('hidden');
-            
+
             try {
-                const res = await fetch(`/api/trends/${identifier}`);
+                // Fetch Persian translated version
+                const res = await fetch(`/api/fa/trends/${identifier}`);
                 const data = await res.json();
-                
+
                 if (data.video_path) {
                     modalMedia.classList.remove('hidden');
                     if (autoPlay) {
                         playModalVideo(data.video_path);
                     } else {
-                        const bgImg = data.image ? `<img src="/static/${data.image}" alt="${escapeHtml(data.title)}" class="w-full h-64 md:h-80 object-cover" loading="lazy">` : `<div class="w-full h-64 md:h-80 bg-slate-800"></div>`;
-                        modalMedia.innerHTML = `
-                            ${bgImg}
-                            <div class="absolute inset-0 bg-black/20 pointer-events-none"></div>
-                            <button onclick="playModalVideo('${data.video_path}')" class="absolute inset-0 flex items-center justify-center w-full h-full z-10 focus:outline-none group">
-                                <div class="w-16 h-16 md:w-20 md:h-20 bg-white/30 backdrop-blur-md border border-white/50 rounded-full flex items-center justify-center group-hover:bg-red-600 group-hover:border-red-600 transition-all duration-300 shadow-lg group-hover:scale-110">
-                                    <svg class="w-8 h-8 md:w-10 md:h-10 text-white translate-x-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                </div>
-                            </button>
-                        `;
+                        const bgImg = data.image ? `<img src="/static/${data.image}" alt="" class="w-full h-64 md:h-80 object-cover" loading="lazy">` : `<div class="w-full h-64 md:h-80 bg-slate-800"></div>`;
+                        modalMedia.innerHTML = `${bgImg}<div class="absolute inset-0 bg-black/20 pointer-events-none"></div><button onclick="playModalVideo('${data.video_path}')" class="absolute inset-0 flex items-center justify-center w-full h-full z-10 focus:outline-none group"><div class="w-16 h-16 md:w-20 md:h-20 bg-white/30 backdrop-blur-md border border-white/50 rounded-full flex items-center justify-center group-hover:bg-red-600 group-hover:border-red-600 transition-all duration-300 shadow-lg group-hover:scale-110"><svg class="w-8 h-8 md:w-10 md:h-10 text-white translate-x-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div></button>`;
                     }
                 } else if (data.image) {
-                    modalMedia.innerHTML = `<img src="/static/${data.image}" alt="${escapeHtml(data.title)}" class="w-full h-64 md:h-80 object-cover" loading="lazy">`;
+                    modalMedia.innerHTML = `<img src="/static/${data.image}" alt="" class="w-full h-64 md:h-80 object-cover" loading="lazy">`;
                     modalMedia.classList.remove('hidden');
                 }
 
-                document.getElementById('modal-title').innerText = data.title;
-                document.title = `${data.title} | TrendiaTR`;
+                document.getElementById('modal-title').innerText = data.fa_title || data.title;
+                document.title = `${data.fa_title || data.title} | TrendiaTR فارسی`;
                 if (typeof gtag === 'function') {
-                    const trendPath = `/trend/${identifier}`;
-                    gtag('event', 'page_view', {
-                        page_path: trendPath,
-                        page_location: window.location.origin + trendPath,
-                        page_title: document.title,
-                    });
+                    gtag('event', 'page_view', { page_path: `/fa/trend/${identifier}`, page_title: document.title });
                 }
+
                 const modalSummary = document.getElementById('modal-summary');
-                modalSummary.innerHTML = marked.parse(data.summary || '');
+                modalSummary.innerHTML = marked.parse(data.fa_summary || data.summary || '');
                 modalSummary.classList.add('news-content-area');
-                document.getElementById('modal-category').innerText = data.category || 'Gündem';
+
+                const catFa = FA_CAT_MAP[data.category] || data.category || 'اخبار روز';
+                document.getElementById('modal-category').innerText = catFa;
                 document.getElementById('modal-tps-badge').innerText = `${data.tps_score} TPS`;
-                
+
                 let seoHtml = '';
                 if (data.tags && data.tags.length > 0) {
-                    seoHtml += `<div class="flex flex-wrap gap-1.5 mb-2">` + 
-                        data.tags.map(t => `<span onclick="document.getElementById('searchInput').value='${t}'; handleSearch(); closeModal();" class="cursor-pointer px-2 py-1 bg-white border border-slate-200 hover:border-slate-400 text-slate-600 text-[9px] font-bold rounded-md transition-colors">#${t}</span>`).join('') +
+                    seoHtml += `<div class="flex flex-wrap gap-1.5 mb-2">` +
+                        data.tags.map(t => `<span class="px-2 py-1 bg-white border border-slate-200 text-slate-600 text-[9px] font-bold rounded-md">#${t}</span>`).join('') +
                         `</div>`;
                 }
                 if (data.entities) {
@@ -894,12 +737,12 @@
                     if (entList.length > 0) seoHtml += `<div class="flex flex-wrap gap-1.5 pt-2 border-t border-blue-100/50">${entList.join('')}</div>`;
                 }
                 document.getElementById('modal-seo-tags').innerHTML = seoHtml;
-                
+
                 document.getElementById('modal-news-list').innerHTML = data.news_list.map(news => `
                     <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                         <div class="flex justify-between items-center mb-2">
                             <span class="text-[10px] font-black text-blue-600 uppercase tracking-widest">${news.source}</span>
-                            ${news.link ? `<a href="${news.link}" target="_blank" class="text-[10px] font-bold text-slate-400">KAYNAĞA GİT ↗</a>` : ''}
+                            ${news.link ? `<a href="${news.link}" target="_blank" class="text-[10px] font-bold text-slate-400">رفتن به منبع ↗</a>` : ''}
                         </div>
                         <div class="text-xs text-slate-600 leading-relaxed">${formatRawText(news.content)}</div>
                     </div>
@@ -913,14 +756,13 @@
                         <div onclick="openModal('${rt.slug}')" class="bg-white p-5 rounded-2xl border border-slate-100 hover:border-blue-300 hover:shadow-md cursor-pointer transition-all group flex flex-col justify-between">
                             <div>
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-[9px] font-black text-blue-600 uppercase tracking-widest block">${rt.category}</span>
-                                    <span class="text-[9px] font-black px-2 py-0.5 rounded-md ${rt.relation_type === 'Ana Olay' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}">${rt.relation_type}</span>
+                                    <span class="text-[9px] font-black text-blue-600 uppercase tracking-widest block">${FA_CAT_MAP[rt.category] || rt.category}</span>
                                 </div>
-                                <h4 class="text-xs font-bold text-slate-800 group-hover:text-blue-600 line-clamp-2 leading-snug">${rt.title}</h4>
+                                <h4 class="text-xs font-bold text-slate-800 group-hover:text-blue-600 line-clamp-2 leading-snug">${escapeHtml(rt.fa_title || rt.title)}</h4>
                             </div>
                             <div class="mt-3 flex items-center justify-between text-[9px] text-slate-400 font-bold">
                                 <span>${rt.date}</span>
-                                <span class="text-blue-500">OKU →</span>
+                                <span class="text-blue-500">← بخوانید</span>
                             </div>
                         </div>
                     `).join('');
@@ -933,94 +775,30 @@
         function closeModal() {
             document.getElementById('detail-modal').classList.add('hidden');
             document.body.style.overflow = 'auto';
-            const url = activeCategory === "Hepsi" ? "/" : `/category/${activeCategory.toLowerCase()}`;
+            const url = activeCategory === "Hepsi" ? "/fa/" : `/fa/category/${activeCategory.toLowerCase()}`;
             window.history.pushState(null, '', url);
-            const backTitle = activeCategory === "Hepsi" ? "TrendiaTR | Yapay Zeka Haber Analizi" : `${activeCategory} | TrendiaTR`;
-            document.title = backTitle;
-            if (typeof gtag === 'function') {
-                gtag('event', 'page_view', {
-                    page_path: url,
-                    page_location: window.location.origin + url,
-                    page_title: backTitle,
-                });
-            }
+            document.title = activeCategory === "Hepsi" ? "TrendiaTR | اخبار ترکیه به فارسی" : `${activeCategoryFa} | TrendiaTR فارسی`;
         }
 
         function openTpsModal() {
             document.getElementById('tps-info-modal').classList.remove('hidden');
             document.body.style.overflow = 'hidden';
         }
-
         function closeTpsModal() {
             document.getElementById('tps-info-modal').classList.add('hidden');
             document.body.style.overflow = 'auto';
         }
 
-        function openContactModal(event) {
-            if(event) event.preventDefault();
-            document.getElementById('contact-modal').classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-        }
-
-        function closeContactModal() {
-            document.getElementById('contact-modal').classList.add('hidden');
-            document.body.style.overflow = 'auto';
-            document.getElementById('contactForm').reset();
-            document.getElementById('contact-message').classList.add('hidden');
-            const btn = document.getElementById('contact-submit-btn');
-            btn.disabled = false;
-            btn.innerHTML = '<span>Gönder</span>';
-        }
-
-        async function submitContactForm(event) {
-            event.preventDefault();
-            const form = event.target;
-            const btn = document.getElementById('contact-submit-btn');
-            const msgBox = document.getElementById('contact-message');
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData.entries());
-
-            btn.disabled = true;
-            btn.innerHTML = '<svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Gönderiliyor...';
-            msgBox.classList.add('hidden');
-
-            try {
-                const response = await fetch('/api/contact', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data),
-                });
-                if (response.ok) {
-                    msgBox.className = 'p-3 rounded-xl text-xs font-bold text-center bg-green-50 text-green-600 border border-green-100';
-                    msgBox.innerText = 'Mesajınız başarıyla iletildi. Teşekkürler!';
-                    msgBox.classList.remove('hidden');
-                    form.reset();
-                    setTimeout(closeContactModal, 2000);
-                } else throw new Error('Submission failed');
-            } catch (error) {
-                msgBox.className = 'p-3 rounded-xl text-xs font-bold text-center bg-red-50 text-red-600 border border-red-100';
-                msgBox.innerText = 'Bir hata oluştu. Lütfen daha sonra tekrar deneyin.';
-                msgBox.classList.remove('hidden');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<span>Gönder</span>';
-            }
-        }
-
-        // Comments Logic
+        // Comments
         function openComments(trendId) {
             currentCommentTrendId = trendId;
             document.getElementById('comments-overlay').classList.add('open');
             document.getElementById('comments-drawer').classList.add('open');
             document.body.style.overflow = 'hidden';
-            
-            // Restore name if saved
             const savedName = localStorage.getItem('trendia_user_name');
             if (savedName) document.getElementById('comment-name').value = savedName;
-            
             loadComments(currentCommentSort);
         }
-
         function closeComments() {
             document.getElementById('comments-overlay').classList.remove('open');
             document.getElementById('comments-drawer').classList.remove('open');
@@ -1031,54 +809,25 @@
             currentCommentSort = sortType;
             document.getElementById('tab-popular').className = sortType === 'popular' ? 'flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600' : 'flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700';
             document.getElementById('tab-newest').className = sortType === 'newest' ? 'flex-1 py-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600' : 'flex-1 py-3 text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700';
-            
             const list = document.getElementById('comments-list');
-            list.innerHTML = '<div class="text-center text-slate-400 text-sm py-10">Yükleniyor...</div>';
-            
+            list.innerHTML = '<div class="text-center text-slate-400 text-sm py-10">در حال بارگذاری...</div>';
             try {
                 const res = await fetch(`/api/comments/${currentCommentTrendId}?sort=${sortType}&session_id=${SESSION_ID}`);
                 const comments = await res.json();
-                
                 if (comments.length === 0) {
-                    list.innerHTML = '<div class="text-center text-slate-400 text-sm py-10">İlk yorumu siz yapın!</div>';
+                    list.innerHTML = '<div class="text-center text-slate-400 text-sm py-10">اولین نظر را شما بنویسید!</div>';
                     return;
                 }
-                
                 list.innerHTML = comments.map(c => {
                     const isPending = c.status === 'pending';
-                    const isShadow = c.status === 'shadow_banned';
-                    const statusBadge = (isPending || isShadow) ? `<span class="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded ml-2">Onay Bekliyor</span>` : '';
-                    
+                    const statusBadge = isPending ? `<span class="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded mr-2">در انتظار تأیید</span>` : '';
                     const likeClass = c.user_vote === 1 ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:bg-slate-100';
                     const dislikeClass = c.user_vote === -1 ? 'text-red-600 bg-red-50' : 'text-slate-400 hover:bg-slate-100';
-                    
-                    const date = new Date(c.created_at).toLocaleDateString('tr-TR', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
-                    
-                    return `
-                    <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                        <div class="flex justify-between items-start mb-2">
-                            <div class="flex items-center">
-                                <div class="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 mr-2">${c.user_name.charAt(0).toUpperCase()}</div>
-                                <span class="text-xs font-bold text-slate-800">${escapeHtml(c.user_name)}</span>
-                                ${statusBadge}
-                            </div>
-                            <span class="text-[10px] text-slate-400">${date}</span>
-                        </div>
-                        <p class="text-sm text-slate-600 mb-3">${escapeHtml(c.content)}</p>
-                        <div class="flex items-center gap-3">
-                            <button onclick="voteComment(${c.id}, 1)" class="flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${likeClass}">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"></path></svg>
-                                <span class="text-xs font-bold">${c.likes}</span>
-                            </button>
-                            <button onclick="voteComment(${c.id}, -1)" class="flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${dislikeClass}">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5"></path></svg>
-                                <span class="text-xs font-bold">${c.dislikes}</span>
-                            </button>
-                        </div>
-                    </div>`;
+                    const date = new Date(c.created_at).toLocaleDateString('fa-IR', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+                    return `<div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div class="flex justify-between items-start mb-2"><div class="flex items-center"><div class="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 ml-2">${c.user_name.charAt(0).toUpperCase()}</div><span class="text-xs font-bold text-slate-800">${escapeHtml(c.user_name)}</span>${statusBadge}</div><span class="text-[10px] text-slate-400">${date}</span></div><p class="text-sm text-slate-600 mb-3">${escapeHtml(c.content)}</p><div class="flex items-center gap-3"><button onclick="voteComment(${c.id}, 1)" class="flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${likeClass}"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"></path></svg><span class="text-xs font-bold">${c.likes}</span></button><button onclick="voteComment(${c.id}, -1)" class="flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${dislikeClass}"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5"></path></svg><span class="text-xs font-bold">${c.dislikes}</span></button></div></div>`;
                 }).join('');
             } catch (e) {
-                list.innerHTML = '<div class="text-center text-red-400 text-sm py-10">Yorumlar yüklenemedi.</div>';
+                list.innerHTML = '<div class="text-center text-red-400 text-sm py-10">نظرات بارگذاری نشد.</div>';
             }
         }
 
@@ -1086,40 +835,27 @@
             const nameInput = document.getElementById('comment-name');
             const textInput = document.getElementById('comment-text');
             const msgBox = document.getElementById('comment-form-msg');
-            
             const name = nameInput.value.trim();
             const content = textInput.value.trim();
-            
             if (!name || !content) {
                 msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
-                msgBox.innerText = 'Lütfen adınızı ve yorumunuzu girin.';
+                msgBox.innerText = 'لطفاً نام و نظر خود را وارد کنید.';
                 return;
             }
-            
             localStorage.setItem('trendia_user_name', name);
             msgBox.className = 'hidden';
-            
             try {
                 const res = await fetch(`/api/comments/${currentCommentTrendId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_name: name, content: content, session_id: SESSION_ID })
                 });
-                
                 const data = await res.json();
                 if (data.status === 'success') {
                     textInput.value = '';
-                    if (data.moderation_status === 'rejected') {
-                        msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
-                        msgBox.innerText = 'Yorumunuz topluluk kurallarına uymadığı için reddedildi.';
-                    } else {
-                        loadComments(currentCommentSort);
-                    }
+                    loadComments(currentCommentSort);
                 }
-            } catch (e) {
-                msgBox.className = 'text-xs font-bold mb-2 p-2 rounded bg-red-50 text-red-600 block';
-                msgBox.innerText = 'Bir hata oluştu.';
-            }
+            } catch (e) {}
         }
 
         async function voteComment(commentId, voteType) {
@@ -1133,19 +869,18 @@
             } catch (e) {}
         }
 
-        // Init routine
+        // Init
+        document.getElementById('translate-overlay').classList.add('hidden');
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('q')) {
             currentSearchQuery = urlParams.get('q');
             document.getElementById('searchInput').value = currentSearchQuery;
             document.getElementById('clearSearchBtn').classList.remove('hidden');
         }
-
         fetchHot();
         fetchTimeline();
         fetchMarketData();
-        document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
-        
+        document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('fa-IR', { day: 'numeric', month: 'long', year: 'numeric' });
         setInterval(() => fetchHot(false), 120000);
         setInterval(fetchMarketData, 60000);
         window.onpopstate = () => closeModal();

@@ -61,7 +61,7 @@ except Exception as e:
     logger.error(f"❌ Redis Connection Failed: {e}")
 
 def invalidate_trend_caches(trends=None, clear_listing=True):
-    """Unified cache invalidation for trend detail/listing keys."""
+    """Unified cache invalidation for trend detail/listing keys + FA translation caches."""
     if not redis_client:
         return
     try:
@@ -89,6 +89,12 @@ def invalidate_trend_caches(trends=None, clear_listing=True):
                 keys_to_delete.add(f"ssr_trend_{identifier}")
                 keys_to_delete.add(f"detail_v2_{identifier}")
                 keys_to_delete.add(f"detail_v1_{identifier}")
+                keys_to_delete.add(f"fa_detail_{identifier}")   # FA API cache
+
+            # FA translation Redis keys (always by numeric id)
+            if trend_id is not None:
+                keys_to_delete.add(f"fa:title:{trend_id}")
+                keys_to_delete.add(f"fa:summary:{trend_id}")
 
             for key in keys_to_delete:
                 redis_client.delete(key)
@@ -316,6 +322,205 @@ def render_trend_page(identifier):
         return html_content
     finally:
         db.close()
+
+
+# ─────────────────────────────────────────────────────────────
+#  Persian (FA) Routes & API endpoints
+# ─────────────────────────────────────────────────────────────
+
+from app.core.translation import translate_title, translate_summary, translate_titles as _batch_translate_titles
+
+FA_CATS = {
+    "Hepsi": "همه",
+    "Siyaset": "سیاست",
+    "Ekonomi": "اقتصاد",
+    "Gündem": "اخبار روز",
+    "Spor": "ورزش",
+    "Teknoloji": "فناوری",
+    "Sanat": "هنر",
+}
+
+@api_bp.route('/fa/')
+@api_bp.route('/fa')
+def fa_dashboard():
+    """صفحه اصلی نسخه فارسی"""
+    return render_template(
+        'index_fa.html',
+        active_category="Hepsi",
+        FA_CATS=FA_CATS,
+        page_title="TrendiaTR | اخبار ترکیه به فارسی",
+        page_description="اخبار لحظه‌ای ترکیه به زبان فارسی با تحلیل هوش مصنوعی — TrendiaTR",
+    )
+
+@api_bp.route('/fa/category/<name>')
+def fa_category_page(name):
+    """صفحه دسته‌بندی نسخه فارسی"""
+    cat_name = name.capitalize()
+    if cat_name not in VALID_CATEGORIES:
+        abort(404)
+    cat_fa = FA_CATS.get(cat_name, cat_name)
+    return render_template(
+        'index_fa.html',
+        active_category=cat_name,
+        FA_CATS=FA_CATS,
+        page_title=f"{cat_fa} | TrendiaTR فارسی",
+        page_description=f"اخبار {cat_fa} ترکیه به فارسی با تحلیل هوش مصنوعی",
+    )
+
+@api_bp.route('/fa/trend/<identifier>')
+def fa_trend_page(identifier):
+    """صفحه جزئیات ترند — نسخه فارسی با عنوان و خلاصه ترجمه شده"""
+    db = SessionLocal()
+    try:
+        trend = resolve_trend_smart(db, identifier)
+        if not trend:
+            abort(404)
+
+        # Canonical redirect
+        if trend.slug:
+            canonical_slug = f"{trend.id}-{trend.slug}"
+            if (re.match(r'^(\d+)-', identifier) or identifier.isdigit()) and identifier != canonical_slug:
+                return redirect(f"/fa/trend/{canonical_slug}", code=301)
+
+        # Translate title and summary (DB-backed, Redis-cached)
+        fa_title = translate_title(trend.id, trend.title or "", redis_client, db=db)
+        if trend.summary:
+            fa_summary = translate_summary(trend.id, trend.summary, redis_client, db=db)
+        else:
+            fa_summary = "تحلیل هوش مصنوعی در حال آماده‌سازی است..."
+
+        news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(20).all()
+        formatted_news = []
+        for n in news_items:
+            clean_content = n.content
+            try:
+                soup = BeautifulSoup(n.content, "html.parser")
+                for script in soup(["script", "style"]):
+                    script.extract()
+                clean_content = " ".join(soup.get_text().split())
+            except Exception:
+                pass
+            if n.source_type == 'editorial':
+                link = get_public_url()
+            else:
+                link = n.external_id or ""
+                if link and not link.startswith('http'):
+                    link = f"https://{link}"
+            formatted_news.append({"source": n.source_name, "time": n.published_at, "content": clean_content, "link": link})
+
+        related_ids = ai_engine.get_related_trends(trend.cluster_id, limit=4)
+        related_trends = db.query(Trend).filter(
+            Trend.cluster_id.in_(related_ids),
+            Trend.is_active == True,
+            Trend.id != trend.id
+        ).all()
+
+        comments_count = db.query(Comment).filter(Comment.trend_id == trend.id, Comment.status == 'approved').count()
+
+        return render_template(
+            'trend_detail_fa.html',
+            trend=trend,
+            fa_title=fa_title,
+            fa_summary=fa_summary,
+            news_list=formatted_news,
+            related_trends=related_trends,
+            comments_count=comments_count,
+            base_url=get_public_url(),
+        )
+    finally:
+        db.close()
+
+
+@api_bp.route('/api/fa/trends/<identifier>')
+def fa_get_trend_details(identifier):
+    """API جزئیات ترند با عنوان و خلاصه ترجمه‌شده به فارسی"""
+    cache_key = f"fa_detail_{identifier}"
+    if redis_client:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return make_response(cached, 200, {"Content-Type": "application/json"})
+
+    db = SessionLocal()
+    try:
+        trend = resolve_trend_smart(db, identifier)
+        if not trend:
+            return jsonify({"error": "Trend not found"}), 404
+
+        fa_title = translate_title(trend.id, trend.title or "", redis_client, db=db)
+        if trend.summary:
+            fa_summary = translate_summary(trend.id, trend.summary, redis_client, db=db)
+        else:
+            fa_summary = "تحلیل هوش مصنوعی در حال آماده‌سازی است..."
+
+        news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).order_by(desc(RawNews.published_at)).limit(20).all()
+        related_ids = ai_engine.get_related_trends(trend.cluster_id, limit=4)
+        related_data = db.query(Trend).filter(
+            Trend.cluster_id.in_(related_ids),
+            Trend.is_active == True,
+            Trend.id != trend.id
+        ).all()
+        comments_count = db.query(Comment).filter(Comment.trend_id == trend.id, Comment.status == 'approved').count()
+
+        formatted_news = []
+        for n in news_items:
+            link = n.external_id or "" if n.source_type != 'editorial' else get_public_url()
+            if link and not link.startswith('http'):
+                link = f"https://{link}"
+            formatted_news.append({"source": n.source_name, "time": n.published_at.isoformat() + 'Z', "content": n.content, "link": link})
+
+        # Translate related trend titles (use DB where available)
+        related_list = []
+        for r in related_data:
+            r_fa_title = translate_title(r.id, r.title, redis_client, db=db)
+            related_list.append({
+                "title": r.title,
+                "fa_title": r_fa_title,
+                "category": r.category,
+                "slug": r.slug or r.cluster_id,
+                "date": r.last_updated.strftime('%d.%m.%Y') if r.last_updated else "",
+            })
+
+        result = {
+            "title": trend.title,
+            "fa_title": fa_title,
+            "fa_summary": fa_summary,
+            "category": trend.category,
+            "tps_score": round(trend.final_tps, 1),
+            "summary": trend.summary or "",
+            "image": trend.cover_image,
+            "video_path": trend.video_path,
+            "comments_count": comments_count,
+            "tags": trend.tags or [],
+            "entities": trend.entities or {},
+            "news_list": formatted_news,
+            "related_trends": related_list,
+        }
+
+        response_json = json.dumps(result, ensure_ascii=False)
+        if redis_client:
+            redis_client.setex(cache_key, 600, response_json)
+        return make_response(response_json, 200, {"Content-Type": "application/json; charset=utf-8"})
+    finally:
+        db.close()
+
+
+@api_bp.route('/api/fa/translate-titles', methods=['POST'])
+def fa_translate_titles():
+    """Batch translate trend titles to Persian (client-side call from index_fa.html)"""
+    data = request.get_json(silent=True) or {}
+    ids = data.get('ids', [])
+    if not ids:
+        return jsonify({})
+
+    db = SessionLocal()
+    try:
+        trends_db = db.query(Trend.id, Trend.title).filter(Trend.id.in_(ids)).all()
+        trends_list = [{"id": t.id, "title": t.title} for t in trends_db]
+        result = _batch_translate_titles(trends_list, redis_client, db=db)
+        return jsonify({str(k): v for k, v in result.items()})
+    finally:
+        db.close()
+
 
 # --- Comment System Routes ---
 
@@ -704,6 +909,8 @@ def publish_manual_news():
             db.flush() 
             
         # 3. Apply Editorial Updates
+        trend.fa_title = None    # invalidate FA translation
+        trend.fa_summary = None  # invalidate FA translation
         trend.title = title
         trend.summary = summary
         trend.category = category
@@ -1868,12 +2075,14 @@ def admin_update_trend(trend_id):
             return jsonify({"error": "Trend not found"}), 404
             
         if new_title:
+            trend.fa_title = None    # invalidate FA translation
             trend.title = new_title
         if new_category:
             trend.category = new_category
         if new_summary is not None:
+            trend.fa_summary = None  # invalidate FA translation
             trend.summary = new_summary.strip()
-            
+
         trend.last_updated = datetime.utcnow()
         db.commit()
         invalidate_trend_caches([trend], clear_listing=True)

@@ -59,6 +59,10 @@ class Trend(Base):
     title = Column(String(255), nullable=True)
     summary = Column(Text, nullable=True)
     category = Column(String(50), default="Gündem")
+
+    # ترجمه فارسی — NULL یعنی هنوز ترجمه نشده یا منبع تغییر کرده
+    fa_title = Column(Text, nullable=True)
+    fa_summary = Column(Text, nullable=True)
     message_count = Column(Integer, default=1)
     
     # فیلدهای مربوط به سیستم امتیازدهی TPS 2.1
@@ -328,7 +332,15 @@ def init_db():
             if 'ai_processed_at' not in trend_columns:
                 print("⏱️ Adding 'ai_processed_at' column to 'trends'...")
                 conn.execute(text("ALTER TABLE trends ADD COLUMN ai_processed_at TIMESTAMP"))
-            
+
+            # ترجمه فارسی — NULL = نیاز به ترجمه / منبع تغییر کرده
+            if 'fa_title' not in trend_columns:
+                print("🇮🇷 Adding 'fa_title' column to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN fa_title TEXT"))
+            if 'fa_summary' not in trend_columns:
+                print("🇮🇷 Adding 'fa_summary' column to 'trends'...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN fa_summary TEXT"))
+
             conn.commit()
 
         # ۳. بررسی و بروزرسانی جدول raw_news
