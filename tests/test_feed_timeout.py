@@ -16,7 +16,7 @@ import os
 import sys
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -80,7 +80,9 @@ _base = None
 
 def setup_module(_=None):
     global _server, _base
-    _server = HTTPServer(("127.0.0.1", 0), _Handler)
+    # threading: the stall tests hold a handler for 30s, and a single-threaded
+    # server would make every later test queue behind them and time out.
+    _server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     _base = f"http://127.0.0.1:{_server.server_address[1]}"
     threading.Thread(target=_server.serve_forever, daemon=True).start()
 
