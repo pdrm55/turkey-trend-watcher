@@ -231,6 +231,16 @@ class SocialWorker:
                             name = item['name']
                             url = item['url']
 
+                            # Dedup FIRST. X trends persist for hours while this
+                            # poll runs every 2-5 minutes, so the same ~40 trends
+                            # came back every cycle. The check used to sit below
+                            # the enrichment block, which meant each already-seen
+                            # trend still paid for a Google News fetch, two
+                            # sequential scans of raw_news, and an Ollama call
+                            # before being thrown away by `continue`.
+                            existing = db.query(RawNews).filter(RawNews.external_id == url).first()
+                            if existing: continue
+
                             # --- Fetch Real-World Context ---
                             best_title, enriched_content, ai_clustering_text = self.fetch_google_context(name)
 
@@ -259,10 +269,6 @@ class SocialWorker:
                             if validation_result.total_score > 0:
                                 trend_entities["multi_source_score"] = validation_result.total_score
                                 trend_entities["multi_source_platforms"] = validation_result.platform_count
-
-                            # Check if exists
-                            existing = db.query(RawNews).filter(RawNews.external_id == url).first()
-                            if existing: continue
 
                             # 🧠 CRITICAL FIX: Send pure AI text to ChromaDB for perfect matching
                             cluster_id, _ = ai_engine.process_news(ai_clustering_text, "X-Trend", url)

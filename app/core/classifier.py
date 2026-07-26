@@ -164,14 +164,54 @@ def normalize_text(text: str) -> str:
     text = text.replace('İ', 'i').replace('I', 'ı').replace('Ğ', 'ğ').replace('Ü', 'ü').replace('Ş', 'ş').replace('Ö', 'ö').replace('Ç', 'ç')
     return text.lower()
 
-def calculate_keyword_score(text: str, keywords_dict: dict) -> int:
-    """Calculates weighting using strict word boundaries to prevent substring traps."""
+# Patterns are compiled once at import instead of on every call. There are ~666
+# keywords across CAT_MAP and NEGATIVE_KEYWORDS, but Python's internal re cache
+# holds 512 and *clears itself completely* on overflow — so passing pattern
+# strings to re.search() meant recompiling essentially every keyword on every
+# classification, and fast_classify() runs on every ingested item.
+# (?<!\w)/(?!\w) are used instead of \b: they handle Turkish characters correctly.
+def _compile(word: str):
+    return re.compile(r'(?<!\w)' + re.escape(word) + r'(?!\w)')
+
+
+_CAT_PATTERNS: dict = {
+    cat: {level: [(w, _compile(w)) for w in keywords[level]]
+          for level in ("high", "medium", "low")}
+    for cat, keywords in CAT_MAP.items()
+}
+_NEGATIVE_PATTERNS: dict = {
+    rule: [_compile(w) for w in config["keywords"]]
+    for rule, config in NEGATIVE_KEYWORDS.items()
+}
+_LEVEL_WEIGHTS = [("high", 60), ("medium", 20), ("low", 5)]
+
+
+def score_and_count(text: str, cat_name: str) -> tuple[int, int]:
+    """
+    Weighted score AND number of distinct keyword matches, in a single pass.
+    decide_final_category() used to walk every keyword twice — once for the
+    score, once for the match count — doubling the work on the hottest path.
+    """
     score = 0
-    for level, weight in [("high", 60), ("medium", 20), ("low", 5)]:
+    matches = 0
+    patterns = _CAT_PATTERNS[cat_name]
+    for level, weight in _LEVEL_WEIGHTS:
+        for _word, rx in patterns[level]:
+            if rx.search(text):
+                score += weight
+                matches += 1
+    return score, matches
+
+
+def calculate_keyword_score(text: str, keywords_dict: dict, cat_name: str = None) -> int:
+    """Calculates weighting using strict word boundaries to prevent substring traps."""
+    if cat_name is not None:
+        return score_and_count(text, cat_name)[0]
+    # Fallback for an ad-hoc keyword dict that is not one of the CAT_MAP entries.
+    score = 0
+    for level, weight in _LEVEL_WEIGHTS:
         for word in keywords_dict[level]:
-            # (?<!\w) and (?!\w) act as boundary checks that support Turkish characters better than \b
-            pattern = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
-            if re.search(pattern, text):
+            if _compile(word).search(text):
                 score += weight
     return score
 
@@ -179,9 +219,8 @@ def apply_negative_logic(scores: dict, text: str) -> dict:
     """Applies cross-categorical penalties safely."""
     for rule_name, config in NEGATIVE_KEYWORDS.items():
         found = False
-        for word in config["keywords"]:
-            pattern = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
-            if re.search(pattern, text):
+        for rx in _NEGATIVE_PATTERNS[rule_name]:
+            if rx.search(text):
                 found = True
                 break
 
@@ -202,7 +241,7 @@ def fast_classify(text: str) -> str:
 
     scores = {}
     for cat_name, keywords in CAT_MAP.items():
-        scores[cat_name] = calculate_keyword_score(text_norm, keywords)
+        scores[cat_name] = score_and_count(text_norm, cat_name)[0]
 
     # CRITICAL FIX: Apply negative logic BEFORE determining winner
     scores = apply_negative_logic(scores, text_norm)
@@ -234,16 +273,8 @@ def decide_final_category(ai_category: str, text: str) -> tuple:
 
     scores = {}
     match_counts = {}
-    for cat_name, keywords in CAT_MAP.items():
-        score = calculate_keyword_score(text_norm, keywords)
-
-        matches = 0
-        for level in ["high", "medium", "low"]:
-            for word in keywords[level]:
-                pattern = r'(?<!\w)' + re.escape(word) + r'(?!\w)'
-                if re.search(pattern, text_norm):
-                    matches += 1
-
+    for cat_name in CAT_MAP:
+        score, matches = score_and_count(text_norm, cat_name)
         scores[cat_name] = score
         match_counts[cat_name] = matches
 
