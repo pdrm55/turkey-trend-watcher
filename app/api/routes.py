@@ -114,6 +114,66 @@ JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop']
 # In-memory cache for trend history (Simple Dictionary)
 trend_history_cache = {}
 
+# Bounds for listing query parameters. Without them `int(request.args...)` raised
+# on any non-numeric value — a 500 for `?offset=abc` — and `?limit=1000000`
+# asked Postgres for a million rows and then cached the result.
+MAX_LISTING_OFFSET = 5000
+MAX_LISTING_LIMIT = 64
+MAX_QUERY_CHARS = 100
+
+# Categories the classifier has actually produced, beyond the SEO list. The
+# filter itself accepts anything — only caching is restricted to this set, so a
+# new category keeps working (uncached) instead of silently returning nothing.
+CACHEABLE_CATEGORIES = set(VALID_CATEGORIES) | {
+    "All", "Afet", "Sağlık", "Eğitim", "Bilim", "Yaşam", "Tarih",
+    "Savunma", "Otomotiv",
+}
+CACHEABLE_LIST_TYPES = {"timeline", "hot"}
+CACHEABLE_LIMITS = {8, 16, 24, 32, 48, 50, 64}
+MAX_CACHEABLE_OFFSET = 1000
+
+
+def _safe_int(raw, *, default, low, high):
+    """Parse a query-string integer without letting it raise or run away."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, value))
+
+
+def _listing_cache_key(category, list_type, offset, limit, q, date_str):
+    """Build the listing cache key, or None when the request must not be cached.
+
+    The key used to interpolate the raw search text, category and date straight
+    from the query string. Every distinct `?q=` minted another Redis key holding
+    a full response body, and this Redis runs with `maxmemory 0` and
+    `noeviction`, so nothing reclaims them — an attacker varying `q` grows the
+    keyspace until the host runs out of memory.
+
+    Validation gates caching, not functionality: anything outside the bounded
+    set below is still served, just computed fresh.
+    """
+    if q:
+        return None                       # unbounded by nature: never a key
+    if category not in CACHEABLE_CATEGORIES:
+        return None
+    if list_type not in CACHEABLE_LIST_TYPES:
+        return None
+    if date_str:
+        try:
+            datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return None
+    # Real pagination walks offset in whole pages; an attacker walks it one at a
+    # time to mint 5000 keys per combination. Deep pages are rare enough that
+    # serving them uncached costs less than the keyspace they would open.
+    if limit not in CACHEABLE_LIMITS or offset > MAX_CACHEABLE_OFFSET:
+        return None
+    if offset % limit:
+        return None
+    return f"trends_v2_{category}_{list_type}_{offset}_{limit}__{date_str}"
+
 def _allowed_public_hosts():
     """Hosts this site may claim to be, lowercased.
 
@@ -1665,16 +1725,16 @@ def get_trends():
     """API لیست ترندها با قابلیت کشینگ هوشمند (فاز ۶)"""
     category = request.args.get('category', 'All')
     list_type = request.args.get('type', 'timeline')
-    offset = int(request.args.get('offset', 0))
-    limit = int(request.args.get('limit', 32))
-    
+    offset = _safe_int(request.args.get('offset'), default=0, low=0, high=MAX_LISTING_OFFSET)
+    limit = _safe_int(request.args.get('limit'), default=32, low=1, high=MAX_LISTING_LIMIT)
+
     # Search & Filter Params
-    q = request.args.get('q', '').strip()
+    q = request.args.get('q', '')[:MAX_QUERY_CHARS].strip()
     date_str = request.args.get('date', '')
 
     # --- منطق کشینگ Redis ---
-    cache_key = f"trends_v2_{category}_{list_type}_{offset}_{limit}_{q}_{date_str}"
-    if redis_client:
+    cache_key = _listing_cache_key(category, list_type, offset, limit, q, date_str)
+    if redis_client and cache_key:
         cached_data = redis_client.get(cache_key)
         if cached_data:
             return make_response(cached_data, 200, {"Content-Type": "application/json"})
@@ -1771,9 +1831,9 @@ def get_trends():
         
         response_json = json.dumps(results)
         # ذخیره در کش برای ۱۲۰ ثانیه (برای حفظ تازگی اخبار صفحه اصلی)
-        if redis_client:
+        if redis_client and cache_key:
             redis_client.setex(cache_key, 120, response_json)
-            
+
         return jsonify(results)
     finally:
         db.close()
