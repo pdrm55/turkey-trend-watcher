@@ -31,12 +31,17 @@ except ImportError:
     pytest = _PytestStub()
 
 from flask import Flask
+from urllib.parse import urlparse
 
 from app.config import Config
 from app.api.routes import get_public_url, _allowed_public_hosts
 
 _app = Flask(__name__)
 BASE = Config.BASE_SITE_URL.rstrip('/')
+BASE_HOST = urlparse(BASE).netloc.lower()
+# What a rejected host must produce: the configured host, but the proxy's
+# scheme — production .env says http:// on a site served only over https.
+FALLBACK = f"https://{BASE_HOST}"
 
 
 def _url(host=None, forwarded=None, proto="https"):
@@ -52,54 +57,57 @@ def _url(host=None, forwarded=None, proto="https"):
 
 def test_attacker_host_is_ignored():
     """The reported bug: an arbitrary forwarded host reached the output."""
-    assert _url(forwarded='evil.example') == BASE
+    assert _url(forwarded='evil.example') == FALLBACK
 
 
 def test_attacker_host_via_request_host_is_ignored():
     """With no default_server on 443, request.host is attacker-reachable too."""
-    assert _url(host='evil.example') == BASE
+    assert _url(host='evil.example') == FALLBACK
 
 
 def test_configured_host_is_honoured():
-    from urllib.parse import urlparse
-    base_host = urlparse(BASE).netloc
+    base_host = BASE_HOST
     assert _url(forwarded=base_host) == f"https://{base_host}"
 
 
 def test_www_variant_is_honoured():
     """nginx serves trendiatr.com and www.trendiatr.com from one block."""
-    from urllib.parse import urlparse
-    base_host = urlparse(BASE).netloc
+    base_host = BASE_HOST
     other = base_host[4:] if base_host.startswith('www.') else f"www.{base_host}"
     assert _url(forwarded=other) == f"https://{other}"
 
 
 def test_only_the_first_forwarded_value_is_read():
     """A proxy chain appends; an attacker appends too, so take the first."""
-    from urllib.parse import urlparse
-    base_host = urlparse(BASE).netloc
+    base_host = BASE_HOST
     assert _url(forwarded=f"{base_host}, evil.example") == f"https://{base_host}"
-    assert _url(forwarded=f"evil.example, {base_host}") == BASE
+    assert _url(forwarded=f"evil.example, {base_host}") == FALLBACK
 
 
 def test_host_matching_is_case_insensitive():
-    from urllib.parse import urlparse
-    base_host = urlparse(BASE).netloc
+    base_host = BASE_HOST
     assert _url(forwarded=base_host.upper()) == f"https://{base_host.lower()}"
 
 
 def test_port_suffix_is_not_silently_accepted():
     """host:port is not the configured host; falling back is the safe answer."""
-    from urllib.parse import urlparse
-    base_host = urlparse(BASE).netloc
-    assert _url(forwarded=f"evil.example:443") == BASE
+    base_host = BASE_HOST
+    assert _url(forwarded=f"evil.example:443") == FALLBACK
     # a legitimate host with a port is not in the allowlist either, so it falls
     # back rather than emitting a URL nobody configured
-    assert _url(forwarded=f"{base_host}:8443") == BASE
+    assert _url(forwarded=f"{base_host}:8443") == FALLBACK
 
 
-def test_empty_headers_fall_back_to_configured_base():
-    assert _url(forwarded='') == BASE
+def test_empty_forwarded_header_uses_the_real_host():
+    """An absent header is normal traffic, not an attack: fall through to Host."""
+    base_host = BASE_HOST
+    assert _url(forwarded='', host=base_host) == f"https://{base_host}"
+
+
+def test_fallback_never_downgrades_to_http():
+    """Production .env carries BASE_SITE_URL=http:// on an https-only site, so
+    the fallback must take the host from config and the scheme from the proxy."""
+    assert _url(forwarded='evil.example', proto='https').startswith('https://')
 
 
 def test_allowlist_is_never_empty():
@@ -113,9 +121,9 @@ def test_no_caller_builds_urls_from_raw_headers():
     root = os.path.join(os.path.dirname(__file__), '..')
     with open(os.path.join(root, 'app/api/routes.py'), encoding='utf-8') as fh:
         src = fh.read()
-    # exactly one read, inside get_public_url
-    assert src.count("X-Forwarded-Host") == 1, (
-        "X-Forwarded-Host must only be read in get_public_url"
+    reads = src.count("request.headers.get('X-Forwarded-Host'")
+    assert reads == 1, (
+        f"X-Forwarded-Host is read {reads} times; only get_public_url may read it"
     )
 
 

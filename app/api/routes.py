@@ -145,7 +145,11 @@ def get_public_url():
     if host not in _allowed_public_hosts():
         if host:
             logger.warning("Rejected untrusted public host %r; using configured base", host)
-        return Config.BASE_SITE_URL.rstrip('/')
+        # The host comes from config, but the scheme does not: production .env
+        # carries BASE_SITE_URL=http://trendiatr.com on an https-only site, and
+        # returning that verbatim would emit http:// canonical and sitemap URLs
+        # every time an attacker tripped this branch.
+        return f"{protocol}://{urlparse(Config.BASE_SITE_URL).netloc}".rstrip('/')
 
     return f"{protocol}://{host}".rstrip('/')
 
