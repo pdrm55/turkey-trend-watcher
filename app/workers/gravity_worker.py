@@ -84,7 +84,12 @@ GC_CHECK_INTERVAL = 21600     # هر ۶ ساعت برای پاکسازی فای�
 FA_SWEEP_INTERVAL = 1800      # هر ۳۰ دقیقه: ترجمه ترندهایی که fa_title/fa_summary ندارند
 FA_SWEEP_BATCH = 8            # تعداد ترند در هر دور sweep
 MODERATION_SWEEP_INTERVAL = 120   # هر ۲ دقیقه: بازبینی نظرات معلق‌مانده
-MODERATION_SWEEP_BATCH = 20
+MODERATION_SWEEP_BATCH = 5
+# Ollama is single-threaded behind a global lock and the scoring pipeline needs
+# it continuously. A sweep that ran its whole batch at 15s each could hold that
+# lock for longer than the interval between sweeps and starve scoring, so each
+# sweep also stops on a wall-clock budget.
+MODERATION_SWEEP_TIME_BUDGET = 20
 # Only comments younger than this are swept. A comment that has been pending for
 # longer is one an admin is sitting on deliberately, and re-running the model on
 # it would quietly overrule that decision.
@@ -297,7 +302,11 @@ def sweep_pending_comments():
             Comment.created_at >= cutoff,
         ).order_by(Comment.created_at).limit(MODERATION_SWEEP_BATCH).all()
 
+        deadline = time.monotonic() + MODERATION_SWEEP_TIME_BUDGET
         for comment in pending:
+            if time.monotonic() > deadline:
+                logger.info("💬 [Moderation Sweep] Time budget reached — resuming next cycle")
+                break
             status = ai_engine.moderate_comment(
                 comment.content,
                 timeout=MODERATION_SWEEP_TIMEOUT,
