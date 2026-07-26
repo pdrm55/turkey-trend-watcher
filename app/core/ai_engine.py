@@ -584,25 +584,64 @@ end
             return []
 
     def merge_clusters(self, source_cluster_id, target_cluster_id):
-        """Moves all vectors from source cluster to target cluster in ChromaDB"""
+        """Move all vectors from source cluster to target cluster in ChromaDB.
+
+        Returns the pre-move (id, metadata) pairs on success — an empty list
+        when there was nothing to move — and None when the move failed.
+
+        The caller needs all three outcomes. This used to swallow its exception
+        and return None either way, so merge_worker could not tell a successful
+        move from a failed one and committed the Postgres side regardless. That
+        is one half of a split brain: Postgres says the trends are merged while
+        ChromaDB still has the vectors under the dead source cluster. The
+        returned pairs are the other half — they let the caller put the vectors
+        back if its own transaction then fails.
+        """
         try:
             results = self.collection.get(where={"cluster_id": source_cluster_id})
-            if not results or not results.get('ids'): 
-                return
-            
+            if not results or not results.get('ids'):
+                return []
+
+            original = [
+                (vid, dict(meta))
+                for vid, meta in zip(results['ids'], results['metadatas'])
+            ]
+
             new_metadatas = []
             for meta in results['metadatas']:
                 meta['cluster_id'] = target_cluster_id
                 meta['is_reference'] = False # Demote source references
                 new_metadatas.append(meta)
-                
+
             self.collection.update(
                 ids=results['ids'],
                 metadatas=new_metadatas
             )
             logger.info(f"🔗 ChromaDB: Merged {len(results['ids'])} vectors from {source_cluster_id[:8]} to {target_cluster_id[:8]}")
+            return original
         except Exception as e:
             logger.error(f"❌ ChromaDB Merge Error: {e}")
+            return None
+
+    def restore_vector_metadata(self, entries) -> bool:
+        """Put vector metadata back exactly as merge_clusters found it.
+
+        Used to compensate a ChromaDB move whose Postgres transaction then
+        failed. Restoring the captured metadata verbatim also restores the
+        is_reference flags the move demoted.
+        """
+        if not entries:
+            return True
+        try:
+            self.collection.update(
+                ids=[vid for vid, _ in entries],
+                metadatas=[meta for _, meta in entries],
+            )
+            logger.warning(f"↩️ ChromaDB: Rolled back {len(entries)} vector moves")
+            return True
+        except Exception as e:
+            logger.error(f"❌ ChromaDB rollback failed for {len(entries)} vectors: {e}")
+            return False
 
 # Singleton instance
 ai_engine = AIEngine()

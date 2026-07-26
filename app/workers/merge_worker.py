@@ -143,10 +143,19 @@ def _do_merge(source: Trend, target: Trend, db) -> bool:
     Source is deactivated; target absorbs all news items, arrivals, and message count.
     Returns True on success.
     """
-    try:
-        # 1. Move all ChromaDB vectors
-        ai_engine.merge_clusters(source.cluster_id, target.cluster_id)
+    # 1. Move all ChromaDB vectors. ChromaDB is not in the Postgres transaction,
+    #    so this half can succeed while the other half fails. Bail out before
+    #    touching Postgres if the move did not land, and keep what was moved so
+    #    it can be put back if the commit below fails.
+    moved_vectors = ai_engine.merge_clusters(source.cluster_id, target.cluster_id)
+    if moved_vectors is None:
+        logger.error(
+            f"❌ Merge aborted ({source.id} → {target.id}): ChromaDB move failed, "
+            f"Postgres left untouched"
+        )
+        return False
 
+    try:
         # 2. Reassign RawNews rows
         db.query(RawNews).filter(RawNews.trend_id == source.id).update(
             {"trend_id": target.id}, synchronize_session=False
@@ -176,6 +185,15 @@ def _do_merge(source: Trend, target: Trend, db) -> bool:
 
     except Exception as e:
         db.rollback()
+        # A Postgres rollback does not unmove the ChromaDB vectors. Without this
+        # compensation the source trend stays active with its rows intact but no
+        # vectors of its own: invisible to every later merge cycle, and new
+        # matching news clusters to the target instead. Put them back.
+        if not ai_engine.restore_vector_metadata(moved_vectors):
+            logger.error(
+                f"🚨 SPLIT BRAIN ({source.id} → {target.id}): Postgres rolled back but "
+                f"{len(moved_vectors)} ChromaDB vectors are still on the target cluster"
+            )
         logger.error(f"❌ Merge DB error ({source.id} → {target.id}): {e}")
         return False
 
