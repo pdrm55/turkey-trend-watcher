@@ -4,6 +4,7 @@ from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, Sys
 from sqlalchemy import desc, func, or_, and_, text
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
+from urllib.parse import urlparse
 from app.config import Config
 from bs4 import BeautifulSoup
 import re
@@ -113,10 +114,39 @@ JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop']
 # In-memory cache for trend history (Simple Dictionary)
 trend_history_cache = {}
 
+def _allowed_public_hosts():
+    """Hosts this site may claim to be, lowercased.
+
+    Nginx never sets X-Forwarded-Host, so whatever the client sends arrives
+    untouched; and with no default_server on 443, an unmatched Host lands in the
+    first TLS block, so request.host is client-controlled too. Neither input can
+    be trusted on its own — only membership of this set can.
+    """
+    base = urlparse(Config.BASE_SITE_URL).netloc.lower()
+    hosts = {base}
+    hosts.add(base[4:] if base.startswith("www.") else f"www.{base}")
+    extra = os.getenv("ADDITIONAL_PUBLIC_HOSTS", "")
+    hosts |= {h.strip().lower() for h in extra.split(",") if h.strip()}
+    return {h for h in hosts if h}
+
+
 def get_public_url():
     """محاسبه URL عمومی با در نظر گرفتن پروکسی Nginx برای سئو"""
+    # Nginx does set X-Forwarded-Proto, overriding any client value, so it is
+    # the one part of this that the client cannot choose.
     protocol = request.headers.get('X-Forwarded-Proto', 'https')
-    host = request.headers.get('X-Forwarded-Host', request.host)
+
+    # An attacker-chosen host here reached the sitemap, canonical and og:url
+    # tags, and the URL published to Telegram — and the SSR HTML is cached in
+    # Redis for 600s, so one poisoned request served every later visitor.
+    raw = request.headers.get('X-Forwarded-Host', '') or request.host or ''
+    host = raw.split(',')[0].strip().lower()
+
+    if host not in _allowed_public_hosts():
+        if host:
+            logger.warning("Rejected untrusted public host %r; using configured base", host)
+        return Config.BASE_SITE_URL.rstrip('/')
+
     return f"{protocol}://{host}".rstrip('/')
 
 # --- Basic Auth Helper ---
