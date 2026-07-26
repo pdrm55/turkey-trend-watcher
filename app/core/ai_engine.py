@@ -101,6 +101,9 @@ end
 
         self.fast_dedup_ttl = max(10, getattr(Config, "AI_FAST_DEDUP_TTL_SECONDS", 180))
         self.fast_dedup_cache = {}
+        self.fast_dedup_max_size = max(
+            100, getattr(Config, "AI_FAST_DEDUP_MAX_ENTRIES", 20000)
+        )
 
         # Eagerly connect to Redis so the global lock is ready before the first Ollama call.
         # _get_redis() is safe to call here: it catches all exceptions internally.
@@ -541,6 +544,25 @@ end
             }],
             ids=[str(uuid.uuid4())]
         )
+
+        # Entries are only ever read and overwritten, never removed, so this dict
+        # grew for the lifetime of a worker process — one entry per unique article
+        # text, forever. Expiry is checked on read but that never reclaimed
+        # anything. Sweep expired entries once the cache is oversized, and if a
+        # burst leaves everything still inside its TTL, drop the entries closest
+        # to expiry so the bound actually holds.
+        if len(self.fast_dedup_cache) >= self.fast_dedup_max_size:
+            expired = [k for k, v in self.fast_dedup_cache.items() if v["expires_at"] <= now_ts]
+            for k in expired:
+                del self.fast_dedup_cache[k]
+            overflow = len(self.fast_dedup_cache) - self.fast_dedup_max_size + 1
+            if overflow > 0:
+                oldest = sorted(
+                    self.fast_dedup_cache,
+                    key=lambda k: self.fast_dedup_cache[k]["expires_at"],
+                )[:overflow]
+                for k in oldest:
+                    del self.fast_dedup_cache[k]
 
         self.fast_dedup_cache[text_hash] = {
             "cluster_id": cluster_id,

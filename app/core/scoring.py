@@ -231,6 +231,14 @@ class TPSCalculator:
                     expired_keys = [k for k, v in _LLM_CACHE.items() if now >= v[3]]
                     for k in expired_keys:
                         del _LLM_CACHE[k]
+                    # Dropping only expired entries does not bound anything: during
+                    # a burst every entry is still inside its TTL, nothing is
+                    # evicted, and the cache grows past the cap it appears to have.
+                    # Fall back to evicting the entries closest to expiry.
+                    overflow = len(_LLM_CACHE) - _LLM_CACHE_MAX_SIZE + 1
+                    if overflow > 0:
+                        for k in sorted(_LLM_CACHE, key=lambda k: _LLM_CACHE[k][3])[:overflow]:
+                            del _LLM_CACHE[k]
                 _LLM_CACHE[trend_id] = (e_score, s_score, opinion, _time.monotonic() + _LLM_CACHE_TTL)
 
             return e_score, s_score, opinion

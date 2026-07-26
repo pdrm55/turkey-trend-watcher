@@ -5,6 +5,7 @@ from sqlalchemy import desc, func, or_, and_, text
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
 from urllib.parse import urlparse
+from collections import OrderedDict
 from app.config import Config
 from bs4 import BeautifulSoup
 import re
@@ -111,8 +112,21 @@ def invalidate_trend_caches(trends=None, clear_listing=True):
 VALID_CATEGORIES = ["Siyaset", "Ekonomi", "Gündem", "Spor", "Teknoloji", "Sanat"]
 JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop']
 
-# In-memory cache for trend history (Simple Dictionary)
-trend_history_cache = {}
+# In-memory cache for trend history, keyed by the identifier taken straight from
+# the URL. It had no bound and nothing ever removed an entry, so it grew one
+# entry per distinct trend ever requested — and since the key comes from the
+# request path, a crawler walking trend ids grew it without limit. Per gunicorn
+# worker, and never reclaimed.
+TREND_HISTORY_CACHE_MAX = 2000
+TREND_HISTORY_CACHE_TTL = 60
+trend_history_cache = OrderedDict()
+
+
+def _trend_history_cache_put(key, response_data, now):
+    trend_history_cache[key] = (response_data, now)
+    trend_history_cache.move_to_end(key)
+    while len(trend_history_cache) > TREND_HISTORY_CACHE_MAX:
+        trend_history_cache.popitem(last=False)
 
 # Bounds for listing query parameters. Without them `int(request.args...)` raised
 # on any non-numeric value — a 500 for `?offset=abc` — and `?limit=1000000`
@@ -1672,8 +1686,10 @@ def get_trend_history(identifier=None, trend_id=None):
     current_time = time.time()
     if target_id in trend_history_cache:
         cached_data, timestamp = trend_history_cache[target_id]
-        if current_time - timestamp < 60:
+        if current_time - timestamp < TREND_HISTORY_CACHE_TTL:
+            trend_history_cache.move_to_end(target_id)
             return jsonify(cached_data)
+        del trend_history_cache[target_id]
 
     db = SessionLocal()
     try:
@@ -1713,7 +1729,7 @@ def get_trend_history(identifier=None, trend_id=None):
         response_data = {"labels": labels, "data": data}
         
         # 3. Update Cache
-        trend_history_cache[target_id] = (response_data, current_time)
+        _trend_history_cache_put(target_id, response_data, current_time)
             
         return jsonify(response_data)
     finally:
