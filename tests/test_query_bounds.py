@@ -46,7 +46,12 @@ def test_admin_listing_uses_the_escaped_pattern_and_bounded_ints():
     src = inspect.getsource(routes.admin_get_trends)
     assert "_like_pattern(q)" in src
     assert "escape=" in src
-    assert "int(request.args" not in src, "unbounded int() raised a 500 on bad input"
+    # Bare int(); the negative lookbehind keeps _safe_int(request.args...) from
+    # matching its own substring.
+    import re
+
+    assert not re.search(r"(?<![_\w])int\(request\.args", src), \
+        "bare int() raised a 500 on non-numeric input"
     assert "_safe_int(" in src
 
 
