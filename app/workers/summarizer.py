@@ -26,6 +26,10 @@ from app.core.quota_guard import gemini_quota
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - Summarizer - %(levelname)s - %(message)s")
 logger = logging.getLogger("Summarizer")
+# The genai SDK logs every HTTP request at INFO, which drowns the worker's own
+# output in `docker logs`. Keep their warnings, drop the per-request chatter.
+for _noisy in ("httpx", "httpcore", "google_genai", "google.genai"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # --- Redis client (used only for FA translation cache invalidation) ---
 try:
