@@ -357,6 +357,16 @@ Pick whichever of these the story actually supports, in this order:
    target, or a comparable case — but only using numbers present in the sources.
 4. THE UNANSWERED QUESTION. Name the specific thing the sources do not yet
    settle ("kaç köyün etkilendiği açıklanmadı").
+5. THE CONCRETE DETAIL BEHIND THE EVENT — use this when the story is already
+   finished and has no "next": who organised it, how long it ran, how many took
+   part, what it replaced, which edition it was, what the result was. A completed
+   race, a closed festival, a published column: report the fact that anchors it,
+   not what it supposedly demonstrates.
+
+An event that has ended is the case you get wrong most often. There is no future
+to point at, so do not manufacture one. "Önümüzdeki yıllarda benzer etkinliklerin
+düzenlenmesi bekleniyor" and "konumlar netleşmiş oldu" are empty. Give the fact:
+who won, how many competed, which edition this was, who is hosting the next one.
 
 BANNED — this is the failure mode to avoid. Do not write sentences whose subject
 is an abstraction ("şeffaflık", "dışa bağımlılık", "teknolojik yetkinlik",
@@ -375,7 +385,15 @@ Both say nothing a reader can act on. Their concrete replacements:
   ✓ "Aracın seri üretime geçip geçmeyeceği ve çiftçiye hangi fiyattan
      sunulacağı henüz belli değil."
 
-If the sources genuinely support none of the four, state the missing piece
+ALSO BANNED — do not close on a vague curiosity formula. "... merak konusu",
+"... bekleniyor", "... işaret ediyor" and "... önemli bir faktör olacaktır" are
+the same empty move as above. If you name an open question, name the SPECIFIC
+one (option 4), with the thing that is unknown stated outright.
+
+Never describe the article itself. "Bu konuda bir analiz sunuluyor" or
+"...olduğu belirtiliyor" reports that reporting happened; write what happened.
+
+If the sources genuinely support none of the five, state the missing piece
 (option 4). Never fall back to a sentence about significance.
 
 ### STEP 4 — TELEGRAM CAPTION (`telegram_caption` field)
