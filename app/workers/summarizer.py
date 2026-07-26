@@ -183,6 +183,49 @@ if GOOGLE_API_KEY:
     except Exception as e:
         print(f"❌ Gemini Initialization Error: {e}")
 
+# Empty-analysis detector.
+#
+# Three prompt revisions could not stop the model producing significance-talk
+# instead of a concrete fact: each named phrase was dropped and an equivalent
+# took its place ("önem taşıyor" was banned first and came back two revisions
+# later; "merak konusu" appeared as a fresh substitute). Prompt-side bans are
+# probabilistic, so the rule is enforced here instead, where it is deterministic.
+#
+# A matching analysis is discarded and inject_ai_analysis() then omits the whole
+# section — which is the intended outcome: no analysis beats a hollow one.
+_EMPTY_ANALYSIS_PATTERNS = [
+    # significance / display verbs with an abstraction as subject
+    r'önem(i|li)?\s+(taşı|arz\s+ed)',
+    r'gözler\s+önüne\s+ser',
+    r'ortaya\s+koy(uyor|maktadır)',
+    r'pekiş(tir|ecek)',
+    r'yansı(t|ma)',
+    r'işaret\s+ediyor',
+    r'dikkat\s+çek(iyor|mektedir)\s*\.?\s*$',
+    # vague curiosity / expectation closers
+    r'merak\s+konusu',
+    r'bekleniyor\s*\.?\s*$',
+    r'değerlendirilebilir',
+    r'olacaktır\s*\.?\s*$',
+    r'fırsat\s+sun(uyor|ar)',
+    # reporting that reporting happened
+    r'analiz\s+sunul',
+    r'olduğu\s+belirtiliyor\s*\.?\s*$',
+    r'takibi\s+sürüyor\s*\.?\s*$',
+]
+_EMPTY_ANALYSIS_RX = [re.compile(p, re.IGNORECASE) for p in _EMPTY_ANALYSIS_PATTERNS]
+
+
+def is_empty_analysis(text: str) -> bool:
+    """True when the analysis says nothing a reader can act on."""
+    if not text or not text.strip():
+        return True
+    t = text.strip()
+    if len(t) < 25:          # too short to carry a real fact
+        return True
+    return any(rx.search(t) for rx in _EMPTY_ANALYSIS_RX)
+
+
 _AI_HEADING_TR = "### 🤖 Yapay Zeka Analizi"
 _AI_HEADING_FA = "### 🤖 تحلیل هوش مصنوعی"
 _SOURCES_HEADING_TR = "### 🔗 Kaynaklar"
@@ -393,8 +436,19 @@ one (option 4), with the thing that is unknown stated outright.
 Never describe the article itself. "Bu konuda bir analiz sunuluyor" or
 "...olduğu belirtiliyor" reports that reporting happened; write what happened.
 
-If the sources genuinely support none of the five, state the missing piece
-(option 4). Never fall back to a sentence about significance.
+### LEAVING IT OUT IS ALLOWED AND OFTEN CORRECT
+Also return `analysis_type`, naming which of the five you used:
+"next_step" | "who_affected" | "number_in_context" | "open_question" |
+"anchoring_fact" | "none".
+
+If none of the five genuinely fits — the sources carry one fact, the event is
+over, nothing follows, nothing is unresolved — return `analysis_type: "none"`
+and `ai_analysis: ""` and `fa_ai_analysis: ""`. The section is then omitted
+entirely, which is the correct outcome.
+
+An omitted analysis is ALWAYS better than a sentence about significance. You are
+not being graded on filling the field. Do not write something in order to have
+written something.
 
 ### STEP 4 — TELEGRAM CAPTION (`telegram_caption` field)
 A standalone piece for the channel. The reader must understand the whole story
@@ -741,9 +795,20 @@ def process_pending_trends():
                         _penalise_trend(trend.id, "validation failed")
                         continue
 
-                    # Assemble the AI-analysis section from its dedicated field.
+                    # Assemble the AI-analysis section from its dedicated field,
+                    # but only when it actually says something. A hollow analysis
+                    # is dropped in both languages together, so TR and FA never
+                    # disagree about whether the section exists.
+                    _analysis = ai_result.get("ai_analysis")
+                    _analysis_type = (ai_result.get("analysis_type") or "").strip().lower()
+                    if _analysis_type == "none" or is_empty_analysis(_analysis):
+                        if _analysis and _analysis.strip():
+                            print(f"   ✂️  Dropped hollow analysis for {trend.id}: {_analysis.strip()[:70]}")
+                        _analysis = None
+                        ai_result["fa_ai_analysis"] = None
+
                     extracted_summary = inject_ai_analysis(
-                        extracted_summary, ai_result.get("ai_analysis"),
+                        extracted_summary, _analysis,
                         _AI_HEADING_TR, _SOURCES_HEADING_TR,
                     )
 
