@@ -117,6 +117,9 @@ JUNK_KEYWORDS = ['burç', 'fal ', 'günlük burç', 'astroloji', 'horoskop']
 # entry per distinct trend ever requested — and since the key comes from the
 # request path, a crawler walking trend ids grew it without limit. Per gunicorn
 # worker, and never reclaimed.
+STATS_CACHE_KEY = "stats_header_v1"
+STATS_CACHE_TTL = 60
+
 TREND_HISTORY_CACHE_MAX = 2000
 TREND_HISTORY_CACHE_TTL = 60
 trend_history_cache = OrderedDict()
@@ -154,6 +157,21 @@ def _safe_int(raw, *, default, low, high):
     except (TypeError, ValueError):
         return default
     return max(low, min(high, value))
+
+
+def _like_pattern(term: str) -> str:
+    """Build a contains-pattern that treats the user's text as literal.
+
+    Interpolating a search term straight into an ILIKE pattern let the term's
+    own wildcards through: a single "%" matched every row in the table, and "_"
+    silently matched any character. Escape them so a search means a search.
+    """
+    escaped = (
+        term.replace('\\', '\\\\')
+            .replace('%', '\\%')
+            .replace('_', '\\_')
+    )
+    return f'%{escaped}%'
 
 
 def _listing_cache_key(category, list_type, offset, limit, q, date_str):
@@ -672,17 +690,25 @@ def get_comments(identifier):
         else: # popular
             comments = query.order_by(desc(Comment.likes - Comment.dislikes), desc(Comment.created_at)).limit(50).all()
             
+        # One query for every vote on the page instead of one per comment. The
+        # loop below used to issue up to 50 round trips per request, all of them
+        # the same lookup with a different id.
+        votes_by_comment = {}
+        if session_id and comments:
+            votes_by_comment = dict(
+                db.query(CommentVote.comment_id, CommentVote.vote_type)
+                .filter(
+                    CommentVote.comment_id.in_([c.id for c in comments]),
+                    CommentVote.session_id == session_id,
+                )
+                .all()
+            )
+
         results = []
         for c in comments:
-            # Check user vote
-            user_vote = 0
-            if session_id:
-                vote = db.query(CommentVote).filter(
-                    CommentVote.comment_id == c.id,
-                    CommentVote.session_id == session_id
-                ).first()
-                if vote: user_vote = vote.vote_type
-                
+            user_vote = votes_by_comment.get(c.id, 0)
+
+
             results.append({
                 "id": c.id,
                 "user_name": c.user_name,
@@ -1970,14 +1996,33 @@ def sitemap():
 @api_bp.route('/api/stats')
 def get_stats():
     """آمار کلی سیستم برای نمایش در هدر"""
+    # This is a header widget, but it ran an unbounded COUNT(*) over raw_news on
+    # every request: 494k rows, ~172ms measured, on a page element whose numbers
+    # nobody reads to the digit. A minute of staleness is invisible here.
+    if redis_client:
+        try:
+            cached = redis_client.get(STATS_CACHE_KEY)
+            if cached:
+                return jsonify(json.loads(cached))
+        except Exception as exc:
+            logger.warning(f"Stats cache read failed: {exc}")
+
     db = SessionLocal()
     try:
-        return jsonify({
+        payload = {
             "total_news": db.query(RawNews).count(),
             "total_trends": db.query(Trend).filter(Trend.is_active == True).count()
-        })
+        }
     finally:
         db.close()
+
+    if redis_client:
+        try:
+            redis_client.setex(STATS_CACHE_KEY, STATS_CACHE_TTL, json.dumps(payload))
+        except Exception as exc:
+            logger.warning(f"Stats cache write failed: {exc}")
+
+    return jsonify(payload)
 
 @api_bp.route('/api/market/live')
 def get_live_market_data():
@@ -2100,9 +2145,11 @@ def update_settings():
 @requires_auth
 def admin_get_trends():
     """لیست تمام ترندها برای مدیریت با فیلتر و صفحه‌بندی"""
-    offset = int(request.args.get('offset', 0))
-    limit = int(request.args.get('limit', 50))
-    q = request.args.get('q', '').strip()
+    # Same bounds the public listing already uses: a non-numeric offset used to
+    # raise straight out of the handler as a 500, and limit was unbounded.
+    offset = _safe_int(request.args.get('offset'), default=0, low=0, high=MAX_LISTING_OFFSET)
+    limit = _safe_int(request.args.get('limit'), default=50, low=1, high=MAX_LISTING_LIMIT)
+    q = request.args.get('q', '')[:MAX_QUERY_CHARS].strip()
     category = request.args.get('category', 'All')
     date_str = request.args.get('date', '')
     trend_id_str = request.args.get('trend_id', '').strip()
@@ -2117,7 +2164,7 @@ def admin_get_trends():
             if category != 'All':
                 query = query.filter(Trend.category == category)
             if q:
-                query = query.filter(Trend.title.ilike(f'%{q}%'))
+                query = query.filter(Trend.title.ilike(_like_pattern(q), escape='\\'))
             if date_str:
                 try:
                     filter_date = datetime.strptime(date_str, '%Y-%m-%d')

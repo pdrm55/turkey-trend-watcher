@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 # اضافه کردن مسیر ریشه پروژه به sys.path برای دسترسی به ماژول‌های داخلی
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
+from sqlalchemy import tuple_
 from app.database.models import SessionLocal, Trend, RawNews, TrendScoreHistory
 from app.core.scoring import TPSCalculator
 from app.core.scoring_queue import scoring_queue
@@ -81,6 +82,7 @@ SCORING_CHECK_INTERVAL = 5    # هر ۵ ثانیه برای امتیازدهی �
 GC_CHECK_INTERVAL = 21600     # هر ۶ ساعت برای پاکسازی فایل‌های مدیا (Garbage Collection)
 FA_SWEEP_INTERVAL = 1800      # هر ۳۰ دقیقه: ترجمه ترندهایی که fa_title/fa_summary ندارند
 FA_SWEEP_BATCH = 8            # تعداد ترند در هر دور sweep
+GC_VIDEO_BATCH = 200              # سقف هر چرخه‌ی پاکسازی ویدیو
 MODERATION_SWEEP_INTERVAL = 120   # هر ۲ دقیقه: بازبینی نظرات معلق‌مانده
 MODERATION_SWEEP_BATCH = 5
 # Ollama is single-threaded behind a global lock and the scoring pipeline needs
@@ -149,10 +151,12 @@ def cleanup_inactive_media():
     """
     db = SessionLocal()
     try:
+        # Batched: this ran unbounded over every inactive trend that still had a
+        # video. Whatever it does not reach this cycle it reaches the next one.
         inactive_video_trends = db.query(Trend).filter(
             Trend.is_active == False,
             Trend.video_path.isnot(None)
-        ).all()
+        ).limit(GC_VIDEO_BATCH).all()
 
         if not inactive_video_trends:
             return
@@ -161,6 +165,7 @@ def cleanup_inactive_media():
         
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         cleaned_count = 0
+        cleared_pairs = []
 
         for trend in inactive_video_trends:
             if trend.video_path:
@@ -175,14 +180,18 @@ def cleanup_inactive_media():
                 except Exception as e:
                     logger.error(f"❌ [GC] Failed to delete file {file_path}: {e}")
 
-                # Set RawNews video_path to None as well
-                raw_news_items = db.query(RawNews).filter(RawNews.trend_id == trend.id).all()
-                for news in raw_news_items:
-                    if news.video_path == trend.video_path:
-                        news.video_path = None
+                # Collected and cleared in one statement after the loop. Doing it
+                # per trend meant a query per trend that loaded every RawNews row
+                # the trend had, only to filter them in Python.
+                cleared_pairs.append((trend.id, trend.video_path))
 
                 trend.video_path = None
                 cleaned_count += 1
+
+        if cleared_pairs:
+            db.query(RawNews).filter(
+                tuple_(RawNews.trend_id, RawNews.video_path).in_(cleared_pairs)
+            ).update({"video_path": None}, synchronize_session=False)
 
         db.commit()
         logger.info(f"✅ [GC] Cleanup finished. Removed videos from {cleaned_count} trends.")

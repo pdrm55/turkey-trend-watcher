@@ -346,8 +346,19 @@ class TPSCalculator:
 
         # ── کوئری ۲: تمام RawNews یکجا ─────────────────────────────────────
         # جایگزین ۴ کوئری جداگانه: ref_doc (limit 3)، editorial check ×۲، x-signal+unique
+        # Every row still takes part in the aggregates below, but `content` is a
+        # large text column and this query loaded it for all of them — up to 1567
+        # rows for the biggest trend — while only three of those rows can ever be
+        # used as the reference document. Select the small columns here and fetch
+        # content separately for the rows that actually need it.
         news_items    = (
-            self.db.query(RawNews)
+            self.db.query(
+                RawNews.id,
+                RawNews.source_type,
+                RawNews.source_name,
+                RawNews.source_tier,
+                RawNews.published_at,
+            )
             .filter(RawNews.trend_id == trend_id)
             .order_by(RawNews.published_at.desc())
             .all()
@@ -359,12 +370,32 @@ class TPSCalculator:
         # ref_doc: بهترین خبر از news_items — بدون کوئری جداگانه
         ref_doc = None
         if trend.message_count > 5 and news_items:
-            ref_doc = max(news_items[:3], key=lambda x: len(x.content or "")).content or None
+            newest_contents = [
+                c for (c,) in self.db.query(RawNews.content)
+                .filter(RawNews.trend_id == trend_id)
+                .order_by(RawNews.published_at.desc())
+                .limit(3)
+                .all()
+            ]
+            if newest_contents:
+                ref_doc = max(newest_contents, key=lambda c: len(c or "")) or None
         if not ref_doc:
             ref_result = ai_engine.get_cluster_reference_doc(trend.cluster_id)
             ref_doc = ref_result[0] if isinstance(ref_result, tuple) else ref_result
         if not ref_doc and news_items:
-            ref_doc = next((n.content for n in reversed(news_items) if n.content), None)
+            # Matches the old `reversed(news_items)` walk: oldest row that has
+            # any content at all.
+            oldest = (
+                self.db.query(RawNews.content)
+                .filter(
+                    RawNews.trend_id == trend_id,
+                    RawNews.content.isnot(None),
+                    RawNews.content != "",
+                )
+                .order_by(RawNews.published_at.asc())
+                .first()
+            )
+            ref_doc = oldest[0] if oldest else None
         if not ref_doc:
             return None
 
