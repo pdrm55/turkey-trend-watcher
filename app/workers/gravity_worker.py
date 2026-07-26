@@ -58,6 +58,43 @@ FA_SWEEP_INTERVAL = 1800      # هر ۳۰ دقیقه: ترجمه ترندهای�
 FA_SWEEP_BATCH = 8            # تعداد ترند در هر دور sweep
 QUEUE_METRICS_LOG_INTERVAL = 60
 
+# The decay schedule lives in Redis so it survives a restart. It used to be
+# seeded with time.time() at startup, which pushed the first decay a full
+# DECAY_CHECK_INTERVAL into the future every time the worker came up — a few
+# deploys in an afternoon and decay never ran at all.
+#
+# Seeding with `now - INTERVAL` instead would be wrong: decay is not idempotent.
+# It computes final_tps = old * factor ** hours_since_last_updated and does not
+# touch last_updated, so running it twice in quick succession applies the same
+# elapsed time twice. Persisting the real timestamp is the only version that
+# both survives restarts and cannot double-decay.
+_DECAY_TS_KEY = "ttw:gravity:last_decay_ts"
+
+
+def _load_last_decay_time() -> float:
+    """Last decay timestamp from Redis, or now when it is unavailable.
+
+    Falling back to `now` keeps the old (conservative) behaviour: a delayed
+    decay is harmless, a duplicated one silently crushes scores.
+    """
+    if _redis_fa is None:
+        return time.time()
+    try:
+        raw = _redis_fa.get(_DECAY_TS_KEY)
+        return float(raw) if raw else 0.0
+    except Exception as exc:
+        logger.warning(f"⚠️ Could not read decay schedule from Redis ({exc}) — starting a fresh interval")
+        return time.time()
+
+
+def _store_last_decay_time(ts: float) -> None:
+    if _redis_fa is None:
+        return
+    try:
+        _redis_fa.set(_DECAY_TS_KEY, ts)
+    except Exception as exc:
+        logger.warning(f"⚠️ Could not persist decay schedule to Redis ({exc})")
+
 def _is_afet_trend(title: str) -> bool:
     """Return True if the trend title contains any disaster/emergency keyword."""
     if not title:
@@ -302,7 +339,12 @@ def main():
     """
     logger.info("🪐 TrendiaTR Calculation Worker (Async Scoring + Gravity 2.0) Started.")
     
-    last_decay_time = time.time()
+    last_decay_time = _load_last_decay_time()
+    _due_in = DECAY_CHECK_INTERVAL - (time.time() - last_decay_time)
+    logger.info(
+        f"🌍 [Gravity] Next decay cycle due in {max(0, int(_due_in))}s"
+        f"{' (never run before)' if last_decay_time == 0.0 else ''}"
+    )
     last_gc_time = time.time()
     last_fa_sweep_time = time.time() - FA_SWEEP_INTERVAL  # run first sweep soon after start
     last_queue_metrics_time = time.time()
@@ -317,6 +359,7 @@ def main():
             if current_time - last_decay_time > DECAY_CHECK_INTERVAL:
                 apply_gravity_decay()
                 last_decay_time = current_time
+                _store_last_decay_time(current_time)
 
             # ۳. Garbage Collection: Media Cleanup
             if current_time - last_gc_time > GC_CHECK_INTERVAL:
