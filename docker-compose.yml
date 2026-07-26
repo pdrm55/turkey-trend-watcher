@@ -19,6 +19,11 @@ services:
     container_name: ttw_redis
     restart: always
     networks: ["ttw_network"]
+    # Defaults are maxmemory 0 (no ceiling) and noeviction, so a flood of cache
+    # keys grows until the host runs out of memory. volatile-lru — not
+    # allkeys-lru — because the scoring retry queue and ttw:gravity:last_decay_ts
+    # carry no TTL and must never be evicted.
+    command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "volatile-lru"]
 
   chromadb:
     image: chromadb/chroma:latest
