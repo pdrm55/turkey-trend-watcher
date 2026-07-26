@@ -21,9 +21,30 @@ hand. Run: python3 -m pytest tests/test_summary_analysis_filter.py -v
 import os
 import sys
 
-import pytest
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+try:
+    import pytest
+except ImportError:
+    # The worker containers have no pytest. Provide just enough of the API for
+    # the decorators below, so this file still runs with plain python3 inside a
+    # container (see __main__ at the bottom).
+    class _ParamMark:
+        @staticmethod
+        def parametrize(argname, values):
+            def deco(fn):
+                fn._params = (argname, values)
+                return fn
+            return deco
+
+    class _PytestStub:
+        mark = _ParamMark()
+
+        @staticmethod
+        def main(_args):
+            return _run_standalone()
+
+    pytest = _PytestStub()
 
 from app.workers.summarizer import (
     inject_ai_analysis,
@@ -167,6 +188,28 @@ def test_routes_faq_extraction_still_works():
     out = inject_ai_analysis(s, "Duruşma 14 Ekim'de görülecek.", _AI_HEADING_TR, _SOURCES_HEADING_TR)
     extracted = out.split("🤖 Yapay Zeka Analizi")[-1].replace("#", "").strip()
     assert extracted.startswith("Duruşma 14 Ekim'de görülecek.")
+
+
+def _run_standalone() -> int:
+    """Minimal runner for containers without pytest. Same assertions, same names."""
+    failures = []
+    ran = 0
+    for name, fn in sorted(globals().items()):
+        if not name.startswith("test_") or not callable(fn):
+            continue
+        argname, values = getattr(fn, "_params", (None, [None]))
+        for value in values:
+            ran += 1
+            label = f"{name}[{str(value)[:45]}]" if argname else name
+            try:
+                fn(value) if argname else fn()
+                print(f"PASS  {label}")
+            except AssertionError as e:
+                failures.append((label, str(e)))
+                print(f"FAIL  {label}: {e}")
+
+    print(f"\n{ran - len(failures)}/{ran} passed")
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
