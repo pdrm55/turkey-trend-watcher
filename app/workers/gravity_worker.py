@@ -235,10 +235,24 @@ def process_pending_scores():
 
         # Fallback path: old DB flag scan to avoid dropped jobs during outages.
         if not pending_trends:
-            pending_trends = db.query(Trend).filter(
+            # Oldest first, and skip anything still inside its backoff window.
+            # Without both, a handful of trends that cannot be scored right now
+            # are re-read every five seconds and, because the scan is an
+            # unordered LIMIT, permanently occupy the batch ahead of trends that
+            # would succeed. Over-fetch so the skipped ones do not shrink the
+            # batch that actually gets worked.
+            candidates = db.query(Trend).filter(
                 Trend.needs_scoring == True,
                 Trend.is_active == True
-            ).limit(batch_size).all()
+            ).order_by(Trend.last_updated.asc()).limit(batch_size * 4).all()
+
+            if scoring_queue.enabled:
+                ready = [t for t in candidates if not scoring_queue.in_backoff(t.id)]
+                skipped = len(candidates) - len(ready)
+                if skipped:
+                    logger.debug(f"⏳ [Async Scoring] {skipped} trend(s) still backing off")
+                candidates = ready
+            pending_trends = candidates[:batch_size]
 
         if not pending_trends:
             return False # کار خاصی انجام نشد
@@ -257,14 +271,23 @@ def process_pending_scores():
                     trend.needs_scoring = False
                     if scoring_queue.enabled:
                         scoring_queue.clear_retry(trend.id)
+                        scoring_queue.clear_backoff(trend.id)
                 else:
-                    if scoring_queue.enabled and trend.id in queue_priority_by_id:
-                        scoring_queue.retry_or_drop(trend.id, queue_priority_by_id[trend.id])
-                    
+                    if scoring_queue.enabled:
+                        # Backoff applies on both paths. A queue job that is dropped
+                        # after its retries still leaves needs_scoring set, so it
+                        # lands in the fallback scan next cycle — which is the loop
+                        # this is here to break.
+                        scoring_queue.note_deferral(trend.id)
+                        if trend.id in queue_priority_by_id:
+                            scoring_queue.retry_or_drop(trend.id, queue_priority_by_id[trend.id])
+
             except Exception as inner_e:
                 logger.error(f"❌ Error scoring trend {trend.id}: {inner_e}")
-                if scoring_queue.enabled and trend.id in queue_priority_by_id:
-                    scoring_queue.retry_or_drop(trend.id, queue_priority_by_id[trend.id])
+                if scoring_queue.enabled:
+                    scoring_queue.note_deferral(trend.id)
+                    if trend.id in queue_priority_by_id:
+                        scoring_queue.retry_or_drop(trend.id, queue_priority_by_id[trend.id])
         
         db.commit()
         return True # کار انجام شد (برای مدیریت زمان خواب)

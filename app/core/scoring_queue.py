@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional, Tuple
 
 import redis
@@ -153,6 +154,65 @@ class ScoringQueue:
             return
         try:
             self._redis.hdel(self._retries, str(trend_id))
+        except Exception:
+            return
+
+    # ── Deferral backoff ────────────────────────────────────────────────────
+    # The DB fallback scan in gravity_worker re-reads `needs_scoring = true`
+    # every cycle, so a trend that cannot be scored right now comes back every
+    # five seconds forever. In production that left 19 trends looping for up to
+    # seven hours, and because the scan is a plain LIMIT they also sat in front
+    # of every newly arrived trend. Backing a failing trend off exponentially
+    # both sheds the pointless load and unblocks the queue behind it.
+    #
+    # State lives in one key per trend: "<attempts>:<ready_at>", carrying a TTL
+    # well past the delay it encodes, so escalation survives the wait and the
+    # keys still expire on their own for trends that get deleted.
+    _BACKOFF_STEPS = (60, 180, 600, 1800, 3600)
+    _BACKOFF_KEY_TTL = 7200
+
+    def _backoff_key(self, trend_id: int) -> str:
+        return f"queue:scoring:backoff:{trend_id}"
+
+    def note_deferral(self, trend_id: int) -> int:
+        """Record a failed scoring attempt. Returns the backoff seconds applied."""
+        attempts = 0
+        delay = self._BACKOFF_STEPS[0]
+        if not self._redis:
+            return delay
+        try:
+            raw = self._redis.get(self._backoff_key(trend_id))
+            if raw:
+                attempts = int(raw.split(":", 1)[0])
+            delay = self._BACKOFF_STEPS[min(attempts, len(self._BACKOFF_STEPS) - 1)]
+            self._redis.set(
+                self._backoff_key(trend_id),
+                f"{attempts + 1}:{time.time() + delay}",
+                ex=self._BACKOFF_KEY_TTL,
+            )
+        except Exception as exc:
+            logger.error(f"❌ Queue backoff write error for trend {trend_id}: {exc}")
+        return delay
+
+    def in_backoff(self, trend_id: int) -> bool:
+        """True while a previously failed trend is still inside its backoff window."""
+        if not self._redis:
+            return False
+        try:
+            raw = self._redis.get(self._backoff_key(trend_id))
+            if not raw:
+                return False
+            return time.time() < float(raw.split(":", 1)[1])
+        except Exception:
+            # Never let a backoff read stop scoring — failing open just means the
+            # trend is attempted, which is the old behaviour.
+            return False
+
+    def clear_backoff(self, trend_id: int) -> None:
+        if not self._redis:
+            return
+        try:
+            self._redis.delete(self._backoff_key(trend_id))
         except Exception:
             return
 

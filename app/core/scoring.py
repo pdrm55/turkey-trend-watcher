@@ -194,7 +194,15 @@ class TPSCalculator:
         }
         try:
             with traced_span("scoring.llm_call", model=LOCAL_MODEL_NAME):
-                result = ai_engine._ollama_post(payload, timeout=12)
+                # 12s used to be the budget here, but measured Ollama latency on
+                # this box is median 6.5s / p90 13.4s / max 25s — the model runs on
+                # CPU and every caller is serialized behind one global lock. So the
+                # slowest ~15% of scoring calls timed out purely on the clock, three
+                # of those in a row tripped the shared circuit breaker, and the
+                # following 120s of scoring attempts were skipped without ever
+                # reaching Ollama. Scoring is a background job; give it the same 25s
+                # the clustering call already uses.
+                result = ai_engine._ollama_post(payload, timeout=25, lock_wait=20)
             if result is None:
                 # Never attempted — lock contention or an open circuit. E and S are
                 # 25% of the signal each, and the old code returned 30/30 here, which
