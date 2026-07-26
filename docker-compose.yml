@@ -55,6 +55,7 @@ services:
   api_server:
     build: .
     container_name: ttw_api
+    restart: always
     depends_on:
       db_init: { condition: service_completed_successfully }
     volumes: 
@@ -69,6 +70,7 @@ services:
   dashboard:
     build: .
     container_name: ttw_dashboard
+    restart: always
     depends_on: ["api_server"]
     volumes:
       - ".:/app"
@@ -82,6 +84,7 @@ services:
   demo_dashboard:
     image: turkey-trend-watcher-dashboard:latest
     container_name: ttw_demo
+    restart: always
     depends_on: ["api_server"]
     volumes:
       - ".:/app"
@@ -101,6 +104,7 @@ services:
     volumes: [".:/app"]
     env_file: [".env"]
     networks: ["ttw_network"]
+    restart: always
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/collectors/telegram_bot.py
 
@@ -113,6 +117,7 @@ services:
     volumes: [".:/app"]
     env_file: [".env"]
     networks: ["ttw_network"]
+    restart: always
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/collectors/rss_fetcher.py
 
@@ -124,6 +129,7 @@ services:
     volumes: [".:/app"]
     env_file: [".env"]
     networks: ["ttw_network"]
+    restart: always
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/summarizer.py
 
@@ -141,6 +147,7 @@ services:
       - "./app/static/media:/app/app/static/media"
     env_file: [".env"]
     networks: ["ttw_network"]
+    restart: always
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/image_processor.py
 
@@ -152,6 +159,7 @@ services:
     volumes: [".:/app"]
     env_file: [".env"]
     networks: ["ttw_network"]
+    restart: always
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/gravity_worker.py
 
@@ -164,6 +172,7 @@ services:
     volumes: [".:/app"]
     env_file: [".env"]
     networks: ["ttw_network"]
+    restart: always
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/market_worker.py
 
@@ -176,6 +185,7 @@ services:
     volumes: [".:/app"]
     env_file: [".env"]
     networks: ["ttw_network"]
+    restart: always
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/social_worker.py
 
@@ -190,6 +200,7 @@ services:
       - "./app/static/media:/app/app/static/media"
     env_file: [".env"]
     networks: ["ttw_network"]
+    restart: always
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: python3 app/workers/x_worker.py
 

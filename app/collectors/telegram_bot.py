@@ -95,7 +95,17 @@ async def main():
 
     print("📡 Connecting to Telegram using stored session...")
     # 'ttw_session' is the SQLite file storing the authentication token
-    client = TelegramClient('ttw_session', Config.TELEGRAM_API_ID, Config.TELEGRAM_API_HASH)
+    # connection_retries=None → retry forever instead of giving up after 5 attempts
+    # (a transient blip used to crash the whole worker). auto_reconnect keeps the
+    # session alive across short network drops.
+    client = TelegramClient(
+        'ttw_session',
+        Config.TELEGRAM_API_ID,
+        Config.TELEGRAM_API_HASH,
+        connection_retries=None,
+        retry_delay=5,
+        auto_reconnect=True,
+    )
     
     try:
         # Interactive start for initial login (phone and code required)
@@ -235,8 +245,28 @@ async def main():
         except Exception as e:
             print(f"❌ Event Loop Error: {e}")
 
-    # Keep the client running
-    await client.run_until_disconnected()
+    # Keep the client running. Wrap in a reconnect loop so a dropped/refused
+    # connection reconnects in-process instead of crashing the worker (the
+    # 2026-06-16 outage: telethon gave up after 5 failures and run_until_disconnected
+    # raised ConnectionError, killing the process for ~a day).
+    while True:
+        try:
+            await client.run_until_disconnected()
+            print("⚠️ Telegram disconnected cleanly; reconnecting in 10s...")
+            await asyncio.sleep(10)
+        except Exception as e:
+            print(f"⚠️ Telegram connection lost ({e}); reconnecting in 15s...")
+            await asyncio.sleep(15)
+        try:
+            if not client.is_connected():
+                await client.connect()
+            if await client.is_user_authorized():
+                print("✅ Telegram reconnected.")
+            else:
+                print("❌ Session no longer authorized — needs re-login; exiting for restart.")
+                return
+        except Exception as e:
+            print(f"❌ Reconnect attempt failed ({e}); will retry.")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -10,6 +10,7 @@ import random
 import threading
 import urllib.parse
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont, ImageStat
@@ -48,6 +49,24 @@ USER_AGENTS = [
 # Tracked in media_meta->bing_tries; self-healing skips items at or above this limit.
 _MAX_BING_TRIES = 3
 
+# Fix: bound every network call so a single hung item can never freeze the whole
+# worker loop (root cause of the 2026-06-09 stall: a telethon download never
+# returned, asyncio.gather() waited on it forever, and no image was produced for
+# ~23h while the container still looked "healthy" to Docker).
+_ITEM_TIMEOUT = 120          # hard cap (s) for processing one news item, all stages
+_TELEGRAM_MSG_TIMEOUT = 20   # cap (s) for telethon get_messages
+_TELEGRAM_DL_TIMEOUT = 45    # cap (s) for telethon download_media
+
+# Defense-in-depth: if the main loop ever stops updating its heartbeat for this
+# long (e.g. some future, unbounded blocking call), the watchdog force-exits so
+# Docker's `restart: always` revives a fresh worker instead of stalling silently.
+_WATCHDOG_TIMEOUT = 900      # 15 min — comfortably above worst-case batch time
+
+# (connect, read) timeout for every outbound requests call. A scalar timeout only
+# caps each socket read, so a server that trickles bytes can pin a thread forever;
+# an explicit read timeout frees the thread within seconds of silence instead.
+_HTTP_TIMEOUT = (5, 8)
+
 _OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
 
 CATEGORY_COLORS = {
@@ -70,12 +89,41 @@ class ImageProcessor:
         )
         # Limit concurrent DB sessions to stay within SQLAlchemy pool size (5+10=15)
         self._sem = asyncio.Semaphore(8)
+        # Dedicated, bounded thread pool for blocking network downloads. Isolating
+        # them from asyncio's shared default executor means a batch of slow/hung
+        # requests can't starve the whole loop (the 2026-06-18 stall: blocked
+        # threads piled up in the default pool and dispatch stalled > 900s).
+        self._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="img-dl")
+        # Watchdog heartbeat: updated at the top of every main-loop iteration.
+        self._last_heartbeat = time.time()
 
     async def start(self):
-        """اتصال به تلگرام"""
+        """Connect to Telegram. The client is OPTIONAL: if the session is missing,
+        revoked, or unreachable we log and continue WITHOUT it. Only Stage-1
+        Telegram media downloads are skipped — stages 2-5 (Bing/DDG/Wikipedia/
+        placeholder) still run, so a dead session can no longer crash-loop the
+        worker or stop all image generation.
+
+        We use connect()+is_user_authorized() instead of start(), because start()
+        falls back to an interactive input('phone') prompt that raises EOFError in
+        a non-TTY container (the 2026-06-20 crash-loop)."""
         logger.info("🔌 Connecting to Telegram...")
-        await self.client.start()
-        logger.info("✅ Telegram Client Connected for Image Worker")
+        try:
+            await asyncio.wait_for(self.client.connect(), timeout=_TELEGRAM_MSG_TIMEOUT)
+            if not await self.client.is_user_authorized():
+                logger.error(
+                    "⚠️ Telegram session 'ttw_image' is NOT authorized — running WITHOUT "
+                    "Telegram media (stages 2-5 still active). Re-authenticate to restore."
+                )
+                self.client = None
+                return
+            logger.info("✅ Telegram Client Connected for Image Worker")
+        except Exception as e:
+            logger.error(
+                f"⚠️ Telegram connect failed ({e}) — running WITHOUT Telegram media "
+                f"(stages 2-5 still active)."
+            )
+            self.client = None
 
     def get_luminance(self, image):
         """محاسبه میانگین روشنایی تصویر (0-255)"""
@@ -184,6 +232,9 @@ class ImageProcessor:
 
     async def download_from_telegram(self, external_id):
         """دانلود تصویر از پیام تلگرام"""
+        # Telegram client is optional — skip Stage 1 if the session is unavailable.
+        if self.client is None:
+            return None
         try:
             parts = external_id.split('/')
             if len(parts) < 2: return None
@@ -191,7 +242,10 @@ class ImageProcessor:
             msg_id = int(parts[-1])
             username = parts[-2]
 
-            message = await self.client.get_messages(username, ids=msg_id)
+            message = await asyncio.wait_for(
+                self.client.get_messages(username, ids=msg_id),
+                timeout=_TELEGRAM_MSG_TIMEOUT,
+            )
             if not message or not message.media:
                 return None
 
@@ -203,7 +257,10 @@ class ImageProcessor:
                 thumbs = getattr(media_obj, 'thumbs', None)
                 if thumbs:
                     try:
-                        await self.client.download_media(message, file=buffer, thumb=-1)
+                        await asyncio.wait_for(
+                            self.client.download_media(message, file=buffer, thumb=-1),
+                            timeout=_TELEGRAM_DL_TIMEOUT,
+                        )
                         if buffer.tell() > 0:
                             buffer.seek(0)
                             logger.info(f"🎞️ Got Telegram built-in thumbnail for video ({external_id})")
@@ -213,9 +270,15 @@ class ImageProcessor:
                 logger.info(f"📹 Video has no thumbnail — will fall back to Bing ({external_id})")
                 return None
             else:
-                await self.client.download_media(message, file=buffer)
+                await asyncio.wait_for(
+                    self.client.download_media(message, file=buffer),
+                    timeout=_TELEGRAM_DL_TIMEOUT,
+                )
             return buffer.getvalue()
 
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Telegram download timed out ({external_id}) — falling back to other sources.")
+            return None
         except FloodWaitError as e:
             logger.warning(f"FloodWait: Sleeping {e.seconds}s")
             await asyncio.sleep(e.seconds)
@@ -244,7 +307,7 @@ class ImageProcessor:
 
             # اگر لینک مستقیم نداشتیم، صفحه را اسکرپ می‌کنیم
             if not img_url:
-                resp = requests.get(external_id, headers=headers, timeout=10)
+                resp = requests.get(external_id, headers=headers, timeout=_HTTP_TIMEOUT)
                 if resp.status_code != 200: return None, None
 
                 soup = BeautifulSoup(resp.content, 'html.parser')
@@ -262,7 +325,7 @@ class ImageProcessor:
                     from urllib.parse import urljoin
                     img_url = urljoin(external_id, img_url)
 
-            img_resp = requests.get(img_url, headers=headers, timeout=10)
+            img_resp = requests.get(img_url, headers=headers, timeout=_HTTP_TIMEOUT)
             if img_resp.status_code == 200:
                 return img_resp.content, img_url
             return None, None
@@ -281,7 +344,7 @@ class ImageProcessor:
                 "Accept-Language": "tr-TR,tr;q=0.9",
             }
             news_url = f"https://www.bing.com/news/search?q={encoded}&cc=TR&setlang=tr&count=5"
-            resp = requests.get(news_url, headers=headers, timeout=8)
+            resp = requests.get(news_url, headers=headers, timeout=_HTTP_TIMEOUT)
             if resp.status_code != 200:
                 return None, None
 
@@ -291,7 +354,7 @@ class ImageProcessor:
                 if not href.startswith("http") or "bing.com" in href:
                     continue
                 try:
-                    article = requests.get(href, headers=headers, timeout=7)
+                    article = requests.get(href, headers=headers, timeout=_HTTP_TIMEOUT)
                     asoup = BeautifulSoup(article.content, "html.parser")
                     og = (asoup.find("meta", property="og:image") or
                           asoup.find("meta", attrs={"name": "og:image"}) or
@@ -301,7 +364,7 @@ class ImageProcessor:
                         if img_url and any(p in img_url for p in self._VIDEO_URL_PATTERNS):
                             continue
                         if img_url and img_url.startswith("http"):
-                            img_resp = requests.get(img_url, headers=headers, timeout=7)
+                            img_resp = requests.get(img_url, headers=headers, timeout=_HTTP_TIMEOUT)
                             if img_resp.status_code == 200 and len(img_resp.content) > 5000:
                                 logger.info(f"📰 [Stage 2b] News image found for '{person_name}': {img_url[:60]}")
                                 return img_resp.content, img_url
@@ -343,7 +406,7 @@ class ImageProcessor:
                 "Cookie": "SRCHHPGUSR=ADLT=OFF&NRSLT=-1&CW=1366&CH=768&DPR=1&UTC=180&WLS=2&SRCHLANG=tr" # Force TR region cookie
             }
 
-            resp = requests.get(url, headers=headers, timeout=10)
+            resp = requests.get(url, headers=headers, timeout=_HTTP_TIMEOUT)
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.content, 'html.parser')
                 elements = soup.find_all('a', class_='iusc')
@@ -381,7 +444,7 @@ class ImageProcessor:
                     try:
                         img_url = candidate["url"]
                         # 📥 Download with Bing as Referer (Crucial for bypassing Hotlink Protection)
-                        img_resp = requests.get(img_url, headers={"User-Agent": headers["User-Agent"], "Referer": "https://www.bing.com/"}, timeout=7)
+                        img_resp = requests.get(img_url, headers={"User-Agent": headers["User-Agent"], "Referer": "https://www.bing.com/"}, timeout=_HTTP_TIMEOUT)
 
                         if img_resp.status_code == 200:
                             content_type = img_resp.headers.get('Content-Type', '')
@@ -409,7 +472,7 @@ class ImageProcessor:
                     f"?action=query&titles={encoded}&prop=pageimages"
                     f"&format=json&pithumbsize=800"
                 )
-                resp = requests.get(url, headers={"User-Agent": "TrendiaTR/1.0 (trendia.tr)"}, timeout=8)
+                resp = requests.get(url, headers={"User-Agent": "TrendiaTR/1.0 (trendia.tr)"}, timeout=_HTTP_TIMEOUT)
                 if resp.status_code != 200:
                     continue
                 data = resp.json()
@@ -419,7 +482,7 @@ class ImageProcessor:
                         continue
                     thumb_url = page.get("thumbnail", {}).get("source")
                     if thumb_url:
-                        img_resp = requests.get(thumb_url, headers={"User-Agent": "TrendiaTR/1.0"}, timeout=8)
+                        img_resp = requests.get(thumb_url, headers={"User-Agent": "TrendiaTR/1.0"}, timeout=_HTTP_TIMEOUT)
                         if img_resp.status_code == 200:
                             logger.info(f"📖 Wikipedia ({lang}) thumbnail found for: {entity_name}")
                             return img_resp.content
@@ -445,7 +508,7 @@ class ImageProcessor:
                 "stream": False,
                 "options": {"temperature": 0.1, "top_p": 0.9},
             }
-            resp = requests.post(_OLLAMA_API_URL, json=payload, timeout=8)
+            resp = requests.post(_OLLAMA_API_URL, json=payload, timeout=_HTTP_TIMEOUT)
             if resp.status_code == 200:
                 result = resp.json().get("response", "").strip()
                 result = re.sub(r'[^\w\s]', ' ', result)
@@ -468,7 +531,7 @@ class ImageProcessor:
             # Step 1: acquire vdir session token
             token_resp = requests.get(
                 f"https://duckduckgo.com/?q={encoded}&iax=images&ia=images",
-                headers=headers, timeout=8
+                headers=headers, timeout=_HTTP_TIMEOUT
             )
             vdir = None
             if token_resp.status_code == 200:
@@ -482,7 +545,7 @@ class ImageProcessor:
             # Step 2: fetch image results JSON
             results_resp = requests.get(
                 f"https://duckduckgo.com/i.js?q={encoded}&o=json&vdir={vdir}",
-                headers=headers, timeout=8
+                headers=headers, timeout=_HTTP_TIMEOUT
             )
             if results_resp.status_code != 200:
                 return None, None
@@ -498,7 +561,7 @@ class ImageProcessor:
                     img_resp = requests.get(
                         img_url,
                         headers={"User-Agent": headers["User-Agent"], "Referer": "https://duckduckgo.com/"},
-                        timeout=7
+                        timeout=_HTTP_TIMEOUT
                     )
                     if img_resp.status_code == 200 and "image" in img_resp.headers.get("Content-Type", ""):
                         logger.info(f"🦆 [DDG] Downloaded image from {img_url[:50]}")
@@ -664,9 +727,33 @@ class ImageProcessor:
         return f"media/{year}/{month}/{day}/{filename}"
 
     async def _process_one(self, news_id: int):
-        """Process a single news item's image. Uses its own DB session for parallel safety."""
+        """Process a single news item's image. Uses its own DB session for parallel safety.
+
+        Bounded by _ITEM_TIMEOUT so a single hung network/telethon call can never
+        freeze the whole worker loop (see _ITEM_TIMEOUT comment for the incident)."""
         async with self._sem:
-            await self._process_one_inner(news_id)
+            try:
+                await asyncio.wait_for(self._process_one_inner(news_id), timeout=_ITEM_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error(f"⏱️ News {news_id} exceeded {_ITEM_TIMEOUT}s — aborting and marking failed.")
+                self._mark_item_failed(news_id)
+
+    def _mark_item_failed(self, news_id: int):
+        """Mark an item failed (status -1) with an incremented bing_tries budget so the
+        self-healing loop can retry it later but never re-queue it indefinitely."""
+        db = SessionLocal()
+        try:
+            row = db.query(RawNews).filter(RawNews.id == news_id).first()
+            if row:
+                _meta = row.media_meta if isinstance(row.media_meta, dict) else {}
+                _meta['bing_tries'] = _meta.get('bing_tries', 0) + 1
+                row.media_meta = _meta
+                row.media_status = -1
+                db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
 
     async def _process_one_inner(self, news_id: int):
         db = SessionLocal()
@@ -693,13 +780,13 @@ class ImageProcessor:
                     if urls:
                         fallback_url = urls[0].rstrip('.,!?\'"')
                         loop = asyncio.get_event_loop()
-                        image_data, _ = await loop.run_in_executor(None, self.download_from_rss, fallback_url, None)
+                        image_data, _ = await loop.run_in_executor(self._executor, self.download_from_rss, fallback_url, None)
                         if image_data:
                             source_url = fallback_url
                             logger.info(f"🔗 Fallback successful: Extracted image from link {source_url}")
             elif news.source_type == 'rss':
                 loop = asyncio.get_event_loop()
-                image_data, source_url = await loop.run_in_executor(None, self.download_from_rss, news.external_id, news.media_url)
+                image_data, source_url = await loop.run_in_executor(self._executor, self.download_from_rss, news.external_id, news.media_url)
 
             # Stages 2–5: Bing → DuckDuckGo → Wikipedia → PIL Placeholder
             if not image_data:
@@ -725,7 +812,7 @@ class ImageProcessor:
                         # No good query yet — ask Ollama for visual keywords
                         if not search_query and trend.title:
                             search_query = await loop.run_in_executor(
-                                None, self.generate_visual_query_with_ollama, trend.title
+                                self._executor, self.generate_visual_query_with_ollama, trend.title
                             )
 
                         active_entity_name = search_query
@@ -760,7 +847,7 @@ class ImageProcessor:
                         clean_sq = search_query.split('📰')[0].split('|')[0].split('-')[0].strip()
                         logger.info(f"🔍 [Stage 2] Bing search (try {bing_tries + 1}/{_MAX_BING_TRIES}): '{clean_sq[:40]}'")
                         image_data, fallback_url = await loop.run_in_executor(
-                            None, self.download_from_bing_images, clean_sq
+                            self._executor, self.download_from_bing_images, clean_sq
                         )
                         if image_data:
                             source_url = fallback_url
@@ -771,7 +858,7 @@ class ImageProcessor:
                             news_query = person_fallback_query or search_query
                             if news_query:
                                 image_data, fallback_url = await loop.run_in_executor(
-                                    None, self.download_person_image_from_news, news_query
+                                    self._executor, self.download_person_image_from_news, news_query
                                 )
                                 if image_data:
                                     source_url = fallback_url
@@ -785,7 +872,7 @@ class ImageProcessor:
                 if not image_data and search_query:
                     logger.info(f"🦆 [Stage 3] DuckDuckGo search: '{search_query[:40]}'")
                     image_data, fallback_url = await loop.run_in_executor(
-                        None, self.download_from_duckduckgo_images, search_query
+                        self._executor, self.download_from_duckduckgo_images, search_query
                     )
                     if image_data:
                         source_url = fallback_url
@@ -794,7 +881,7 @@ class ImageProcessor:
                         # Fallback: retry DDG with just the person name
                         logger.info(f"🦆 [Stage 3b] DuckDuckGo person-name fallback: '{person_fallback_query[:40]}'")
                         image_data, fallback_url = await loop.run_in_executor(
-                            None, self.download_from_duckduckgo_images, person_fallback_query
+                            self._executor, self.download_from_duckduckgo_images, person_fallback_query
                         )
                         if image_data:
                             source_url = fallback_url
@@ -808,7 +895,7 @@ class ImageProcessor:
                         if not entity:
                             continue
                         logger.info(f"📖 [Stage 4] Wikipedia search for: {entity}")
-                        wiki_data = await loop.run_in_executor(None, self.download_from_wikipedia, entity)
+                        wiki_data = await loop.run_in_executor(self._executor, self.download_from_wikipedia, entity)
                         if wiki_data:
                             image_data = wiki_data
                             source_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(entity)}"
@@ -904,14 +991,32 @@ class ImageProcessor:
         finally:
             db.close()
 
+    async def _watchdog(self):
+        """Force-exit if the main loop stops making progress, so `restart: always`
+        revives a fresh worker. Guards against any future unbounded blocking call —
+        the failure mode behind the 2026-06-09 multi-hour silent stall."""
+        while True:
+            await asyncio.sleep(60)
+            stalled = time.time() - self._last_heartbeat
+            if stalled > _WATCHDOG_TIMEOUT:
+                logger.critical(
+                    f"🚨 Watchdog: main loop stalled for {int(stalled)}s "
+                    f"(> {_WATCHDOG_TIMEOUT}s) — forcing restart."
+                )
+                os._exit(1)
+
     async def run(self):
         await self.start()
         logger.info("🚀 Image Worker Loop Started (Time Limit: 48h active)")
+
+        # Start the stall watchdog as a background task.
+        asyncio.create_task(self._watchdog())
 
         last_retry_time = 0
         last_video_heal_time = 0
 
         while True:
+            self._last_heartbeat = time.time()
             news_ids = []
             db = SessionLocal()
             try:
@@ -1047,8 +1152,16 @@ class ImageProcessor:
                 continue
 
             logger.info(f"📸 Processing {len(news_ids)} actionable images in parallel...")
-            # Fix 3: parallel processing — each _process_one has its own DB session
-            await asyncio.gather(*[self._process_one(nid) for nid in news_ids])
+            # Fix 3: parallel processing — each _process_one has its own DB session.
+            # return_exceptions=True so a raised error in one task can never propagate
+            # out of gather() and kill the loop; each item is also wrapped in a timeout.
+            results = await asyncio.gather(
+                *[self._process_one(nid) for nid in news_ids],
+                return_exceptions=True,
+            )
+            for nid, res in zip(news_ids, results):
+                if isinstance(res, Exception):
+                    logger.error(f"⚠️ Unhandled error for news {nid}: {res!r}")
 
             await asyncio.sleep(10)
 

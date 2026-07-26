@@ -1,5 +1,5 @@
 <div align="center">
-
+ 
 # TrendiaTR
 
 **AI-powered Turkish news aggregation, clustering, and real-time trend scoring**
@@ -58,6 +58,32 @@ Category-aware decay (politics decays slowest, sports fastest) is applied every 
 | Collectors | feedparser · Telethon · BeautifulSoup |
 | Dashboard | Streamlit · pandas · Docker SDK · psutil |
 
+## Core Engine Features & Safeguards
+
+### 1. AI Concurrency & Resilience Guards
+Running local LLMs (Ollama) along with Gemini API calls requires robust rate limit and hardware protection:
+* **Two-Level Locking System**: Implements a local process-level `Semaphore` combined with a cross-container global lock in Redis (`ttw:ollama:global_lock`). This serializes Ollama queries across all background scraping workers (`ttw_rss`, `ttw_social`, etc.) to prevent high CPU/RAM spikes on the server.
+* **Ollama Circuit Breaker**: If Ollama experiences consecutive failures (e.g., timeout or memory exhaustion), a circuit breaker trips after 3 failures, failing fast and blocking subsequent Ollama requests for 120 seconds to prevent workers from stalling.
+* **Rolling Cache (Vector Search)**: Vector search (using ChromaDB & multilingual-e5-large) is filtered to clusters from the last 48 hours for high-performance retrieval. It uses dynamic auto-merge and verification thresholds based on the source (tighter thresholds are applied to X-Trends to prevent merging unrelated hashtags).
+
+### 2. Interactive Comments & AI Auto-Moderation
+Users can leave comments on news trend clusters under the following lifecycle:
+* **AI Auto-Moderation**: All comments are analyzed in real time by the local Qwen model (`moderate_comment` in `ai_engine.py`) to categorize them into `approved`, `rejected`, or `pending` (detecting profanity, hate speech, spam).
+* **Double-Vote Protection**: Voting (likes/dislikes) is tracked by `CommentVote` using session fingerprints (`session_id`) to prevent vote manipulation.
+* **Pending & Shadow Ban Visibility**: Users see their own pending/rejected comments via their session fingerprint to minimize spammer awareness.
+
+### 3. Financial Market Data Ingestion
+The `market_worker` runs continuously in the background to fetch live market rates via Yahoo Finance (`yfinance`):
+* **Supported Assets**: Dolar (`USDTRY`), Euro (`EURTRY`), Altın (`GOLD-USD`), Bitcoin (`BTC-USD`), and BIST 100 (`BIST100`).
+* **Caching & Storage**:
+  - Updates a Redis cache (`market_ticker` key, 300s TTL) every 60 seconds for live rendering on the website's top ticker bar.
+  - Logs asset histories to the PostgreSQL database (`MarketHistory` table) every 15 minutes to support historical interactive charts.
+
+### 4. Database Reconnection Resiliency
+The PostgreSQL database engine is configured with `pool_pre_ping=True` and `pool_recycle=3600` in SQLAlchemy. If the database crashes, restarts, or connections drop, the pool automatically detects the issue and reconnects without crashing the web app.
+
+---
+
 ## Quick start
 
 ```bash
@@ -101,6 +127,8 @@ SECRET_KEY                        # Flask session signing (required)
 BASE_SITE_URL=https://trendiatr.com
 ```
 
+---
+
 ## Services
 
 Service names differ from container names — use the **service name** in `docker compose` commands:
@@ -130,15 +158,33 @@ sudo docker compose restart summarizer gravity_worker
 sudo docker compose logs api_server --tail=50 -f
 ```
 
+---
+
+## B2B REST API (/api/v1/)
+
+TrendiaTR provides a fully documented B2B REST API for external consumers:
+* **Endpoints**:
+  - `GET /api/v1/health`: Anonymous endpoint for uptime monitors.
+  - `GET /api/v1/trends`: Returns active trends above the client's TPS threshold. Supports parameters for `min_tps`, `category`, `trajectory`, `limit`, and `offset`.
+  - `GET /api/v1/trends/<id>`: Returns full trend detail including all articles, media, and cluster data.
+  - `GET /api/v1/trends/<id>/media`: Accesses all media (images + videos) from a trend's article cluster.
+  - `GET /api/v1/usage`: Returns current API limits and usage stats.
+* **Authentication**: Requires a token in the `Authorization: Bearer <key>` header, `X-API-Key` header, or as a query parameter.
+* **B2B Admin Dashboard**: Administrators can manage API clients, set monthly limits, plans, and reset keys via `Basic Auth` at `/api/admin/b2b/clients`.
+
+---
+
 ## Persian (FA) edition
 
 The `/fa/` routes mirror the Turkish site with an RTL layout. Translation follows a 3-layer lookup — **Redis (24h TTL) → `trends.fa_title` / `trends.fa_summary` DB columns → Gemini API** — so each cluster is translated at most once and persists across restarts.
 
-- **On creation**: `summarizer.py` translates title + summary in one Gemini call the moment Turkish content is generated, preserving the original Markdown structure (`### ⚡ خلاصه`, bullet lists, emoji icons).
-- **Self-healing**: `gravity_worker` runs a sweep every 30 minutes that finds any trend with a missing/incomplete translation and retries it (highest-TPS first).
-- **Invalidation**: when a Turkish title or summary changes, `fa_title`/`fa_summary` are set to `NULL` and the Redis cache is cleared, forcing a fresh translation.
+* **On creation**: `summarizer.py` translates title + summary in one Gemini call the moment Turkish content is generated, preserving the original Markdown structure (`### ⚡ خلاصه`, bullet lists, emoji icons).
+* **Self-healing**: `gravity_worker` runs a sweep every 30 minutes that finds any trend with a missing/incomplete translation and retries it (highest-TPS first).
+* **Invalidation**: when a Turkish title or summary changes, `fa_title`/`fa_summary` are set to `NULL` and the Redis cache is cleared, forcing a fresh translation.
 
 All Gemini token usage (summarization **and** translation) is logged to `ai_monitor_data.csv` and visualized in the admin dashboard, with a filter to break down cost by call type.
+
+---
 
 ## Testing
 
@@ -149,6 +195,8 @@ python3 -m pytest tests/test_b2b_api.py -v
 # Run a single test class
 python3 -m pytest tests/test_b2b_api.py::TestAuthentication -v
 ```
+
+---
 
 ## Database migrations
 
@@ -161,6 +209,8 @@ There is no Alembic. Schema changes are applied by `init_db()` in `app/database/
        conn.execute(text("ALTER TABLE trends ADD COLUMN new_column TYPE"))
    ```
 3. `sudo docker compose restart api_server` to apply.
+
+---
 
 ## Further reading
 
