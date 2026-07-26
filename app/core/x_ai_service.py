@@ -4,6 +4,8 @@ import logging
 from google import genai
 from google.genai import types
 
+from app.core.quota_guard import gemini_quota
+
 logger = logging.getLogger(__name__)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -129,6 +131,16 @@ def generate_x_content(trend_title: str, cluster_text: str, category: str) -> di
         logger.error("Gemini client is not initialized.")
         return None
 
+    # Shared quota breaker — x_worker retries the same two trends every 15s when
+    # the downstream image step fails, so an exhausted quota used to absorb
+    # thousands of rejected requests a day from this path alone.
+    if gemini_quota.is_open():
+        logger.info(
+            f"Gemini quota cooling down ({gemini_quota.seconds_remaining()}s left) "
+            f"— skipping X content generation."
+        )
+        return None
+
     content_type = _detect_content_type(category)
     rules = _CONTENT_RULES[content_type]
 
@@ -201,9 +213,11 @@ UYARI — reply_hook için:
             return None
 
         logger.info(f"Generated {content_type} content for: {trend_title[:50]}")
+        gemini_quota.record_success()
         return result
 
     except Exception as e:
+        gemini_quota.record_failure(e)
         logger.error(f"X Content Generation Failed: {e}")
         return None
 

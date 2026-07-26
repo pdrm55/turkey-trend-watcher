@@ -11,6 +11,20 @@ from app.database.models import SessionLocal, Trend, XDraft, SystemSettings
 from app.core.x_ai_service import generate_x_content, _detect_content_type
 from app.core.x_image_gen import generate_x_image
 from app.core.tg_notifier import notify_admin_x_draft
+from app.core.quota_guard import gemini_quota
+
+# Per-trend retry backoff (in memory; a restart clearing it is harmless).
+_RETRY_AFTER: dict[int, float] = {}
+_RETRY_STRIKES: dict[int, int] = {}
+_BACKOFF_STEPS = [300, 900, 3600, 21600]  # 5m → 15m → 1h → 6h
+
+
+def _penalise(trend_id: int, reason: str):
+    strikes = _RETRY_STRIKES.get(trend_id, 0)
+    delay = _BACKOFF_STEPS[min(strikes, len(_BACKOFF_STEPS) - 1)]
+    _RETRY_STRIKES[trend_id] = strikes + 1
+    _RETRY_AFTER[trend_id] = time.time() + delay
+    logger.warning(f"⏭️ Trend {trend_id} backed off {delay}s ({reason}, strike {strikes + 1}).")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,11 +84,18 @@ def run_worker():
             # ==========================================
             confirmed_draft_subquery = db.query(XDraft.trend_id).filter(XDraft.draft_type == 'confirmed')
 
-            candidates = db.query(Trend).filter(
+            # Fetch a window rather than the top 2: a trend whose image step keeps
+            # failing used to sit at the head of this queue and burn a fresh
+            # Gemini call every 15s forever, while the trends behind it were
+            # never reached.
+            pool = db.query(Trend).filter(
                 Trend.is_active == True,
                 Trend.final_tps >= confirm_threshold,
                 ~Trend.id.in_(confirmed_draft_subquery)
-            ).order_by(desc(Trend.final_tps)).limit(2).all()
+            ).order_by(desc(Trend.final_tps)).limit(30).all()
+
+            _now = time.time()
+            candidates = [t for t in pool if _RETRY_AFTER.get(t.id, 0) <= _now][:2]
 
             for trend in candidates:
                 try:
@@ -87,11 +108,15 @@ def run_worker():
 
                     ai_data = generate_x_content(trend.title, trend.summary, trend.category)
                     if not ai_data:
+                        _penalise(trend.id, "content generation failed")
                         continue
 
                     tps_val = round(trend.final_tps, 1)
                     image_path = generate_x_image(trend.id, trend.title, ai_data['image_short_text'], tps_val)
                     if not image_path:
+                        # The Gemini call above is already paid for. Back off so we
+                        # do not repurchase it every 15s for the same trend.
+                        _penalise(trend.id, "image generation failed")
                         continue
 
                     slug_part = trend.slug if trend.slug else trend.id

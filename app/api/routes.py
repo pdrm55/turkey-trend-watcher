@@ -468,10 +468,16 @@ def fa_get_trend_details(identifier):
                 link = f"https://{link}"
             formatted_news.append({"source": n.source_name, "time": n.published_at.isoformat() + 'Z', "content": n.content, "link": link})
 
-        # Translate related trend titles (use DB where available)
+        # Translate related trend titles in ONE batch call. Looping
+        # translate_title() here meant up to 4 separate Gemini round-trips per
+        # cold request, on top of the 2 for the trend itself.
+        related_fa = _batch_translate_titles(
+            [{"id": r.id, "title": r.title} for r in related_data],
+            redis_client, db=db
+        )
         related_list = []
         for r in related_data:
-            r_fa_title = translate_title(r.id, r.title, redis_client, db=db)
+            r_fa_title = related_fa.get(r.id) or r.title
             related_list.append({
                 "title": r.title,
                 "fa_title": r_fa_title,
