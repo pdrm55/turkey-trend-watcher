@@ -1004,8 +1004,18 @@ def publish_manual_news():
             trend.is_published = True
 
         db.commit()
+
+        # This was the only admin mutation route that never invalidated. It rewrites
+        # title/summary/category/cover_image above, so stale ssr_trend_* (600s),
+        # detail_v2_* (600s) and trends_v2_* (120s) survived the edit. Worse, it
+        # nulls fa_title/fa_summary at line 918 without clearing Redis, so the old
+        # Persian text kept being served for 24h while the DB said untranslated —
+        # the invariant CLAUDE.md documents. invalidate_trend_caches() covers both,
+        # including the fa:title:/fa:summary: keys.
+        invalidate_trend_caches([trend], clear_listing=True)
+
         return jsonify({"status": "success", "trend_id": trend.id, "tps": trend.final_tps})
-        
+
     except Exception as e:
         db.rollback()
         logger.error(f"Publish Editorial News Error: {e}")

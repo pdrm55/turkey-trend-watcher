@@ -172,6 +172,13 @@ end
         Circuit breaker: after _CB_THRESHOLD consecutive failures the circuit opens for
                   _CB_COOLDOWN seconds; all callers get {} until it resets.
         Graceful degradation: if Redis is unavailable the call proceeds with local guard only.
+
+        Return value distinguishes two very different outcomes, because callers were
+        treating them alike and inventing data from the second one:
+          None — the call was never attempted (circuit open, or another caller holds
+                 a lock). Nothing is known about the input.
+          {}   — the call was attempted and failed.
+        Both are falsy, so `if not result` keeps working for callers that do not care.
         """
         now = time.monotonic()
         if now < AIEngine._cb_open_until:
@@ -179,12 +186,12 @@ end
                 f"Ollama circuit OPEN — skipping call "
                 f"(resets in {AIEngine._cb_open_until - now:.0f}s)"
             )
-            return {}
+            return None
 
         # Level 1: local within-process guard (non-blocking — skip if already in use)
         acquired_local = AIEngine._ollama_lock.acquire(blocking=False)
         if not acquired_local:
-            return {}
+            return None
 
         lock_value = str(uuid.uuid4())
         acquired_redis = False
@@ -194,7 +201,7 @@ end
             acquired_redis = self._acquire_redis_lock(lock_value, acquire_timeout)
             if not acquired_redis:
                 logger.warning("Ollama Redis global lock timed out — skipping call")
-                return {}
+                return None
 
             response = requests.post(OLLAMA_API_URL, json=payload, timeout=timeout)
             response.raise_for_status()

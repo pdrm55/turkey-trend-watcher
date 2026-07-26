@@ -7,6 +7,33 @@ from app.config import Config
 
 logger = logging.getLogger("ScoringQueue")
 
+# KEYS[1]=pending set, KEYS[2]=target lane, ARGV[1]=trend id.
+# Returns 1 when the job was pushed, 0 when it was already pending.
+_LUA_ENQUEUE = """
+if redis.call('SADD', KEYS[1], ARGV[1]) == 0 then
+  return 0
+end
+redis.call('LPUSH', KEYS[2], ARGV[1])
+return 1
+"""
+
+# KEYS[1]=breaking lane, KEYS[2]=normal lane, KEYS[3]=pending set.
+# Returns {id, lane} or nil. The SREM must land with the RPOP, otherwise a crash
+# in between leaves the id pending forever while nothing holds it in a lane.
+_LUA_POP = """
+local tid = redis.call('RPOP', KEYS[1])
+local lane = 'breaking'
+if not tid then
+  tid = redis.call('RPOP', KEYS[2])
+  lane = 'normal'
+end
+if not tid then
+  return nil
+end
+redis.call('SREM', KEYS[3], tid)
+return {tid, lane}
+"""
+
 
 class ScoringQueue:
     """
@@ -33,6 +60,14 @@ class ScoringQueue:
         self._pending = "queue:scoring:pending"
         self._retries = "queue:scoring:retries"
 
+        self._enqueue_script = None
+        self._pop_script = None
+        if self._redis is not None:
+            # Lua runs atomically inside Redis, which a MULTI pipeline cannot do
+            # here: the LPUSH has to be conditional on the SADD result.
+            self._enqueue_script = self._redis.register_script(_LUA_ENQUEUE)
+            self._pop_script = self._redis.register_script(_LUA_POP)
+
     @property
     def enabled(self) -> bool:
         return self._redis is not None
@@ -55,11 +90,15 @@ class ScoringQueue:
                 )
                 return False
 
-            # sAdd returns 1 only for first insertion => dedup pending jobs.
-            if self._redis.sadd(self._pending, tid) == 0:
-                return True
-
-            self._redis.lpush(self._lane(priority), tid)
+            # SADD-then-LPUSH must be atomic. A crash between the two used to leave
+            # the id in `pending` with nothing in a lane; every later enqueue then
+            # hit `sadd == 0` and returned early, so the trend became permanently
+            # unqueueable. The orphans also inflated scard(_pending) — the
+            # backpressure counter — and once that drift reached max_size every
+            # normal-lane job was silently dropped for good.
+            self._enqueue_script(
+                keys=[self._pending, self._lane(priority)], args=[tid]
+            )
             return True
         except Exception as exc:
             logger.error(f"❌ Queue enqueue error for trend {tid}: {exc}")
@@ -71,15 +110,12 @@ class ScoringQueue:
             return None
 
         try:
-            tid = self._redis.rpop(self._q_breaking)
-            lane = self.BREAKING
-            if tid is None:
-                tid = self._redis.rpop(self._q_normal)
-                lane = self.NORMAL
-            if tid is None:
+            result = self._pop_script(
+                keys=[self._q_breaking, self._q_normal, self._pending]
+            )
+            if not result:
                 return None
-
-            self._redis.srem(self._pending, tid)
+            tid, lane = result[0], result[1]
             return int(tid), lane
         except Exception as exc:
             logger.error(f"❌ Queue pop error: {exc}")
@@ -103,9 +139,9 @@ class ScoringQueue:
                 )
                 return False
 
-            # Dedup set removal already happened on pop; push directly.
-            self._redis.lpush(self._lane(priority), tid)
-            self._redis.sadd(self._pending, tid)
+            # Dedup set removal already happened on pop, so this re-adds and pushes
+            # through the same atomic path as a fresh enqueue.
+            self._enqueue_script(keys=[self._pending, self._lane(priority)], args=[tid])
             logger.warning(f"♻️ Queue retry trend {tid} ({current_retry}/{self.max_retries})")
             return True
         except Exception as exc:

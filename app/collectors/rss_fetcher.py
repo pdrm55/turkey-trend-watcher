@@ -108,6 +108,17 @@ def fetch_and_process_rss(sources_override: dict = None):
     sources_override: optional dict of {name: url} to poll instead of the full source file.
     """
     db = SessionLocal()
+    try:
+        return _run_rss_cycle(db, sources_override)
+    finally:
+        # The close() used to sit after an unguarded commit at the end of the body,
+        # so any commit failure (slug collision, deadlock) propagated to main() and
+        # leaked the session plus its pooled connection. QueuePool is 5+10; enough
+        # of those and the worker wedges — this showed up as `idle in transaction`.
+        db.close()
+
+
+def _run_rss_cycle(db, sources_override: dict = None):
     rss_feeds = sources_override if sources_override is not None else load_rss_sources()
     current_time_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     
@@ -263,7 +274,20 @@ def fetch_and_process_rss(sources_override: dict = None):
                     pending_writes = 0
 
                 # فاز ۶.۲: حذف محاسبه همزمان TPS. ورکر پس‌زمینه این کار را انجام می‌دهد.
-                
+
+            # Commit at the feed boundary so a later feed's failure cannot roll this
+            # one back. The rollback below wraps the whole feed loop, and pending
+            # writes used to span up to `batch_size` items across several feeds —
+            # one bad feed discarded all of them. Their vectors were already in
+            # ChromaDB, leaving cluster_ids with no Trend row.
+            if pending_writes > 0:
+                db.commit()
+                for trend_id, priority in pending_queue_jobs:
+                    if not scoring_queue.enqueue(trend_id, priority):
+                        print(f"⚠️ Queue enqueue skipped for trend {trend_id} (RSS).")
+                pending_queue_jobs.clear()
+                pending_writes = 0
+
         except Exception as e:
             db.rollback()
             pending_queue_jobs.clear()
@@ -277,7 +301,6 @@ def fetch_and_process_rss(sources_override: dict = None):
                 print(f"⚠️ Queue enqueue skipped for trend {trend_id} (RSS).")
 
     print(f"✅ RSS Cycle Finished: {new_trends_count} New Trends, {signal_updates_count} Signal Updates.")
-    db.close()
     return new_trends_count, signal_updates_count
 
 def main():

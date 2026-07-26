@@ -195,6 +195,18 @@ class TPSCalculator:
         try:
             with traced_span("scoring.llm_call", model=LOCAL_MODEL_NAME):
                 result = ai_engine._ollama_post(payload, timeout=12)
+            if result is None:
+                # Never attempted — lock contention or an open circuit. E and S are
+                # 25% of the signal each, and the old code returned 30/30 here, which
+                # run_tps_cycle then persisted as a genuine score. Under contention
+                # the pipeline was writing invented numbers to the database. Prefer a
+                # stale cached reading; failing that, say so and let the caller defer.
+                stale = _LLM_CACHE.get(trend_id) if trend_id is not None else None
+                if stale:
+                    emit_metric("scoring.llm.contention_stale", 1, model=LOCAL_MODEL_NAME)
+                    return stale[0], stale[1], stale[2]
+                emit_metric("scoring.llm.contention_defer", 1, model=LOCAL_MODEL_NAME)
+                return None, None, False
             if not result:
                 emit_metric("scoring.llm.failure", 1, model=LOCAL_MODEL_NAME)
                 return 30, 30, False
@@ -219,24 +231,36 @@ class TPSCalculator:
             emit_metric("scoring.llm.failure", 1, model=LOCAL_MODEL_NAME)
             return 30, 30, False
 
-    def calculate_novelty(self, text: str, message_count: int = 1) -> float:
+    def calculate_novelty(
+        self, text: str, message_count: int = 1, cluster_id: str = None
+    ) -> float:
         """
         محاسبه امتیاز تازگی (N) — وزن ۱۵٪ در فرمول TPS.
 
         Fix 3: اگر ترند قبلاً کلاستر شده (message_count > 1)، ChromaDB پرسیده نمی‌شود.
         ترند کلاستر‌شده به‌تعریف novel نیست — مقدار ثابت ۲۰.۰ برگردانده می‌شود.
         این بهینه‌سازی ~۱ ChromaDB call در >۸۰٪ سیکل‌ها حذف می‌کند.
+
+        `cluster_id` excludes the trend's own vectors from the search. Without it
+        this signal was structurally dead: process_news() writes the document to
+        Chroma (ai_engine.py:469) *before* the Trend row exists, so the nearest
+        neighbour was always the trend's own just-inserted vector. Measured on
+        live data: unfiltered similarity 0.9534 (> 0.88 → N=0.0) versus 0.8484
+        against other clusters (→ N=15.2). Every trend scored 0 on 15% of TPS.
         """
         if message_count > 1:
             return 20.0
 
         try:
             vector  = ai_engine.get_embedding(text, is_query=True)
-            results = ai_engine.collection.query(
-                query_embeddings=[vector],
-                n_results=1,
-                include=["distances"],
-            )
+            query_args = {
+                "query_embeddings": [vector],
+                "n_results": 1,
+                "include": ["distances"],
+            }
+            if cluster_id:
+                query_args["where"] = {"cluster_id": {"$ne": cluster_id}}
+            results = ai_engine.collection.query(**query_args)
             if not results["distances"] or not results["distances"][0]:
                 return 100.0
             max_similarity = 1.0 - results["distances"][0][0]
@@ -341,8 +365,16 @@ class TPSCalculator:
         v     = self.calculate_velocity(trend_id, arrivals, trend, has_editorial)
         accel = self.calculate_acceleration(arrivals)
         e, s, is_opinion = self.analyze_semantic_and_entity(ref_doc, trend_id=trend_id)
+        if e is None:
+            # Ollama was busy and no cached reading exists. Returning None leaves
+            # needs_scoring set (gravity_worker.py:181) so the trend is retried
+            # instead of being stamped with a made-up score.
+            logger.warning(f"⏸️ Trend {trend_id}: E/S unavailable (Ollama busy) — deferring scoring")
+            return None
         # Fix 3: برای ترند کلاستر‌شده ChromaDB پرسیده نمی‌شود
-        n = self.calculate_novelty(ref_doc, message_count=trend.message_count)
+        n = self.calculate_novelty(
+            ref_doc, message_count=trend.message_count, cluster_id=trend.cluster_id
+        )
 
         # ── ۲. ضریب تقویت استراتژیک ─────────────────────────────────────────
         c_boost      = self.get_criticality_boost(ref_doc)
