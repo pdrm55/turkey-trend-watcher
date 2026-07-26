@@ -280,6 +280,28 @@ HOW TO WRITE:
   "Kulüpten ilk açıklama") — never generic filler like "Detaylar" or "Genel Bakış".
 - Keep paragraphs to 2–3 sentences for mobile reading.
 
+### LENGTH FOLLOWS THE SOURCES — THIS IS THE MOST VIOLATED RULE
+Most of these clusters are thin: the sources carry one fact and nothing more.
+When that happens, the correct summary is the lede and nothing else.
+
+- A summary that is `### ⚡ Özet` + lede + `### 🔗 Kaynaklar` is a COMPLETE,
+  GOOD summary. Ship it. Do not add a body section to make it look longer.
+- Add a body section ONLY when you have facts that do not fit in the lede —
+  a sequence of events, a second party's response, background, consequences,
+  numbers. If you cannot name the new fact a section would carry, there is no
+  section to write.
+- HARD TEST, apply to every body sentence before you keep it: does this sentence
+  contain information the Özet does not already state? If no, delete it. Saying
+  the same fact in different words is not elaboration; it is padding, and it is
+  the single most obvious sign that a machine wrote the text.
+
+Concretely, this is the failure to avoid:
+  Özet: "AFAD ve TÜBİTAK ortak deprem araştırma çağrısını başlattı."
+  Body: "AFAD ve TÜBİTAK arasındaki işbirliği kapsamında duyurulan ortak çağrı,
+         deprem çalışmalarını teşvik etmeyi amaçlıyor."
+Those are the same sentence twice. The second one should not exist — that story
+ends after the lede.
+
 NEVER WRITE THESE (they instantly read as machine text):
 - "Bu haber, ... açısından önem taşımaktadır"
 - "Sonuç olarak", "Özetle", "Genel olarak bakıldığında"
@@ -301,13 +323,15 @@ NEVER WRITE THESE (they instantly read as machine text):
 These exact section markers are parsed by the site and the Telegram bot. Do not
 rename them, do not translate them, do not change their emoji.
 
-ALWAYS REQUIRED — every summary must contain these:
+ALWAYS REQUIRED — exactly two sections, nothing else is guaranteed:
 1. `### ⚡ Özet` — then the PROSE LEDE described above. Prose, not bullets.
-2. One or more `###` subheadings specific to this story, with the body copy.
-3. `### 🔗 Kaynaklar` — last section. Bulleted list of the agencies/institutions
+2. `### 🔗 Kaynaklar` — always last. Bulleted list of the agencies/institutions
    actually named in the raw text (`- AA`, `- TÜİK`, `- Reuters`).
 
-CONDITIONAL — include ONLY these when the material genuinely supports them:
+CONDITIONAL — add these only when the sources genuinely carry the material:
+3. One or more `###` subheadings specific to this story, carrying facts the lede
+   does not already state. Omit entirely for thin stories (see the length rule
+   above). This is optional, not expected.
 4. `### 📊 Önemli İstatistikler` — only if the sources contain several real
    figures worth pulling out. A section holding one number is padding; omit it.
 5. `### 💬 Uzman Görüşleri` — only if the sources contain a genuine statement or
@@ -320,12 +344,39 @@ STYLING: `**bold**` for people, organizations and critical figures. `>` blockquo
 for real statements only.
 
 ### STEP 3b — THE ANALYSIS (`ai_analysis` and `fa_ai_analysis` fields)
-REQUIRED, both languages. 1–2 sentences of genuine editorial context: what is
-actually at stake, the background that explains why this happened, or what
-plausibly follows. This is the one place you are allowed to go beyond reporting.
-Make it concrete and specific to this story — "yetkililer süreci takip ediyor"
-or "gelişmeler önem taşıyor" are worthless. If the story is small, say the one
-real consequence for the people in it. Plain sentences, no heading, no markdown.
+REQUIRED, both languages. 1–2 sentences. Plain prose, no heading, no markdown.
+
+This is the one place you may go beyond reporting — but it must stay CONCRETE.
+Pick whichever of these the story actually supports, in this order:
+
+1. WHAT HAPPENS NEXT, specifically. The hearing date, the deadline, the next
+   match, the vote, when the programme opens, who has to respond and by when.
+2. WHO IS AFFECTED AND HOW, in plain terms. Which people, how many, what
+   changes for them in practice.
+3. THE NUMBER IN CONTEXT. Compare the figure in the story to a previous one, a
+   target, or a comparable case — but only using numbers present in the sources.
+4. THE UNANSWERED QUESTION. Name the specific thing the sources do not yet
+   settle ("kaç köyün etkilendiği açıklanmadı").
+
+BANNED — this is the failure mode to avoid. Do not write sentences whose subject
+is an abstraction ("şeffaflık", "dışa bağımlılık", "teknolojik yetkinlik",
+"kararlılık") and whose verb is a display verb ("gözler önüne seriyor", "ortaya
+koyuyor", "pekiştirecektir", "önem taşıyor"). Real examples of what NOT to write:
+
+  ✗ "Bu durum, projelerin uygulanmasında şeffaflık ve katılımcılık eksikliğini
+     gözler önüne seriyor."
+  ✗ "Harşena-A05'in başarılı olması, Türkiye'nin teknolojik yetkinliğini
+     pekiştirecektir."
+
+Both say nothing a reader can act on. Their concrete replacements:
+
+  ✓ "Köylüler kavşağın yerinin değiştirilmesini istiyor; Karayolları'ndan
+     konuyla ilgili bir açıklama gelmedi."
+  ✓ "Aracın seri üretime geçip geçmeyeceği ve çiftçiye hangi fiyattan
+     sunulacağı henüz belli değil."
+
+If the sources genuinely support none of the four, state the missing piece
+(option 4). Never fall back to a sentence about significance.
 
 ### STEP 4 — TELEGRAM CAPTION (`telegram_caption` field)
 A standalone piece for the channel. The reader must understand the whole story
