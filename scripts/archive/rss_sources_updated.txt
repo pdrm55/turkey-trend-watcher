@@ -1,0 +1,117 @@
+# TrendiaTR — RSS Sources (Updated)
+# Format: source_name,url,tier,category,speed
+# tier: 1=wire/en güvenilir, 2=büyük medya, 3=uzman/niş
+# speed: 1=breaking(60s), 2=fast(5min), 3=standard(15min)
+
+# ══════════════════════════════════════════════
+# TIER 1 — WIRE SERVICE (poll: 60 saniye)
+# ══════════════════════════════════════════════
+anadolu_sondakika,https://www.aa.com.tr/tr/rss/default?cat=son-dakika,1,gundem,1
+anadolu_guncel,https://www.aa.com.tr/tr/rss/default?cat=guncel,1,gundem,1
+anadolu_spor,https://www.aa.com.tr/tr/rss/default?cat=spor,1,spor,1
+anadolu_ekonomi,https://www.aa.com.tr/tr/rss/default?cat=ekonomi,1,ekonomi,1
+anadolu_dunya,https://www.aa.com.tr/tr/rss/default?cat=dunya,1,dunya,1
+
+# ══════════════════════════════════════════════
+# TIER 2 — BÜYÜK TV KANALLARI (poll: 3 dakika)
+# ══════════════════════════════════════════════
+trthaber,https://www.trthaber.com/sondakika.rss,2,gundem,1
+trtspor,https://www.trthaber.com/spor.rss,2,spor,1
+ntv,https://www.ntv.com.tr/gundem.rss,2,gundem,1
+ntv_sondakika,https://www.ntv.com.tr/son-dakika.rss,2,gundem,1
+cnnturk,https://www.cnnturk.com/feed/rss/all/news,2,gundem,1
+haberturk,https://www.haberturk.com/rss,2,gundem,1
+haberturk_spor,https://www.haberturk.com/rss/spor,2,spor,1
+ahaber,https://www.ahaber.com.tr/rss/gundem.xml,2,gundem,1
+ahaber_sondakika,https://www.ahaber.com.tr/rss/anasayfa.xml,2,gundem,1
+foxhaber,https://www.foxhaber.com.tr/rss/anasayfa.xml,2,gundem,1
+showtv,https://www.showtv.com.tr/rss/haber,2,gundem,2
+tele1,https://tele1.com.tr/feed/,2,gundem,2
+halktv,https://halktv.com.tr/feed/,2,gundem,2
+
+# ══════════════════════════════════════════════
+# TIER 2 — GAZETELER (poll: 5 dakika)
+# ══════════════════════════════════════════════
+hurriyet,https://www.hurriyet.com.tr/rss/anasayfa,2,gundem,2
+hurriyet_sondakika,https://www.hurriyet.com.tr/rss/sondakika,2,gundem,1
+sabah,https://www.sabah.com.tr/rss/anasayfa.xml,2,gundem,2
+sabah_sondakika,https://www.sabah.com.tr/rss/sondakika.xml,2,gundem,1
+milliyet,https://www.milliyet.com.tr/rss/rssNew/gundemRss.xml,2,gundem,2
+sozcu,https://www.sozcu.com.tr/rss/son-dakika.xml,2,gundem,1
+cumhuriyet,https://www.cumhuriyet.com.tr/rss/son_dakika.xml,2,gundem,2
+yenisafak,https://www.yenisafak.com/rss,2,gundem,2
+posta,https://www.posta.com.tr/rss/anasayfa.xml,2,gundem,2
+takvim,https://www.takvim.com.tr/rss/anasayfa.xml,2,gundem,2
+aksam,https://www.aksam.com.tr/rss,2,gundem,2
+turkiyegazetesi,https://www.turkiyegazetesi.com.tr/rss/rss.xml,2,gundem,2
+
+# ══════════════════════════════════════════════
+# TIER 2 — ULUSLARARASI TÜRKÇE (poll: 5 dakika)
+# ══════════════════════════════════════════════
+bbc_turkce,http://feeds.bbci.co.uk/turkce/rss.xml,2,dunya,2
+dw_turkce,https://rss.dw.com/xml/rss-tur-all,2,dunya,2
+euronews_tr,https://tr.euronews.com/rss?format=rss&level=theme&name=news,2,dunya,2
+sputnik_tr,https://tr.sputniknews.com/export/rss2/archive/index.xml,2,dunya,2
+voa_turkce,https://www.voaturkce.com/api/z$gite_tvi,2,dunya,2
+indyturk,https://www.indyturk.com/rss,2,dunya,2
+
+# ══════════════════════════════════════════════
+# TIER 2 — DİJİTAL HABER SİTELERİ (poll: 5 dakika)
+# ══════════════════════════════════════════════
+t24,https://t24.com.tr/rss,2,gundem,2
+gazeteduvar,https://www.gazeteduvar.com.tr/export/rss,2,gundem,2
+diken,https://www.diken.com.tr/feed/,2,gundem,2
+bianet,https://bianet.org/bianet/rss,2,gundem,2
+ensonhaber,https://www.ensonhaber.com/rss/ensonhaber.xml,2,gundem,1
+haber7,https://i12.haber7.net/sondakika/news.xml,2,gundem,1
+mynet,https://www.mynet.com/haber/rss,2,gundem,2
+birgun,https://www.birgun.net/rss,2,gundem,3
+evrensel,https://www.evrensel.net/rss/haber.xml,2,gundem,3
+
+# ══════════════════════════════════════════════
+# TIER 3 — SPOR (poll: 3 dakika)
+# ══════════════════════════════════════════════
+fanatik,https://www.fanatik.com.tr/rss,3,spor,1
+fotomac,https://www.fotomac.com.tr/rss,3,spor,1
+sporx,https://www.sporx.com/rss/,3,spor,1
+aspor,https://www.aspor.com.tr/rss/ana-sayfa.xml,3,spor,1
+mackolik,https://www.mackolik.com/rss,3,spor,2
+milliyet_spor,https://www.milliyet.com.tr/rss/rssNew/sporRss.xml,3,spor,2
+sabah_spor,https://www.sabah.com.tr/rss/spor.xml,3,spor,2
+hurriyet_spor,https://www.hurriyet.com.tr/rss/spor,3,spor,2
+ntv_spor,https://www.ntvspor.net/rss,3,spor,1
+
+# ══════════════════════════════════════════════
+# TIER 3 — EKONOMİ & PİYASA (poll: 5 dakika)
+# ══════════════════════════════════════════════
+bloomberght,https://www.bloomberght.com/rss,3,ekonomi,1
+dunya,https://www.dunya.com/rss,3,ekonomi,2
+paratic,https://paratic.com/feed/,3,ekonomi,2
+ekonomim,https://www.ekonomim.com/rss,3,ekonomi,2
+bigpara,https://bigpara.hurriyet.com.tr/rss/,3,ekonomi,2
+paraanaliz,https://www.paraanaliz.com/feed/,3,ekonomi,2
+borsagundem,https://www.borsagundem.com/rss,3,ekonomi,1
+coin_turkce,https://koinmedya.com/feed/,3,kripto,2
+
+# ══════════════════════════════════════════════
+# TIER 3 — TEKNOLOJİ (poll: 15 dakika)
+# ══════════════════════════════════════════════
+webtekno,https://www.webtekno.com/rss.xml,3,teknoloji,2
+shiftdelete,https://shiftdelete.net/feed,3,teknoloji,2
+donanimhaber,https://www.donanimhaber.com/rss/tum/,3,teknoloji,2
+egirisim,https://egirisim.com/feed/,3,teknoloji,3
+chip_tr,https://www.chip.com.tr/rss,3,teknoloji,3
+
+# ══════════════════════════════════════════════
+# TIER 3 — AFET & ACİL (poll: 60 saniye)
+# ══════════════════════════════════════════════
+afad,https://en.afad.gov.tr/rss,3,afet,1
+emsc_deprem,https://www.emsc-csem.org/service/rss/rss.php?typ=unverified,3,afet,1
+usgs_deprem,https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.atom,3,afet,1
+gdacs,https://www.gdacs.org/xml/rss.xml,3,afet,1
+
+# ══════════════════════════════════════════════
+# TIER 3 — BÖLGESEL (poll: 15 dakika)
+# ══════════════════════════════════════════════
+ibb_istanbul,https://www.ibb.istanbul/rss,3,bolgesel,3
+ankara_bb,https://www.ankara.bel.tr/rss,3,bolgesel,3

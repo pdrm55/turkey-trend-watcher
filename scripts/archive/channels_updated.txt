@@ -1,0 +1,84 @@
+# TrendiaTR — Telegram Channel List (Updated)
+# Format: @handle | category | tier (1=wire/resmi, 2=büyük medya, 3=uzman/niş)
+# Tier 1 = en güvenilir ve hızlı
+
+# ══════════════════════════════════════════════
+# WIRE SERVICE & RESMİ (Tier 1)
+# ══════════════════════════════════════════════
+anadoluajansi          # Anadolu Ajansı — en hızlı TR wire
+trthaberdijital        # TRT resmi kanal
+trtspor                # TRT Spor
+afadtrkiye             # AFAD resmi — afet haberleri
+
+# ══════════════════════════════════════════════
+# BÜYÜK TV & GAZETE KANALLARI (Tier 2)
+# ══════════════════════════════════════════════
+ntvcomtr               # NTV
+cnnturk                # CNN Türk
+haberturktv            # Habertürk TV
+foxhaber               # Fox Haber TR
+ahaber                 # A Haber
+showtv                 # Show Ana Haber
+kanal7haber            # Kanal 7
+tele1tv                # Tele1 — muhalif
+halktvcomtr            # Halk TV
+sozcugazete            # Sözcü
+hurriyet               # Hürriyet
+sabahgazetesi          # Sabah
+
+# ══════════════════════════════════════════════
+# ULUSLARARASI TR YAYINLAR (Tier 2)
+# ══════════════════════════════════════════════
+sputnik_tr             # Sputnik Türkçe
+bbcturkce              # BBC Türkçe
+dwtürkce               # Deutsche Welle Türkçe
+euronewstr             # Euronews Türkçe
+voaturkce              # VOA Türkçe
+trtworld               # TRT World (EN ama TR odaklı)
+
+# ══════════════════════════════════════════════
+# SPOR (Tier 2)
+# ══════════════════════════════════════════════
+beinsportsturkiye      # beIN Sports TR — en hızlı spor
+tfforg                 # TFF resmi
+fanatikspor            # Fanatik
+sporxcom               # Sporx
+galatasaraysk          # Galatasaray resmi
+fenerbahceSK           # Fenerbahçe resmi
+bjkresmi               # Beşiktaş resmi
+trabzonsporkulubu      # Trabzonspor resmi
+superlig               # Süper Lig haberleri
+
+# ══════════════════════════════════════════════
+# EKONOMİ & PİYASA (Tier 2)
+# ══════════════════════════════════════════════
+bloomberght            # Bloomberg HT
+ekonomihaberleri       # Ekonomi haberleri
+dunya_gazetesi         # Dünya Gazetesi
+
+# ══════════════════════════════════════════════
+# AFET & ACİL (Tier 2)
+# ══════════════════════════════════════════════
+depremtrkiye           # Deprem son dakika
+kandillirasathane      # Kandilli Rasathanesi
+emsc_deprem            # EMSC Depremler
+
+# ══════════════════════════════════════════════
+# SOSYAL & VİRAL (Tier 3)
+# ══════════════════════════════════════════════
+gundemedairhs          # Gündem
+buzznews_tr            # Buzz News TR
+conflict_tr            # Conflict TR — çatışma haberleri
+bpthaber               # BPT Haber
+habermha               # Haber MHA
+pusholder              # Push Holder
+webtekno               # Webtekno — tech
+solcugazete            # Solcu Gazete — sol görüş
+ibrahimhaskologlu      # Muhalif yorumcu
+
+# ══════════════════════════════════════════════
+# BÖLGESEL (Tier 3)
+# ══════════════════════════════════════════════
+istanbulhaberleri      # İstanbul haberleri
+ankarahaberleri        # Ankara haberleri
+izmirhaberleri         # İzmir haberleri
