@@ -210,50 +210,26 @@ _HOLLOW_ALWAYS = [
     r'merak\s+konusu',
     r'değerlendirilebilir',
     r'analiz\s+sunul',          # reports that reporting happened
+    # Predicate is about the item's role or appearance rather than an event.
+    r'fırsat\s+sun(uyor|ar|maktadır)',
+    r'(parçası|göstergesi)\s+olarak\s+(öne\s+çık|değerlendir)',
+    r'stratejisinin\s+bir\s+parçası',
 ]
 
-# Tier 2 — hollow ONLY when nothing specific is attached. These verbs are fine in
-# real journalism: "Duruşmanın 14 Ekim'de görülmesi bekleniyor" is a genuine next
-# step; "Trafik akışının iyileşmesi bekleniyor" is filler. Blanket-banning the
-# verb destroyed the first kind, so the anchor decides, not the verb.
-_HOLLOW_IF_UNANCHORED = [
-    r'bekleniyor\s*\.?\s*$',
-    r'olacaktır\s*\.?\s*$',
-    r'işaret\s+ediyor',
-    r'fırsat\s+sun(uyor|ar)',
-    r'dikkat\s+çek(iyor|mektedir)\s*\.?\s*$',
-    r'olduğu\s+belirtiliyor\s*\.?\s*$',
-    r'takibi\s+sürüyor\s*\.?\s*$',
-]
-
+# Deliberately NOT covered: "bekleniyor", "olacaktır", "işaret ediyor",
+# "belirtiliyor". A context-sensitive second tier for those was built and removed
+# again — it could not separate "Kararın Danıştay tarafından incelenmesi
+# bekleniyor" (a real next step, keep) from "Bursaspor'un maçı ... bir fırsat
+# sunuyor" (padding, drop). Both are a named actor plus a soft verb; the
+# difference is whether the actor is doing something, which is semantic and not
+# reachable by pattern. Gating on a date or figure instead broke the Danıştay
+# case, and gating on proper nouns disabled the tier entirely.
+#
+# So this filter is deliberately high-precision and low-recall: it removes only
+# the unambiguous cases and never deletes a good analysis. Some mediocre ones
+# survive. That is the right trade for a live site — a wrongly deleted analysis
+# is worse than a weak one that ships.
 _HOLLOW_ALWAYS_RX = [re.compile(p, re.IGNORECASE) for p in _HOLLOW_ALWAYS]
-_HOLLOW_IF_UNANCHORED_RX = [re.compile(p, re.IGNORECASE) for p in _HOLLOW_IF_UNANCHORED]
-
-_TR_MONTHS = ('ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran',
-              'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık')
-# Explicit time expressions — the other way a forecast becomes checkable.
-_TIME_RX = re.compile(
-    r'\b(yarın|bugün|önümüzdeki\s+\w+|gelecek\s+(hafta|ay|yıl)|hafta\s+sonu|'
-    r'pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar)\b',
-    re.IGNORECASE,
-)
-
-
-def _has_concrete_anchor(text: str) -> bool:
-    """
-    Whether a forecast is checkable: a number or a date/time.
-
-    Deliberately NOT proper nouns. Anchoring on those was tried and disabled the
-    whole tier — practically every news sentence names a club, a party or a
-    company, so "Bursaspor'un maçı ... bir fırsat sunuyor" counted as anchored.
-    A named subject does not make a prediction verifiable; a date or a figure does.
-    """
-    if any(ch.isdigit() for ch in text):
-        return True
-    low = text.lower()
-    if any(m in low for m in _TR_MONTHS):
-        return True
-    return bool(_TIME_RX.search(text))
 
 
 def is_empty_analysis(text: str) -> bool:
@@ -263,11 +239,7 @@ def is_empty_analysis(text: str) -> bool:
     t = text.strip()
     if len(t) < 25:          # too short to carry a real fact
         return True
-    if any(rx.search(t) for rx in _HOLLOW_ALWAYS_RX):
-        return True
-    if any(rx.search(t) for rx in _HOLLOW_IF_UNANCHORED_RX):
-        return not _has_concrete_anchor(t)
-    return False
+    return any(rx.search(t) for rx in _HOLLOW_ALWAYS_RX)
 
 
 _AI_HEADING_TR = "### 🤖 Yapay Zeka Analizi"
