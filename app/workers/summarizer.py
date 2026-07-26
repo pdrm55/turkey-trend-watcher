@@ -198,9 +198,13 @@ _EMPTY_ANALYSIS_PATTERNS = [
     r'önem(i|li)?\s+(taşı|arz\s+ed)',
     r'gözler\s+önüne\s+ser',
     r'ortaya\s+koy(uyor|maktadır)',
-    r'pekiş(tir|ecek)',
-    r'yansı(t|ma)',
+    # Only the predictive forms. "üstünlüğünü pekiştirdi" after a race result is
+    # a concrete fact; "yetkinliğini pekiştirecektir" is a hollow forecast.
+    r'pekiştir(ecek|ir|mektedir)',
+    r'yansı(t(ıyor|maktadır)|ması\s+olarak)',
     r'işaret\s+ediyor',
+    # "X has now become clear / complete" — states only that the event ended.
+    r'(netleş|tamamlan|sona\s+er)(miş|mış)\s+oldu',
     r'dikkat\s+çek(iyor|mektedir)\s*\.?\s*$',
     # vague curiosity / expectation closers
     r'merak\s+konusu',
