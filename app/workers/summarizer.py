@@ -195,7 +195,10 @@ if GOOGLE_API_KEY:
 # section — which is the intended outcome: no analysis beats a hollow one.
 # Tier 1 — hollow regardless of what else the sentence contains.
 _HOLLOW_ALWAYS = [
-    r'önem(i|li)?\s+(taşı|arz\s+ed)',
+    # Allow intervening words: "önemli bir gösterge niteliği taşıyor" is the same
+    # move as "önem taşıyor" and slipped through an adjacency-only pattern.
+    r'önem(i|li)?\b.{0,40}?\b(taşı|arz\s+ed)',
+    r'(gösterge|işaret)\s+niteliği\s+taşı',
     r'gözler\s+önüne\s+ser',
     r'ortaya\s+koy(uyor|maktadır)',
     # Only the predictive forms. "üstünlüğünü pekiştirdi" after a race result is
@@ -228,19 +231,29 @@ _HOLLOW_IF_UNANCHORED_RX = [re.compile(p, re.IGNORECASE) for p in _HOLLOW_IF_UNA
 
 _TR_MONTHS = ('ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran',
               'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık')
-# A capitalised word that is not sentence-initial. In Turkish these are proper
-# nouns — institutions, people, places — which is what makes a forecast checkable.
-_PROPER_NOUN_RX = re.compile(r'(?<![.!?]\s)(?<!^)\b[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2,}')
+# Explicit time expressions — the other way a forecast becomes checkable.
+_TIME_RX = re.compile(
+    r'\b(yarın|bugün|önümüzdeki\s+\w+|gelecek\s+(hafta|ay|yıl)|hafta\s+sonu|'
+    r'pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar)\b',
+    re.IGNORECASE,
+)
 
 
 def _has_concrete_anchor(text: str) -> bool:
-    """A number, a date, or a named institution / person / place."""
+    """
+    Whether a forecast is checkable: a number or a date/time.
+
+    Deliberately NOT proper nouns. Anchoring on those was tried and disabled the
+    whole tier — practically every news sentence names a club, a party or a
+    company, so "Bursaspor'un maçı ... bir fırsat sunuyor" counted as anchored.
+    A named subject does not make a prediction verifiable; a date or a figure does.
+    """
     if any(ch.isdigit() for ch in text):
         return True
     low = text.lower()
     if any(m in low for m in _TR_MONTHS):
         return True
-    return bool(_PROPER_NOUN_RX.search(text))
+    return bool(_TIME_RX.search(text))
 
 
 def is_empty_analysis(text: str) -> bool:
