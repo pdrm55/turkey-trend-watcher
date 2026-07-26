@@ -1,3 +1,4 @@
+import base64
 import pytest
 import sys
 import os
@@ -19,6 +20,21 @@ def app():
 @pytest.fixture(scope='module')
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture(scope='module')
+def admin_auth():
+    """Basic Auth header for /api/admin/b2b/*.
+
+    Mirrors `_require_admin` in app/api/api_admin.py — fixed username `admin`,
+    password from ADMIN_PASSWORD with the same fallback. TestAdminRoutes sent no
+    credentials at all: the decorator was added after those tests were written
+    and nothing caught it, because pytest was installed nowhere and the suite had
+    never actually run.
+    """
+    password = os.getenv('ADMIN_PASSWORD', 'trendia2026')
+    token = base64.b64encode(f"admin:{password}".encode()).decode()
+    return {'Authorization': f'Basic {token}'}
 
 
 @pytest.fixture(scope='module')
@@ -263,9 +279,18 @@ class TestUsage:
 
 
 class TestAdminRoutes:
-    def test_create_client(self, client):
+    def test_admin_routes_require_auth(self, client):
+        """Unauthenticated admin calls must stay rejected."""
+        assert client.get('/api/admin/b2b/clients').status_code == 401
+        assert client.post(
+            '/api/admin/b2b/clients',
+            json={"name": "No Auth", "email": "na@test.com", "plan": "starter"}
+        ).status_code == 401
+
+    def test_create_client(self, client, admin_auth):
         r = client.post(
             '/api/admin/b2b/clients',
+            headers=admin_auth,
             json={"name": "Test Org", "email": "org@test.com", "plan": "starter"}
         )
         assert r.status_code == 201
@@ -279,31 +304,38 @@ class TestAdminRoutes:
         db.commit()
         db.close()
 
-    def test_create_client_missing_fields(self, client):
-        r = client.post('/api/admin/b2b/clients', json={"name": "No Email"})
-        assert r.status_code == 400
-
-    def test_create_client_invalid_plan(self, client):
+    def test_create_client_missing_fields(self, client, admin_auth):
         r = client.post(
             '/api/admin/b2b/clients',
+            headers=admin_auth,
+            json={"name": "No Email"}
+        )
+        assert r.status_code == 400
+
+    def test_create_client_invalid_plan(self, client, admin_auth):
+        r = client.post(
+            '/api/admin/b2b/clients',
+            headers=admin_auth,
             json={"name": "X", "email": "x@x.com", "plan": "invalid"}
         )
         assert r.status_code == 400
 
-    def test_list_clients(self, client):
-        r = client.get('/api/admin/b2b/clients')
+    def test_list_clients(self, client, admin_auth):
+        r = client.get('/api/admin/b2b/clients', headers=admin_auth)
         assert r.status_code == 200
         assert isinstance(r.get_json(), list)
 
-    def test_update_client(self, client):
+    def test_update_client(self, client, admin_auth):
         create_r = client.post(
             '/api/admin/b2b/clients',
+            headers=admin_auth,
             json={"name": "Update Test", "email": "u@u.com", "plan": "starter"}
         )
         client_id = create_r.get_json()['id']
 
         r = client.patch(
             f'/api/admin/b2b/clients/{client_id}',
+            headers=admin_auth,
             json={"is_active": False, "tps_threshold": 55.0}
         )
         assert r.status_code == 200
@@ -313,15 +345,19 @@ class TestAdminRoutes:
         db.commit()
         db.close()
 
-    def test_reset_key(self, client):
+    def test_reset_key(self, client, admin_auth):
         create_r = client.post(
             '/api/admin/b2b/clients',
+            headers=admin_auth,
             json={"name": "Reset Test", "email": "reset@test.com", "plan": "starter"}
         )
         client_id = create_r.get_json()['id']
         old_key = create_r.get_json()['api_key']
 
-        r = client.post(f'/api/admin/b2b/clients/{client_id}/reset-key')
+        r = client.post(
+            f'/api/admin/b2b/clients/{client_id}/reset-key',
+            headers=admin_auth
+        )
         assert r.status_code == 200
         data = r.get_json()
         assert 'new_api_key' in data
