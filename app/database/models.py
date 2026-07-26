@@ -248,10 +248,46 @@ class APIClient(Base):
     )
 
 
+class _Migrations:
+    """Runs each migration step in its own transaction.
+
+    Every step used to share one connection and one commit at the end of the
+    block. In Postgres a single failing DDL aborts the surrounding transaction,
+    so one bad statement did not merely fail itself — every later step in that
+    block was skipped as well, and the whole batch rolled back. init_db then
+    swallowed the exception and the app started against a half-migrated schema
+    while the log cheerfully reported synchronization had succeeded.
+
+    Now a failure is contained to its own step, the remaining steps still run,
+    and the failures are collected so the caller can report them honestly.
+    """
+
+    def __init__(self, engine):
+        self._engine = engine
+        self.failures = []
+
+    def run(self, label, *statements) -> bool:
+        with self._engine.connect() as conn:
+            try:
+                for stmt in statements:
+                    conn.execute(text(stmt))
+                conn.commit()
+                print(f"   ✅ {label}")
+                return True
+            except Exception as exc:
+                conn.rollback()
+                detail = str(exc).strip().splitlines()[0]
+                self.failures.append((label, detail))
+                print(f"   ❌ MIGRATION FAILED [{label}]: {detail}")
+                return False
+
+
 def init_db():
     """
     آماده‌سازی، هماهنگ‌سازی و مهاجرت خودکار دیتابیس.
     این تابع جداول را ساخته و ستون‌های جدید را بدون حذف داده‌ها به جداول موجود اضافه می‌کند.
+
+    Raises RuntimeError if any migration step failed, after attempting them all.
     """
     print("⏳ Synchronizing Database (Strategic Mode - TPS 2.1)...")
     try:
@@ -261,134 +297,123 @@ def init_db():
         
         inspector = inspect(engine)
         
+        migrations = _Migrations(engine)
+
         # ۲. بررسی و بروزرسانی جدول trends (مدیریت ستون‌ها و سئو)
         trend_columns = [c['name'] for c in inspector.get_columns('trends')]
-        with engine.connect() as conn:
-            # الف) حذف فیلدهای منسوخ شده (فارسی) جهت بهینه‌سازی حجم
-            if 'title_fa' in trend_columns:
-                print("🗑️ Removing legacy 'title_fa' column...")
-                conn.execute(text("ALTER TABLE trends DROP COLUMN title_fa"))
-            if 'summary_fa' in trend_columns:
-                print("🗑️ Removing legacy 'summary_fa' column...")
-                conn.execute(text("ALTER TABLE trends DROP COLUMN summary_fa"))
 
-            # ب) مدیریت ستون Slug برای سئو
-            if 'slug' not in trend_columns:
-                print("⚠️ Adding 'slug' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN slug VARCHAR(255)"))
-                conn.execute(text("CREATE INDEX idx_trends_slug ON trends (slug)"))
-            
-            # ج) اضافه کردن فیلدهای پایه TPS
-            if 'tps_signal' not in trend_columns:
-                print("🚀 Adding TPS scoring columns to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN tps_signal FLOAT DEFAULT 0.0"))
-                conn.execute(text("ALTER TABLE trends ADD COLUMN tps_confidence FLOAT DEFAULT 0.0"))
-                conn.execute(text("ALTER TABLE trends ADD COLUMN final_tps FLOAT DEFAULT 0.0"))
+        # الف) حذف فیلدهای منسوخ شده (فارسی) جهت بهینه‌سازی حجم
+        if 'title_fa' in trend_columns:
+            migrations.run("drop legacy trends.title_fa",
+                           "ALTER TABLE trends DROP COLUMN title_fa")
+        if 'summary_fa' in trend_columns:
+            migrations.run("drop legacy trends.summary_fa",
+                           "ALTER TABLE trends DROP COLUMN summary_fa")
 
-            # پایه‌ی ثابت میرایی — بدون آن، هر چرخه‌ی decay روی نتیجه‌ی چرخه‌ی قبل سوار می‌شد.
-            # Backfilled from the most recent real scoring event so existing trends
-            # do not all reset to zero and get archived on the next cycle.
-            if 'tps_at_last_signal' not in trend_columns:
-                print("⚓ Adding 'tps_at_last_signal' as the decay baseline...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN tps_at_last_signal FLOAT DEFAULT 0.0"))
-                conn.execute(text("""
-                    UPDATE trends t SET tps_at_last_signal = COALESCE((
-                        SELECT h.tps_score FROM trend_score_history h
-                        WHERE h.trend_id = t.id AND h.event_type = 'scoring'
-                        ORDER BY h.timestamp DESC LIMIT 1
-                    ), t.final_tps, 0.0)
-                """))
+        # ب) مدیریت ستون Slug برای سئو
+        if 'slug' not in trend_columns:
+            migrations.run("trends.slug + index",
+                           "ALTER TABLE trends ADD COLUMN slug VARCHAR(255)",
+                           "CREATE INDEX idx_trends_slug ON trends (slug)")
 
-            # د) اضافه کردن فیلدهای ردیابی شتاب و روند حرکت
-            if 'previous_tps' not in trend_columns:
-                print("📈 Adding 'previous_tps' for velocity tracking...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN previous_tps FLOAT DEFAULT 0.0"))
-            
-            if 'trajectory' not in trend_columns:
-                print("🏹 Adding 'trajectory' status column...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN trajectory VARCHAR(20) DEFAULT 'steady'"))
-            
-            # ه) اضافه کردن فیلد پردازش آسنکرون (فاز ۶.۲)
-            if 'needs_scoring' not in trend_columns:
-                print("⚡ Adding 'needs_scoring' for Async Processing...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN needs_scoring BOOLEAN DEFAULT TRUE"))
-                conn.execute(text("CREATE INDEX idx_needs_scoring ON trends (needs_scoring)"))
-            
-            # و) اضافه کردن فلگ انتشار (فاز ۶.۴)
-            if 'is_published' not in trend_columns:
-                print("📢 Adding 'is_published' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN is_published BOOLEAN DEFAULT FALSE"))
-                
-            # Migration for Video Support
-            if 'video_path' not in trend_columns:
-                print("🎥 Adding 'video_path' to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN video_path VARCHAR(500)"))
-            
-            # Migration for Trend Cover Image
-            if 'cover_image' not in trend_columns:
-                print("🖼️ Adding 'cover_image' to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN cover_image VARCHAR(255)"))
-            
-            if 'tags' not in trend_columns:
-                print("🏷️ Adding 'tags' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN tags JSONB"))
+        # ج) اضافه کردن فیلدهای پایه TPS
+        if 'tps_signal' not in trend_columns:
+            migrations.run("trends TPS scoring columns",
+                           "ALTER TABLE trends ADD COLUMN tps_signal FLOAT DEFAULT 0.0",
+                           "ALTER TABLE trends ADD COLUMN tps_confidence FLOAT DEFAULT 0.0",
+                           "ALTER TABLE trends ADD COLUMN final_tps FLOAT DEFAULT 0.0")
 
-            if 'entities' not in trend_columns:
-                print("🧩 Adding 'entities' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN entities JSONB"))
-            
-            if 'last_summary_msg_count' not in trend_columns:
-                print("📊 Adding 'last_summary_msg_count' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN last_summary_msg_count INTEGER DEFAULT 0"))
-            
-            # ز) اضافه کردن فلگ شبکه‌های اجتماعی (فاز ۲.۲)
-            if 'has_social_signal' not in trend_columns:
-                print("𝕏 Adding 'has_social_signal' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN has_social_signal BOOLEAN DEFAULT FALSE"))
-                conn.execute(text("CREATE INDEX idx_trends_social ON trends (has_social_signal)"))
+        # پایه‌ی ثابت میرایی — بدون آن، هر چرخه‌ی decay روی نتیجه‌ی چرخه‌ی قبل سوار می‌شد.
+        # Backfilled from the most recent real scoring event so existing trends
+        # do not all reset to zero and get archived on the next cycle.
+        if 'tps_at_last_signal' not in trend_columns:
+            migrations.run("trends.tps_at_last_signal (decay baseline) + backfill",
+                           "ALTER TABLE trends ADD COLUMN tps_at_last_signal FLOAT DEFAULT 0.0",
+                           """UPDATE trends t SET tps_at_last_signal = COALESCE((
+                                  SELECT h.tps_score FROM trend_score_history h
+                                  WHERE h.trend_id = t.id AND h.event_type = 'scoring'
+                                  ORDER BY h.timestamp DESC LIMIT 1
+                              ), t.final_tps, 0.0)""")
 
-            if 'ai_processed_at' not in trend_columns:
-                print("⏱️ Adding 'ai_processed_at' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN ai_processed_at TIMESTAMP"))
+        # د) اضافه کردن فیلدهای ردیابی شتاب و روند حرکت
+        if 'previous_tps' not in trend_columns:
+            migrations.run("trends.previous_tps",
+                           "ALTER TABLE trends ADD COLUMN previous_tps FLOAT DEFAULT 0.0")
 
-            # ترجمه فارسی — NULL = نیاز به ترجمه / منبع تغییر کرده
-            if 'fa_title' not in trend_columns:
-                print("🇮🇷 Adding 'fa_title' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN fa_title TEXT"))
-            if 'fa_summary' not in trend_columns:
-                print("🇮🇷 Adding 'fa_summary' column to 'trends'...")
-                conn.execute(text("ALTER TABLE trends ADD COLUMN fa_summary TEXT"))
+        if 'trajectory' not in trend_columns:
+            migrations.run("trends.trajectory",
+                           "ALTER TABLE trends ADD COLUMN trajectory VARCHAR(20) DEFAULT 'steady'")
 
-            conn.commit()
+        # ه) اضافه کردن فیلد پردازش آسنکرون (فاز ۶.۲)
+        if 'needs_scoring' not in trend_columns:
+            migrations.run("trends.needs_scoring + index",
+                           "ALTER TABLE trends ADD COLUMN needs_scoring BOOLEAN DEFAULT TRUE",
+                           "CREATE INDEX idx_needs_scoring ON trends (needs_scoring)")
+
+        # و) اضافه کردن فلگ انتشار (فاز ۶.۴)
+        if 'is_published' not in trend_columns:
+            migrations.run("trends.is_published",
+                           "ALTER TABLE trends ADD COLUMN is_published BOOLEAN DEFAULT FALSE")
+
+        # Migration for Video Support
+        if 'video_path' not in trend_columns:
+            migrations.run("trends.video_path",
+                           "ALTER TABLE trends ADD COLUMN video_path VARCHAR(500)")
+
+        # Migration for Trend Cover Image
+        if 'cover_image' not in trend_columns:
+            migrations.run("trends.cover_image",
+                           "ALTER TABLE trends ADD COLUMN cover_image VARCHAR(255)")
+
+        if 'tags' not in trend_columns:
+            migrations.run("trends.tags", "ALTER TABLE trends ADD COLUMN tags JSONB")
+
+        if 'entities' not in trend_columns:
+            migrations.run("trends.entities", "ALTER TABLE trends ADD COLUMN entities JSONB")
+
+        if 'last_summary_msg_count' not in trend_columns:
+            migrations.run("trends.last_summary_msg_count",
+                           "ALTER TABLE trends ADD COLUMN last_summary_msg_count INTEGER DEFAULT 0")
+
+        # ز) اضافه کردن فلگ شبکه‌های اجتماعی (فاز ۲.۲)
+        if 'has_social_signal' not in trend_columns:
+            migrations.run("trends.has_social_signal + index",
+                           "ALTER TABLE trends ADD COLUMN has_social_signal BOOLEAN DEFAULT FALSE",
+                           "CREATE INDEX idx_trends_social ON trends (has_social_signal)")
+
+        if 'ai_processed_at' not in trend_columns:
+            migrations.run("trends.ai_processed_at",
+                           "ALTER TABLE trends ADD COLUMN ai_processed_at TIMESTAMP")
+
+        # ترجمه فارسی — NULL = نیاز به ترجمه / منبع تغییر کرده
+        if 'fa_title' not in trend_columns:
+            migrations.run("trends.fa_title", "ALTER TABLE trends ADD COLUMN fa_title TEXT")
+        if 'fa_summary' not in trend_columns:
+            migrations.run("trends.fa_summary", "ALTER TABLE trends ADD COLUMN fa_summary TEXT")
 
         # ۳. بررسی و بروزرسانی جدول raw_news
         news_columns = [c['name'] for c in inspector.get_columns('raw_news')]
-        with engine.connect() as conn:
-            if 'source_tier' not in news_columns:
-                print("🛡️ Adding 'source_tier' to 'raw_news' table...")
-                conn.execute(text("ALTER TABLE raw_news ADD COLUMN source_tier INTEGER DEFAULT 3"))
-            
-            if 'media_status' not in news_columns:
-                print("🖼️ Adding media columns to 'raw_news'...")
-                conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_status INTEGER DEFAULT 0"))
-                conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_url VARCHAR(500)"))
-                conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_path VARCHAR(255)"))
-                conn.execute(text("ALTER TABLE raw_news ADD COLUMN media_meta JSONB"))
-                
-            if 'video_path' not in news_columns:
-                print("🎥 Adding 'video_path' to 'raw_news'...")
-                conn.execute(text("ALTER TABLE raw_news ADD COLUMN video_path VARCHAR(500)"))
-            
-            conn.commit()
-        
+        if 'source_tier' not in news_columns:
+            migrations.run("raw_news.source_tier",
+                           "ALTER TABLE raw_news ADD COLUMN source_tier INTEGER DEFAULT 3")
+
+        if 'media_status' not in news_columns:
+            migrations.run("raw_news media columns",
+                           "ALTER TABLE raw_news ADD COLUMN media_status INTEGER DEFAULT 0",
+                           "ALTER TABLE raw_news ADD COLUMN media_url VARCHAR(500)",
+                           "ALTER TABLE raw_news ADD COLUMN media_path VARCHAR(255)",
+                           "ALTER TABLE raw_news ADD COLUMN media_meta JSONB")
+
+        if 'video_path' not in news_columns:
+            migrations.run("raw_news.video_path",
+                           "ALTER TABLE raw_news ADD COLUMN video_path VARCHAR(500)")
+
         # 4. بررسی و ایجاد ایندکس‌های حیاتی (Performance Tuning)
         # ایندکس ترکیبی برای نمودار تاریخچه که در فاز ۶.۳ اضافه شد
         ta_indexes = [i['name'] for i in inspector.get_indexes('trend_arrivals')]
         if 'idx_trend_arrivals_trend_ts' not in ta_indexes:
-            print("⚡ Creating composite index 'idx_trend_arrivals_trend_ts'...")
-            with engine.connect() as conn:
-                conn.execute(text("CREATE INDEX idx_trend_arrivals_trend_ts ON trend_arrivals (trend_id, timestamp)"))
-                conn.commit()
+            migrations.run("idx_trend_arrivals_trend_ts",
+                           "CREATE INDEX idx_trend_arrivals_trend_ts ON trend_arrivals (trend_id, timestamp)")
         
         # 5. تنظیمات اولیه سیستم (System Settings Seed)
         with SessionLocal() as session:
@@ -422,9 +447,18 @@ def init_db():
             Base.metadata.tables['api_clients'].create(bind=engine)
 
         print("✅ Entity Image Caching system ready.")
+
+        if migrations.failures:
+            # Every step was attempted; report what did not land instead of
+            # printing success and letting the app serve a half-migrated schema.
+            summary = "; ".join(f"{label} ({detail})" for label, detail in migrations.failures)
+            print(f"❌ {len(migrations.failures)} migration step(s) FAILED: {summary}")
+            raise RuntimeError(f"Database migration incomplete: {summary}")
+
         print("✅ Database synchronization successful. All strategic fields are ready.")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
+        raise
 
 def get_db():
     """تولید یک Session جدید برای استفاده در API یا Workerها"""

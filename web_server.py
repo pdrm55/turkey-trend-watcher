@@ -54,7 +54,15 @@ def create_app():
             init_db()
             logger.info("✅ Database schemas verified and synchronized.")
         except Exception as e:
-            logger.error(f"❌ Database Initialization Error: {e}")
+            # Kept non-fatal on purpose: taking a live news site down over a
+            # migration hiccup is worse than serving it. But it must be
+            # unmistakable — init_db used to swallow failures internally, so this
+            # handler never fired and the success line above printed regardless,
+            # while the app served a half-migrated schema.
+            logger.critical(
+                "❌ DATABASE MIGRATION INCOMPLETE — the app is starting against a "
+                "schema that may be missing columns. Fix this before trusting it: %s", e
+            )
 
     return app
 
