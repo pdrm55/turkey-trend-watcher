@@ -35,3 +35,4 @@ ai_monitor_data.csv
 docker-compose.yml.bak
 .DS_Store
 .aider*
+.claude/
