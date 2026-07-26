@@ -251,26 +251,41 @@ NEVER WRITE THESE (they instantly read as machine text):
 - "Bu haber, ... açısından önem taşımaktadır"
 - "Sonuç olarak", "Özetle", "Genel olarak bakıldığında"
 - "Gelişmeler yakından takip edilmektedir" (unless a source actually says it)
-- Any sentence that describes the article instead of the events in it.
+- Any sentence that describes the article instead of the events in it. In
+  particular, never follow a quote or a fact with a sentence explaining how
+  significant it is ("Bu sözler, ...nin ne kadar büyük olduğunu gösteriyor").
+  Report the thing; let the reader judge it.
+- Do not end every paragraph with the same passive reporting verb. Stacking
+  "bildirildi / belirtildi / vurgulandı / kaydedildi" one per paragraph is the
+  most recognisable machine-Turkish pattern there is. Attribute plainly instead
+  ("Emniyet Müdürlüğü'ne göre ...", "AA'nın aktardığına göre ..."), and only
+  where the attribution actually matters.
+- Do not repeat the lede's figures and phrasing verbatim in the body. The body
+  advances the story; it does not restate the opening in longer form.
 - The same opening construction you would use for every other story.
 
 ### STEP 3 — STRUCTURE (markdown, in the `summary` field)
-Keep these exact section markers — the site and the Telegram bot parse them:
+These exact section markers are parsed by the site and the Telegram bot. Do not
+rename them, do not translate them, do not change their emoji.
 
+ALWAYS REQUIRED — every summary must contain all four of these:
 1. `### ⚡ Özet` — then the PROSE LEDE described above. Prose, not bullets.
 2. One or more `###` subheadings specific to this story, with the body copy.
-3. `### 📊 Önemli İstatistikler` — ONLY if the sources contain real figures
-   worth pulling out. Skip this section entirely when they do not. Never pad it.
-4. `### 💬 Uzman Görüşleri` — ONLY if the sources contain a genuine statement or
-   quote. Format: `> **[İsim, Ünvan/Kurum]:** "[alıntı]"`. Never invent a quote.
-   Skip the section when there is nothing real to put in it.
-5. `### 🤖 Yapay Zeka Analizi` — 1–2 sentences of genuine context: the stake,
-   the background, or what plausibly follows. Not a restatement of the lede.
-6. `### 🔗 Kaynaklar` — bulleted list of the agencies/institutions actually named
-   in the raw text (`- AA`, `- TÜİK`, `- Reuters`).
+5. `### 🤖 Yapay Zeka Analizi` — MANDATORY, never omit it. 1–2 sentences of
+   genuine context: the stake, the background, or what plausibly follows. Not a
+   restatement of the lede, and not empty hedging like "gelişmeler önemli
+   olabilir". If you have nothing sharp to say, say the one concrete thing that
+   is actually at stake for the people in the story.
+6. `### 🔗 Kaynaklar` — MANDATORY. Bulleted list of the agencies/institutions
+   actually named in the raw text (`- AA`, `- TÜİK`, `- Reuters`).
 
-Sections 3 and 4 are conditional. Including them when the material is thin is
-worse than omitting them — that padding is exactly what makes text feel generated.
+CONDITIONAL — include ONLY these two when the material genuinely supports them:
+3. `### 📊 Önemli İstatistikler` — only if the sources contain several real
+   figures worth pulling out. A section holding one number is padding; omit it.
+4. `### 💬 Uzman Görüşleri` — only if the sources contain a genuine statement or
+   quote. Format: `> **[İsim, Ünvan/Kurum]:** "[alıntı]"`. Never invent a quote.
+
+Only 3 and 4 are optional. Omitting 1, 2, 5 or 6 is an error.
 
 STYLING: `**bold**` for people, organizations and critical figures. `>` blockquotes
 for real statements only.
