@@ -188,13 +188,23 @@ All Gemini token usage (summarization **and** translation) is logged to `ai_moni
 
 ## Testing
 
+Tests run **inside a container**. The host has neither the application
+dependencies nor pytest, so running them there fails at the first app import.
+
 ```bash
 # B2B API integration tests (requires a live database)
-python3 -m pytest tests/test_b2b_api.py -v
+sudo docker exec ttw_api python3 -m pytest tests/test_b2b_api.py -v
 
 # Run a single test class
-python3 -m pytest tests/test_b2b_api.py::TestAuthentication -v
+sudo docker exec ttw_api python3 -m pytest tests/test_b2b_api.py::TestAuthentication -v
+
+# Worker robustness tests — these need no pytest and run as plain scripts
+sudo docker exec ttw_image_worker python3 tests/test_image_worker_timeout.py
+sudo docker exec ttw_summarizer python3 tests/test_summary_analysis_filter.py
 ```
+
+`pytest` is declared in `requirements.txt`, so it is present only after the
+image is rebuilt (`sudo docker compose build api_server`).
 
 ---
 

@@ -38,3 +38,9 @@ docker==7.1.0
 # --- UI / Dashboard ---
 streamlit==1.53.1
 flask-limiter[redis]
+
+# --- Testing ---
+# tests/ is pytest-based but pytest was installed nowhere — not on the host, not
+# in any container — so tests/test_b2b_api.py could not be run at all despite
+# CLAUDE.md documenting the command for it.
+pytest==9.1.1

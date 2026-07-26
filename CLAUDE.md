@@ -26,12 +26,17 @@ sudo docker compose restart ttw_summarizer
 sudo docker compose logs api_server --tail=50 -f
 sudo docker compose logs ttw_gravity --tail=30
 
-# Run B2B API integration tests (requires live DB)
-cd /home/ubuntu/projects/turkey-trend-watcher
-python3 -m pytest tests/test_b2b_api.py -v
+# Tests run INSIDE a container — the host has neither the app dependencies nor
+# pytest, so `python3 -m pytest` on the host fails at the first app import.
+sudo docker exec ttw_api python3 -m pytest tests/test_b2b_api.py -v
 
 # Run a single test class
-python3 -m pytest tests/test_b2b_api.py::TestAuthentication -v
+sudo docker exec ttw_api python3 -m pytest tests/test_b2b_api.py::TestAuthentication -v
+
+# pytest ships via requirements.txt, so it is only present after an image build:
+#   sudo docker compose build api_server && sudo docker compose up -d api_server
+# tests/test_summary_analysis_filter.py also runs without pytest:
+sudo docker exec ttw_summarizer python3 tests/test_summary_analysis_filter.py
 
 # Syntax-check Python files without running them
 python3 -c "import ast; ast.parse(open('app/api/routes.py').read()); print('OK')"
