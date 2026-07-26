@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, render_template, request, make_response, abort, Response, redirect, send_from_directory, current_app
 import os
-from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft, Comment, CommentVote
-from sqlalchemy import desc, func, or_, and_
+from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, SystemSettings, MarketAsset, MarketHistory, XDraft, Comment, CommentVote, utc_now
+from sqlalchemy import desc, func, or_, and_, text
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
 from app.config import Config
@@ -628,6 +628,39 @@ def post_comment(identifier):
     finally:
         db.close()
 
+# Clicking the same vote again removes it. Only the request whose DELETE
+# actually removed the row gets a result back, so exactly one of two racing
+# double-clicks may decrement the counter.
+_SQL_VOTE_TOGGLE_OFF = text("""
+    DELETE FROM comment_votes
+     WHERE comment_id = :cid AND session_id = :sid AND vote_type = :vt
+ RETURNING vote_type
+""")
+
+# `xmax = 0` is true only for a row this statement inserted, which distinguishes
+# a new vote from a flipped one without a second round trip. The WHERE on the
+# DO UPDATE means an unchanged vote returns no row at all, so a request that
+# lost a race contributes no delta instead of double-counting.
+_SQL_VOTE_UPSERT = text("""
+    INSERT INTO comment_votes (comment_id, session_id, vote_type, created_at)
+    VALUES (:cid, :sid, :vt, :now)
+    ON CONFLICT (comment_id, session_id)
+    DO UPDATE SET vote_type = EXCLUDED.vote_type
+          WHERE comment_votes.vote_type <> EXCLUDED.vote_type
+ RETURNING (xmax = 0) AS inserted
+""")
+
+# GREATEST guards against counters that already drifted negative under the old
+# read-modify-write path; a displayed "-1 likes" is worse than a clamped zero.
+_SQL_VOTE_APPLY_COUNTS = text("""
+    UPDATE comments
+       SET likes = GREATEST(0, likes + :dl),
+           dislikes = GREATEST(0, dislikes + :dd)
+     WHERE id = :cid
+ RETURNING likes, dislikes
+""")
+
+
 @api_bp.route('/api/comments/vote/<int:comment_id>', methods=['POST'])
 @limiter.limit("20 per minute")
 def vote_comment(comment_id):
@@ -641,40 +674,47 @@ def vote_comment(comment_id):
         
     db = SessionLocal()
     try:
-        comment = db.query(Comment).filter(Comment.id == comment_id).first()
-        if not comment: return jsonify({"error": "Comment not found"}), 404
-        
-        existing_vote = db.query(CommentVote).filter(
-            CommentVote.comment_id == comment_id,
-            CommentVote.session_id == session_id
-        ).first()
-        
-        if existing_vote:
-            # If clicking same vote, remove it (toggle off)
-            if existing_vote.vote_type == vote_type:
-                if vote_type == 1: comment.likes -= 1
-                else: comment.dislikes -= 1
-                db.delete(existing_vote)
-            else:
-                # Change vote
-                if vote_type == 1:
-                    comment.likes += 1
-                    comment.dislikes -= 1
-                else:
-                    comment.likes -= 1
-                    comment.dislikes += 1
-                existing_vote.vote_type = vote_type
+        if not db.query(Comment.id).filter(Comment.id == comment_id).first():
+            return jsonify({"error": "Comment not found"}), 404
+
+        # Both the vote row and the counters move in SQL, never in Python.
+        # Reading likes into the process and writing back likes+1 loses updates
+        # whenever two voters overlap — and with four gunicorn workers they do.
+        # Doing it as read-modify-write also turned a double-click into an
+        # IntegrityError against the unique (comment_id, session_id) index,
+        # which surfaced to the user as a 500.
+        toggled_off = db.execute(_SQL_VOTE_TOGGLE_OFF, {
+            "cid": comment_id, "sid": session_id, "vt": vote_type,
+        }).first()
+
+        if toggled_off:
+            delta_like = -1 if vote_type == 1 else 0
+            delta_dislike = -1 if vote_type == -1 else 0
         else:
-            # New vote
-            new_vote = CommentVote(comment_id=comment_id, session_id=session_id, vote_type=vote_type)
-            db.add(new_vote)
-            if vote_type == 1: comment.likes += 1
-            else: comment.dislikes += 1
-            
+            # No row means the conflicting vote was already this vote_type, so a
+            # concurrent request has just registered it — nothing left to count.
+            applied = db.execute(_SQL_VOTE_UPSERT, {
+                "cid": comment_id, "sid": session_id, "vt": vote_type,
+                "now": utc_now(),
+            }).first()
+            if applied is None:
+                delta_like = delta_dislike = 0
+            elif applied[0]:                       # freshly inserted
+                delta_like = 1 if vote_type == 1 else 0
+                delta_dislike = 1 if vote_type == -1 else 0
+            else:                                  # flipped; vote_type is ±1, so
+                delta_like = vote_type             # the old value was its negation
+                delta_dislike = -vote_type
+
+        counts = db.execute(_SQL_VOTE_APPLY_COUNTS, {
+            "cid": comment_id, "dl": delta_like, "dd": delta_dislike,
+        }).first()
         db.commit()
-        return jsonify({"status": "success", "likes": comment.likes, "dislikes": comment.dislikes})
+
+        return jsonify({"status": "success", "likes": counts[0], "dislikes": counts[1]})
     except Exception as e:
         db.rollback()
+        logger.exception("vote_comment failed for comment %s", comment_id)
         return jsonify({"error": "internal_error", "message": "An internal error occurred."}), 500
     finally:
         db.close()
