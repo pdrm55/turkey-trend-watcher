@@ -497,8 +497,11 @@ end
                     merge_distance = distance
                     break
 
-                # Case 2: Uncertain Zone -> Ask Local LLM
-                if distance < uncertain_thresh:
+                # Case 2: Uncertain Zone -> Ask Local LLM (disabled by default,
+                # see Config.CLUSTER_LLM_VERIFY). With the gate off the uncertain
+                # band falls through to "new trend", which is exactly what it did
+                # with the gate on, because the gate never returned true.
+                if distance < uncertain_thresh and Config.CLUSTER_LLM_VERIFY:
                     llm_asks += 1
                     if self.ask_local_llm(target_text, cleaned_text):
                         cluster_id = candidate_cluster_id

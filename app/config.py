@@ -61,6 +61,16 @@ class Config:
     SCORING_QUEUE_BATCH_SIZE = int(os.getenv("SCORING_QUEUE_BATCH_SIZE", "50"))
     SCORING_QUEUE_MAX_RETRIES = int(os.getenv("SCORING_QUEUE_MAX_RETRIES", "2"))
 
+    # --- Clustering: uncertain-zone LLM verification ---
+    # Off by default. The gate asks qwen2.5:1.5b whether two texts describe the
+    # same event, but the model answers "false" for every real input — including
+    # byte-identical text. Over 189 production asks it produced zero merges, so
+    # in practice it is a constant-false function that consumed roughly 70% of
+    # all Ollama capacity. Disabling it is behaviourally a no-op and frees that
+    # capacity. Set to 1 to re-enable after moving to a model that can actually
+    # do the comparison.
+    CLUSTER_LLM_VERIFY = os.getenv("CLUSTER_LLM_VERIFY", "0") == "1"
+
     # --- Shared HTTP Resilience & Observability ---
     HTTP_RETRY_ATTEMPTS = int(os.getenv("HTTP_RETRY_ATTEMPTS", "3"))
     HTTP_BACKOFF_BASE_SECONDS = float(os.getenv("HTTP_BACKOFF_BASE_SECONDS", "0.7"))
