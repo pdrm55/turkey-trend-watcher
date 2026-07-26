@@ -81,9 +81,16 @@ def test_unknown_list_type_is_not_cached():
 
 
 def test_offset_walking_is_bounded():
-    """An attacker stepping offset one at a time must not mint a key each time."""
-    keys = {_key(offset=i) for i in range(1, 200)}
-    assert keys == {None}, "only whole-page offsets may be cached"
+    """An attacker stepping offset one at a time must not mint a key each time.
+
+    Whole pages (32, 64, ...) are ordinary pagination and stay cacheable; it is
+    the 31 non-aligned offsets between each page that must yield nothing.
+    """
+    unaligned = {_key(offset=i) for i in range(1, 200) if i % 32}
+    assert unaligned == {None}, "only whole-page offsets may be cached"
+
+    aligned = {_key(offset=i) for i in range(32, 200, 32)}
+    assert None not in aligned, "real pagination must still hit the cache"
 
 
 def test_deep_offsets_are_not_cached():
