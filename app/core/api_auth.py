@@ -1,9 +1,33 @@
 import os
 import secrets
 from functools import wraps
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from flask import request, jsonify, g
+from sqlalchemy import text
 from app.database.models import SessionLocal, APIClient
+
+# Roll the monthly window over, but only if it is genuinely due. The predicate is
+# in the statement so two concurrent requests cannot both reset the counter.
+_SQL_RESET_WINDOW = text("""
+    UPDATE api_clients
+       SET calls_used = 0, calls_reset_at = :now
+     WHERE id = :id
+       AND calls_reset_at IS NOT NULL
+       AND calls_reset_at <= :cutoff
+""")
+
+# Check-and-increment in a single statement. Reading calls_used into Python and
+# writing it back lost increments under concurrency — two requests both read N
+# and both wrote N+1 — and the limit check ran against the stale value, so the
+# monthly cap could be walked straight past with parallel requests. Zero rows
+# updated means the quota is spent.
+_SQL_CONSUME_CALL = text("""
+    UPDATE api_clients
+       SET calls_used = calls_used + 1, last_seen_at = :now
+     WHERE id = :id
+       AND (monthly_limit IS NULL OR monthly_limit <= 0 OR calls_used < monthly_limit)
+ RETURNING calls_used
+""")
 
 BASE_SITE_URL = os.getenv("BASE_SITE_URL", "https://trendiatr.com")
 
@@ -53,14 +77,16 @@ def require_api_key(f):
 
             now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-            if client.calls_reset_at:
-                delta = now - client.calls_reset_at
-                if delta.days >= 30:
-                    client.calls_used = 0
-                    client.calls_reset_at = now
-                    db.commit()
+            db.execute(_SQL_RESET_WINDOW, {
+                "id": client.id, "now": now, "cutoff": now - timedelta(days=30),
+            })
 
-            if client.monthly_limit and client.calls_used >= client.monthly_limit:
+            consumed = db.execute(_SQL_CONSUME_CALL, {"id": client.id, "now": now}).first()
+            db.commit()
+
+            if consumed is None:
+                # The guard in the UPDATE rejected it: the quota is already spent.
+                db.refresh(client)
                 return jsonify({
                     "error": "rate_limit_exceeded",
                     "message": f"Monthly limit of {client.monthly_limit} calls reached.",
@@ -69,16 +95,12 @@ def require_api_key(f):
                     "resets_at": client.calls_reset_at.isoformat() + "Z" if client.calls_reset_at else None
                 }), 429
 
-            client.calls_used += 1
-            client.last_seen_at = now
-            db.commit()
-
             g.api_client = {
                 "id": client.id,
                 "name": client.name,
                 "plan": client.plan,
                 "tps_threshold": client.tps_threshold,
-                "calls_used": client.calls_used,
+                "calls_used": consumed[0],
                 "monthly_limit": client.monthly_limit
             }
 
