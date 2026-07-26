@@ -83,6 +83,12 @@ SCORING_CHECK_INTERVAL = 5    # هر ۵ ثانیه برای امتیازدهی �
 GC_CHECK_INTERVAL = 21600     # هر ۶ ساعت برای پاکسازی فایل‌های مدیا (Garbage Collection)
 FA_SWEEP_INTERVAL = 1800      # هر ۳۰ دقیقه: ترجمه ترندهایی که fa_title/fa_summary ندارند
 FA_SWEEP_BATCH = 8            # تعداد ترند در هر دور sweep
+MODERATION_SWEEP_INTERVAL = 120   # هر ۲ دقیقه: بازبینی نظرات معلق‌مانده
+MODERATION_SWEEP_BATCH = 20
+# Only comments younger than this are swept. A comment that has been pending for
+# longer is one an admin is sitting on deliberately, and re-running the model on
+# it would quietly overrule that decision.
+MODERATION_SWEEP_MAX_AGE_MINUTES = 30
 QUEUE_METRICS_LOG_INTERVAL = 60
 
 # The decay schedule lives in Redis so it survives a restart. It used to be
@@ -264,6 +270,54 @@ def process_pending_scores():
     finally:
         db.close()
 
+def sweep_pending_comments():
+    """Re-moderate comments the request path had to leave as "pending".
+
+    The comment handler now gives Ollama about a second of lock wait and three
+    of inference, because it is holding one of four gunicorn workers while it
+    waits. When that budget is not enough the comment is stored as "pending",
+    which hides it from everyone but its author — so without this sweep, cutting
+    the request budget would trade a slow site for disappearing comments.
+
+    Returns the number of comments whose status changed.
+    """
+    from app.core.ai_engine import (
+        ai_engine, MODERATION_SWEEP_LOCK_WAIT, MODERATION_SWEEP_TIMEOUT,
+    )
+    from app.database.models import Comment
+
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+        minutes=MODERATION_SWEEP_MAX_AGE_MINUTES)
+
+    db = SessionLocal()
+    changed = 0
+    try:
+        pending = db.query(Comment).filter(
+            Comment.status == 'pending',
+            Comment.created_at >= cutoff,
+        ).order_by(Comment.created_at).limit(MODERATION_SWEEP_BATCH).all()
+
+        for comment in pending:
+            status = ai_engine.moderate_comment(
+                comment.content,
+                timeout=MODERATION_SWEEP_TIMEOUT,
+                lock_wait=MODERATION_SWEEP_LOCK_WAIT,
+            )
+            if status != 'pending':
+                comment.status = status
+                changed += 1
+
+        if changed:
+            db.commit()
+        return changed
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ [Moderation Sweep] Error: {e}")
+        return 0
+    finally:
+        db.close()
+
+
 def apply_gravity_decay():
     """
     وظیفه ۲: اعمال نرخ میرایی هوشمند (Gravity 2.0).
@@ -379,6 +433,7 @@ def main():
     last_gc_time = time.time()
     last_fa_sweep_time = time.time() - FA_SWEEP_INTERVAL  # run first sweep soon after start
     last_queue_metrics_time = time.time()
+    last_moderation_sweep_time = time.time()
 
     while True:
         try:
@@ -406,6 +461,13 @@ def main():
                 except Exception as sweep_err:
                     logger.error(f"❌ [FA Sweep] Error: {sweep_err}")
                 last_fa_sweep_time = current_time
+
+            # ۵. بازبینی نظرات معلق (چون مسیر request بودجه‌ی کوتاهی دارد)
+            if current_time - last_moderation_sweep_time > MODERATION_SWEEP_INTERVAL:
+                moderated = sweep_pending_comments()
+                if moderated:
+                    logger.info(f"💬 [Moderation Sweep] Resolved {moderated} pending comment(s)")
+                last_moderation_sweep_time = current_time
 
             if scoring_queue.enabled and (current_time - last_queue_metrics_time > QUEUE_METRICS_LOG_INTERVAL):
                 logger.info(f"📊 [Queue Metrics] scoring_pending={scoring_queue.size()}")

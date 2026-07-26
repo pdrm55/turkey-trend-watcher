@@ -45,6 +45,16 @@ CHROMA_PORT = os.getenv("CHROMA_PORT", "8000")
 OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ttw_ollama:11434/api/generate")
 LOCAL_MODEL_NAME = "qwen2.5:1.5b"
 
+# Budgets for moderation called from a Flask request. Kept small deliberately:
+# a comment POST must not hold one of four gunicorn workers while it queues
+# behind the ingestion pipeline for the shared Ollama lock. Anything that does
+# not fit in this budget becomes "pending" and is re-moderated by the worker.
+MODERATION_REQUEST_TIMEOUT = 3
+MODERATION_REQUEST_LOCK_WAIT = 1
+# What the background sweep uses: it can afford to wait.
+MODERATION_SWEEP_TIMEOUT = 15
+MODERATION_SWEEP_LOCK_WAIT = 20
+
 class AIEngine:
     # Shared circuit breaker + within-process mutex (per-container guard)
     _ollama_lock = threading.Semaphore(1)        # Only 1 Ollama request at a time within this process
@@ -162,7 +172,7 @@ end
             logger.error(f"Embedding Error: {e}")
             raise e
 
-    def _ollama_post(self, payload: dict, timeout: int) -> dict:
+    def _ollama_post(self, payload: dict, timeout: int, lock_wait: int = None) -> dict:
         """Send a single request to Ollama with two-level locking + circuit-breaker.
 
         Level 1 — local semaphore: prevents two threads within the same container
@@ -196,8 +206,12 @@ end
         lock_value = str(uuid.uuid4())
         acquired_redis = False
         try:
-            # Level 2: Redis cross-container lock
-            acquire_timeout = min(timeout, self._REDIS_LOCK_ACQUIRE_TIMEOUT)
+            # Level 2: Redis cross-container lock.
+            # lock_wait lets a caller in the request path give up quickly instead
+            # of queueing behind the workers: a Flask request cannot afford to
+            # hold a gunicorn worker for the 20s a background job happily waits.
+            budget = timeout if lock_wait is None else lock_wait
+            acquire_timeout = min(budget, self._REDIS_LOCK_ACQUIRE_TIMEOUT)
             acquired_redis = self._acquire_redis_lock(lock_value, acquire_timeout)
             if not acquired_redis:
                 logger.warning("Ollama Redis global lock timed out — skipping call")
@@ -292,8 +306,19 @@ end
             logger.error(f"Cross-Trend Verification Failed: {e}")
             return False
 
-    def moderate_comment(self, text: str) -> str:
-        """AI Auto-Moderation for user comments using local Qwen model"""
+    def moderate_comment(self, text: str, *, timeout: int = None, lock_wait: int = None) -> str:
+        """AI Auto-Moderation for user comments using local Qwen model.
+
+        Called from the comment POST handler, so it runs inside a gunicorn
+        worker. With the previous defaults the worst case was a 5s wait for the
+        global Ollama lock followed by a 5s inference — ten seconds of a worker
+        held by one comment, and there are only four workers. Requests default to
+        a much smaller budget and fall back to "pending"; the gravity worker
+        re-moderates anything that lands there, so bailing out early costs a few
+        minutes of delay rather than the comment's visibility.
+        """
+        timeout = MODERATION_REQUEST_TIMEOUT if timeout is None else timeout
+        lock_wait = MODERATION_REQUEST_LOCK_WAIT if lock_wait is None else lock_wait
         # 0. Basic Blacklist Check (Fallback & Speed)
         # Simple list of Turkish profanity/spam keywords
         blacklist = ["küfür", "hakaret", "aptal", "gerizekalı", "salak", "bet", "casino", "http", "www", ".com"]
@@ -321,7 +346,7 @@ end
             "options": {"temperature": 0.0, "num_ctx": 1024}
         }
         try:
-            result = self._ollama_post(payload, timeout=5)
+            result = self._ollama_post(payload, timeout=timeout, lock_wait=lock_wait)
             if not result:
                 return "pending"
             raw_text = result.get('response', '{}').strip()
