@@ -14,16 +14,14 @@ from app.core.scoring_queue import scoring_queue
 from app.core.translation import sweep_untranslated
 from app.config import Config
 
-# Redis client for FA translation sweep
-try:
-    import redis as _redis_lib
-    _redis_fa = _redis_lib.from_url(
-        f"redis://{os.getenv('REDIS_HOST', 'ttw_redis')}:6379/0",
-        decode_responses=True, socket_connect_timeout=2
-    )
-    _redis_fa.ping()
-except Exception:
-    _redis_fa = None
+# Redis client for FA translation sweep. Reconnecting: this used to latch None
+# for the life of the process if ttw_redis was not up yet at import time, which
+# silently disabled both the decay schedule and the translation sweep.
+from app.core.redis_connector import RedisConnector
+
+_redis_fa_conn = RedisConnector(
+    f"redis://{os.getenv('REDIS_HOST', 'ttw_redis')}:6379/0", name="gravity FA"
+)
 
 # تنظیمات لاگینگ
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -115,22 +113,26 @@ def _load_last_decay_time() -> float:
     Falling back to `now` keeps the old (conservative) behaviour: a delayed
     decay is harmless, a duplicated one silently crushes scores.
     """
-    if _redis_fa is None:
+    client = _redis_fa_conn.get()
+    if client is None:
         return time.time()
     try:
-        raw = _redis_fa.get(_DECAY_TS_KEY)
+        raw = client.get(_DECAY_TS_KEY)
         return float(raw) if raw else 0.0
     except Exception as exc:
+        _redis_fa_conn.drop(exc)
         logger.warning(f"⚠️ Could not read decay schedule from Redis ({exc}) — starting a fresh interval")
         return time.time()
 
 
 def _store_last_decay_time(ts: float) -> None:
-    if _redis_fa is None:
+    client = _redis_fa_conn.get()
+    if client is None:
         return
     try:
-        _redis_fa.set(_DECAY_TS_KEY, ts)
+        client.set(_DECAY_TS_KEY, ts)
     except Exception as exc:
+        _redis_fa_conn.drop(exc)
         logger.warning(f"⚠️ Could not persist decay schedule to Redis ({exc})")
 
 def _is_afet_trend(title: str) -> bool:
@@ -487,7 +489,7 @@ def main():
             # ۴. FA Translation Sweep: ترجمه ترندهای بدون fa_title/fa_summary
             if current_time - last_fa_sweep_time > FA_SWEEP_INTERVAL:
                 try:
-                    count = sweep_untranslated(_redis_fa, batch_size=FA_SWEEP_BATCH)
+                    count = sweep_untranslated(_redis_fa_conn.get(), batch_size=FA_SWEEP_BATCH)
                     if count:
                         logger.info(f"🇮🇷 [FA Sweep] Translated {count} trend(s)")
                 except Exception as sweep_err:

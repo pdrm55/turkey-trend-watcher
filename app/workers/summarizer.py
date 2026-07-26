@@ -32,15 +32,14 @@ for _noisy in ("httpx", "httpcore", "google_genai", "google.genai"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # --- Redis client (used only for FA translation cache invalidation) ---
-try:
-    import redis as _redis_lib
-    _redis_fa = _redis_lib.from_url(
-        f"redis://{os.getenv('REDIS_HOST', 'ttw_redis')}:6379/0",
-        decode_responses=True, socket_connect_timeout=2
-    )
-    _redis_fa.ping()
-except Exception:
-    _redis_fa = None
+# Reconnecting: a one-shot connect at import time left this None for the life of
+# the process whenever ttw_redis was not up yet, and stale Persian translations
+# then survived their invalidation for the full 24h TTL.
+from app.core.redis_connector import RedisConnector
+
+_redis_fa_conn = RedisConnector(
+    f"redis://{os.getenv('REDIS_HOST', 'ttw_redis')}:6379/0", name="summarizer FA"
+)
 
 # --- Google AI & System Configuration ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -852,24 +851,28 @@ def process_pending_trends():
                         trend.fa_title   = fa_title   or None
                         trend.fa_summary = fa_summary or None
                         if fa_title or fa_summary:
-                            if _redis_fa:
-                                if fa_title:
-                                    _redis_fa.setex(_redis_key_title(trend.id), 86400, fa_title)
-                                if fa_summary:
-                                    _redis_fa.setex(_redis_key_summary(trend.id), 86400, fa_summary)
+                            _fa_client = _redis_fa_conn.get()
+                            if _fa_client:
+                                try:
+                                    if fa_title:
+                                        _fa_client.setex(_redis_key_title(trend.id), 86400, fa_title)
+                                    if fa_summary:
+                                        _fa_client.setex(_redis_key_summary(trend.id), 86400, fa_summary)
+                                except Exception as _cache_err:
+                                    _redis_fa_conn.drop(_cache_err)
                             print(f"   🇮🇷 FA included in same call: {trend.id}")
                         else:
                             # No fresh Persian text. The Turkish content just
                             # changed, so any cached FA translation now describes
                             # the OLD story — evict it or the site serves stale
                             # Persian for up to 24h until the sweep catches up.
-                            clear_fa_cache(trend.id, _redis_fa)
+                            clear_fa_cache(trend.id, _redis_fa_conn.get())
                             print(f"   ⚠️ FA missing from response for {trend.id} — sweep will retry")
                     except Exception as _fa_err:
                         logger.warning(f"FA handling error for {trend.id}: {_fa_err}")
                         trend.fa_title   = None
                         trend.fa_summary = None
-                        clear_fa_cache(trend.id, _redis_fa)
+                        clear_fa_cache(trend.id, _redis_fa_conn.get())
                     trend.tags = ai_result.get("tags")
                     
                     entities_dict = ai_result.get("entities", {})

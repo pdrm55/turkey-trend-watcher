@@ -38,6 +38,7 @@ import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 from app.config import Config
+from app.core.redis_connector import RedisConnector
 
 # --- Connection Settings ---
 CHROMA_HOST = os.getenv("CHROMA_HOST", "ttw_chroma")
@@ -81,8 +82,8 @@ end
         """Initialize AI Engine and connect to Vector Database"""
         # Lazy load the model to save RAM on workers that don't need embedding
         self.model = None
-        # Redis client: None = not yet initialised, False = unavailable
-        self._redis = None
+        # Reconnecting Redis handle for the cross-container Ollama lock.
+        self._redis_conn = RedisConnector(Config.REDIS_URL, name="Ollama lock")
 
         try:
             self.chroma_client = chromadb.HttpClient(
@@ -110,24 +111,14 @@ end
         self._get_redis()
 
     def _get_redis(self):
-        """Return a connected Redis client, or None if unavailable (graceful degradation)."""
-        if self._redis is not None:
-            return self._redis if self._redis is not False else None
-        try:
-            import redis as _redis_lib
-            client = _redis_lib.Redis.from_url(
-                Config.REDIS_URL,
-                socket_connect_timeout=2,
-                socket_timeout=2,
-                decode_responses=True,
-            )
-            client.ping()
-            self._redis = client
-            logger.info("✅ Ollama Redis global lock connected.")
-        except Exception as exc:
-            logger.warning(f"⚠️ Redis unavailable — Ollama will use local semaphore only: {exc}")
-            self._redis = False
-        return self._redis if self._redis is not False else None
+        """Return a connected Redis client, or None if unavailable (graceful degradation).
+
+        This used to latch a permanent False on the first failure, so a worker
+        that started before ttw_redis spent its whole life without the global
+        lock — every container serialising only against itself while believing
+        it was serialising against all of them.
+        """
+        return self._redis_conn.get()
 
     def _acquire_redis_lock(self, lock_value: str, acquire_timeout: float) -> bool:
         """
@@ -140,8 +131,15 @@ end
             return True  # graceful degradation: no Redis → proceed anyway
         deadline = time.monotonic() + acquire_timeout
         while True:
-            if r.set(self._REDIS_LOCK_KEY, lock_value, nx=True, ex=self._REDIS_LOCK_TTL):
-                return True
+            try:
+                if r.set(self._REDIS_LOCK_KEY, lock_value, nx=True, ex=self._REDIS_LOCK_TTL):
+                    return True
+            except Exception as exc:
+                # A dead connection here used to propagate into _ollama_post's
+                # handler, which counted it as an Ollama failure and pushed the
+                # circuit breaker toward opening over a Redis problem.
+                self._redis_conn.drop(exc)
+                return True  # same graceful degradation as no Redis at all
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return False
@@ -155,6 +153,7 @@ end
         try:
             r.eval(self._LUA_RELEASE, 1, self._REDIS_LOCK_KEY, lock_value)
         except Exception as exc:
+            self._redis_conn.drop(exc)
             logger.warning(f"Redis lock release error (TTL will expire): {exc}")
 
     def get_embedding(self, text: str, is_query: bool = False):
