@@ -15,6 +15,12 @@ sudo docker compose up -d
 # Start everything including workers
 sudo docker compose --profile workers up -d
 
+# Rebuild images. ALWAYS pass --profile workers: without it, compose builds only
+# api_server, dashboard and db_init and silently skips the other 10 services —
+# no error, no warning. They stay on the old image while the built three move on.
+sudo docker compose --profile workers build
+sudo docker compose --profile workers up -d
+
 # Restart the API server (also runs DB migrations via init_db())
 sudo docker compose restart api_server
 
@@ -41,6 +47,23 @@ sudo docker exec ttw_summarizer python3 tests/test_summary_analysis_filter.py
 # Syntax-check Python files without running them
 python3 -c "import ast; ast.parse(open('app/api/routes.py').read()); print('OK')"
 ```
+
+## Images & Rebuilds
+
+All 13 services build from the **same `Dockerfile` and the same context** — the
+images differ only in tag. So the first service built pays the full cost and the
+rest are cache hits (~40s for the other 10).
+
+Application code is bind-mounted, so a code change needs only `git pull` +
+`restart`. A rebuild is required only when `requirements.txt` changes.
+
+**`requirements.txt` changes are expensive.** The Dockerfile does
+`COPY requirements.txt` before `RUN pip install`, so any edit invalidates that
+layer and torch + sentence-transformers + chromadb reinstall from scratch — a
+~26 GB layer and several minutes. Check `df -h /` first: the server sits around
+83-88 % full, and a build that runs the disk out takes production down with it.
+`sudo docker builder prune -f` frees cache but makes the next rebuild pay the
+full torch download again.
 
 ## Database Migrations
 

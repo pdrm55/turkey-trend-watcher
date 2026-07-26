@@ -204,7 +204,13 @@ sudo docker exec ttw_summarizer python3 tests/test_summary_analysis_filter.py
 ```
 
 `pytest` is declared in `requirements.txt`, so it is present only after the
-image is rebuilt (`sudo docker compose build api_server`).
+images are rebuilt. Always pass the profile — plain `docker compose build`
+skips the 10 worker services without saying so:
+
+```bash
+sudo docker compose --profile workers build
+sudo docker compose --profile workers up -d
+```
 
 ---
 
