@@ -183,6 +183,39 @@ if GOOGLE_API_KEY:
     except Exception as e:
         print(f"❌ Gemini Initialization Error: {e}")
 
+_AI_HEADING_TR = "### 🤖 Yapay Zeka Analizi"
+_AI_HEADING_FA = "### 🤖 تحلیل هوش مصنوعی"
+_SOURCES_HEADING_TR = "### 🔗 Kaynaklar"
+_SOURCES_HEADING_FA = "### 🔗 منابع"
+
+
+def inject_ai_analysis(summary: str, analysis: str, heading: str, sources_heading: str) -> str:
+    """
+    Put the AI-analysis section into a summary, immediately before the sources
+    block (or at the end if there is none).
+
+    Asking the model to emit this section inside the markdown did not work: the
+    same prompt tells it not to pad thin sections, and it read the analysis
+    heading as padding — 6 of 9 live summaries dropped it entirely. The heading
+    is a contract (routes.py:287 builds the FAQ JSON-LD from it, and it is the
+    reader-facing disclosure that the analysis is AI-written), so it is assembled
+    here in code from a dedicated JSON field instead of being requested in prose.
+    """
+    if not summary:
+        return summary
+    if not analysis or not analysis.strip():
+        return summary
+    if heading in summary:          # model emitted it anyway — leave it alone
+        return summary
+
+    block = f"{heading}\n{analysis.strip()}"
+
+    idx = summary.find(sources_heading)
+    if idx == -1:
+        return f"{summary.rstrip()}\n\n{block}"
+    return f"{summary[:idx].rstrip()}\n\n{block}\n\n{summary[idx:]}"
+
+
 def generate_unique_slug(db, base_title, trend_id):
     """Ensures slug uniqueness in the database for SEO integrity"""
     if not base_title: return None
@@ -268,27 +301,31 @@ NEVER WRITE THESE (they instantly read as machine text):
 These exact section markers are parsed by the site and the Telegram bot. Do not
 rename them, do not translate them, do not change their emoji.
 
-ALWAYS REQUIRED — every summary must contain all four of these:
+ALWAYS REQUIRED — every summary must contain these:
 1. `### ⚡ Özet` — then the PROSE LEDE described above. Prose, not bullets.
 2. One or more `###` subheadings specific to this story, with the body copy.
-5. `### 🤖 Yapay Zeka Analizi` — MANDATORY, never omit it. 1–2 sentences of
-   genuine context: the stake, the background, or what plausibly follows. Not a
-   restatement of the lede, and not empty hedging like "gelişmeler önemli
-   olabilir". If you have nothing sharp to say, say the one concrete thing that
-   is actually at stake for the people in the story.
-6. `### 🔗 Kaynaklar` — MANDATORY. Bulleted list of the agencies/institutions
+3. `### 🔗 Kaynaklar` — last section. Bulleted list of the agencies/institutions
    actually named in the raw text (`- AA`, `- TÜİK`, `- Reuters`).
 
-CONDITIONAL — include ONLY these two when the material genuinely supports them:
-3. `### 📊 Önemli İstatistikler` — only if the sources contain several real
+CONDITIONAL — include ONLY these when the material genuinely supports them:
+4. `### 📊 Önemli İstatistikler` — only if the sources contain several real
    figures worth pulling out. A section holding one number is padding; omit it.
-4. `### 💬 Uzman Görüşleri` — only if the sources contain a genuine statement or
+5. `### 💬 Uzman Görüşleri` — only if the sources contain a genuine statement or
    quote. Format: `> **[İsim, Ünvan/Kurum]:** "[alıntı]"`. Never invent a quote.
 
-Only 3 and 4 are optional. Omitting 1, 2, 5 or 6 is an error.
+Do NOT write an analysis section inside `summary` — that goes in its own JSON
+field (see below) and is assembled afterwards.
 
 STYLING: `**bold**` for people, organizations and critical figures. `>` blockquotes
 for real statements only.
+
+### STEP 3b — THE ANALYSIS (`ai_analysis` and `fa_ai_analysis` fields)
+REQUIRED, both languages. 1–2 sentences of genuine editorial context: what is
+actually at stake, the background that explains why this happened, or what
+plausibly follows. This is the one place you are allowed to go beyond reporting.
+Make it concrete and specific to this story — "yetkililer süreci takip ediyor"
+or "gelişmeler önem taşıyor" are worthless. If the story is small, say the one
+real consequence for the people in it. Plain sentences, no heading, no markdown.
 
 ### STEP 4 — TELEGRAM CAPTION (`telegram_caption` field)
 A standalone piece for the channel. The reader must understand the whole story
@@ -328,9 +365,11 @@ budget, pensions, or public infrastructure (DSİ/TOKİ) are never Spor.
 {{
     "headline": "...",
     "summary": "Raw Markdown text here...",
+    "ai_analysis": "1-2 sentences of editorial context, Turkish, no heading...",
     "telegram_caption": "...",
     "fa_headline": "...",
     "fa_summary": "Raw Markdown text in Persian...",
+    "fa_ai_analysis": "the same analysis in Persian, no heading...",
     "category": "...",
     "category_reasoning": "...",
     "fact_check": "Brief validation of logic...",
@@ -633,6 +672,12 @@ def process_pending_trends():
                         _penalise_trend(trend.id, "validation failed")
                         continue
 
+                    # Assemble the AI-analysis section from its dedicated field.
+                    extracted_summary = inject_ai_analysis(
+                        extracted_summary, ai_result.get("ai_analysis"),
+                        _AI_HEADING_TR, _SOURCES_HEADING_TR,
+                    )
+
                     trend.summary = extracted_summary
                     trend.category = final_category
 
@@ -643,7 +688,11 @@ def process_pending_trends():
                     # gravity_worker still backfills anything missing here.
                     try:
                         fa_title = (ai_result.get("fa_headline") or "").strip()
-                        fa_summary = (ai_result.get("fa_summary") or "").strip()
+                        fa_summary = inject_ai_analysis(
+                            (ai_result.get("fa_summary") or "").strip(),
+                            ai_result.get("fa_ai_analysis"),
+                            _AI_HEADING_FA, _SOURCES_HEADING_FA,
+                        )
                         trend.fa_title   = fa_title   or None
                         trend.fa_summary = fa_summary or None
                         if fa_title or fa_summary:
