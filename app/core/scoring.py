@@ -413,6 +413,9 @@ class TPSCalculator:
         trend.tps_confidence = confidence
         trend.final_tps     = final_tps
         trend.score         = final_tps
+        # Anchor for gravity decay. Decay reads this instead of the running
+        # final_tps, so a decay cycle can never build on a previous decay.
+        trend.tps_at_last_signal = final_tps
         # Fix 2: last_updated را لمس نمی‌کنیم — ingest workers آن را تنظیم می‌کنند
 
         # ── کوئری ۵: آخرین رکورد تاریخچه (برای تصمیم لاگ) ──────────────────

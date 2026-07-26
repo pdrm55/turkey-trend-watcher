@@ -30,14 +30,41 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger("ProcessorWorker")
 
 # --- تنظیمات میرایی داینامیک بر اساس دسته‌بندی (Dynamic Decay Configuration) ---
+#
+# These numbers changed meaning in the same commit that stopped decay compounding,
+# so the old ones cannot be compared with the new ones directly.
+#
+# Decay used to compute final_tps = final_tps * f ** hours_since_last_updated, on
+# every cycle, against the already-decayed value and against the *full* elapsed
+# time rather than the half hour since the previous cycle. The applied exponent
+# therefore grew as the sum 1.0 + 1.5 + 2.0 + … — quadratic in elapsed time. Real
+# measurement on trend 273527: 64.3 hours of decay applied over 7.05 real hours,
+# a factor of 9.1. "2% per hour" for politics behaved like roughly 20% per hour
+# by the tenth hour.
+#
+# Fixing that alone would have stretched a politics story's shelf life from about
+# 11 hours to 114, so the constants are rescaled to keep the site behaving as it
+# does today. They are the old values raised to 2.06 — the exponent that makes a
+# clean f ** t curve reproduce the decay actually observed across the 238 live
+# trends old enough to measure (median fitted factor 0.861 against a nominal
+# median of 0.93). The best-sampled category confirms it: Gündem fits at 0.848
+# and this scaling gives 0.842.
+#
+# Scaling rather than fitting each category was deliberate. Per-category fits
+# were noisy at these sample sizes and inverted the design — Spor came out
+# longer-lived than Gündem on n=18. Uniform scaling keeps the intended ordering.
+#
+# The values are now honest about what they mean: with a real f ** t curve,
+# Gündem 0.842 is ~16% per hour. Shelf life is a product decision; edit these
+# and nothing else.
 CATEGORY_DECAY_FACTORS = {
-    "Siyaset": 0.98,    # سیاست: بسیار ماندگار (فقط ۲٪ کاهش در هر ساعت)
-    "Ekonomi": 0.97,    # اقتصاد: ماندگار (۳٪ کاهش در هر ساعت)
-    "Teknoloji": 0.94,  # تکنولوژی: میان‌رده
-    "Gündem": 0.92,     # عمومی/حوادث: میرایی نسبتاً سریع
-    "Spor": 0.85,       # ورزش: میرایی بسیار سریع (۱۵٪ کاهش در هر ساعت)
-    "Sanat": 0.88,      # هنر و مجله: میرایی سریع
-    "Default": 0.93     # نرخ پیش‌فرض برای دسته‌های ناشناخته
+    "Siyaset": 0.959,   # سیاست: ماندگارترین
+    "Ekonomi": 0.939,   # اقتصاد
+    "Teknoloji": 0.880, # تکنولوژی
+    "Default": 0.861,   # نرخ پیش‌فرض — میانه‌ی فیت‌شده‌ی جمعیت
+    "Gündem": 0.842,    # عمومی/حوادث (فیت مستقل: ۰.۸۴۸)
+    "Sanat": 0.768,     # هنر و مجله
+    "Spor": 0.715,      # ورزش: سریع‌ترین
 }
 
 # Fix 4: disaster/emergency keywords — classifier never emits "afet", so we check titles directly
@@ -45,7 +72,7 @@ _AFET_KEYWORDS = frozenset({
     'deprem', 'yangın', 'yangin', 'sel', 'patlama', 'heyelan',
     'fırtına', 'firtina', 'tsunami', 'kasırga', 'kasirga', 'tufan',
 })
-AFET_DECAY_FACTOR = 0.82  # faster decay: emergency news loses relevance quickly
+AFET_DECAY_FACTOR = 0.664  # 0.82 ** 2.06, same rescaling (live fit on n=13: 0.746)
 
 # Fix 6: process active trends in chunks to avoid loading thousands of rows at once
 GRAVITY_BATCH_SIZE = 100
@@ -291,8 +318,12 @@ def apply_gravity_decay():
                     if _is_afet_trend(trend.title):
                         decay_factor = min(decay_factor, AFET_DECAY_FACTOR)
 
+                    # Anchored at the last real score, never at the previous decay
+                    # result, so this is idempotent: running it twice in a row
+                    # produces the same number instead of decaying twice.
+                    base_score = trend.tps_at_last_signal or trend.final_tps or 0.0
                     old_score = trend.final_tps
-                    new_score = old_score * math.pow(decay_factor, hours_passed)
+                    new_score = base_score * math.pow(decay_factor, hours_passed)
 
                     trend.final_tps = new_score
                     trend.score = new_score

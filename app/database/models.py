@@ -73,6 +73,10 @@ class Trend(Base):
     
     # فیلدهای ردیابی روند (Trajectory) - اضافه شده در فاز ۱ بهینه سازی
     previous_tps = Column(Float, default=0.0) # امتیاز در چرخه قبلی برای محاسبه شتاب
+    # امتیاز واقعی در آخرین اسکورگیری — پایه‌ی ثابت محاسبه‌ی میرایی.
+    # The decay curve is anchored here instead of to the previous decayed value,
+    # so repeated decay cycles cannot compound. See gravity_worker.apply_gravity_decay.
+    tps_at_last_signal = Column(Float, default=0.0)
     trajectory = Column(String(20), default="steady") # وضعیت: up (صعودی)، down (نزولی)، steady (ثابت)
     
     # --- فاز ۶.۲: فلگ پردازش آسنکرون ---
@@ -280,6 +284,20 @@ def init_db():
                 conn.execute(text("ALTER TABLE trends ADD COLUMN tps_signal FLOAT DEFAULT 0.0"))
                 conn.execute(text("ALTER TABLE trends ADD COLUMN tps_confidence FLOAT DEFAULT 0.0"))
                 conn.execute(text("ALTER TABLE trends ADD COLUMN final_tps FLOAT DEFAULT 0.0"))
+
+            # پایه‌ی ثابت میرایی — بدون آن، هر چرخه‌ی decay روی نتیجه‌ی چرخه‌ی قبل سوار می‌شد.
+            # Backfilled from the most recent real scoring event so existing trends
+            # do not all reset to zero and get archived on the next cycle.
+            if 'tps_at_last_signal' not in trend_columns:
+                print("⚓ Adding 'tps_at_last_signal' as the decay baseline...")
+                conn.execute(text("ALTER TABLE trends ADD COLUMN tps_at_last_signal FLOAT DEFAULT 0.0"))
+                conn.execute(text("""
+                    UPDATE trends t SET tps_at_last_signal = COALESCE((
+                        SELECT h.tps_score FROM trend_score_history h
+                        WHERE h.trend_id = t.id AND h.event_type = 'scoring'
+                        ORDER BY h.timestamp DESC LIMIT 1
+                    ), t.final_tps, 0.0)
+                """))
 
             # د) اضافه کردن فیلدهای ردیابی شتاب و روند حرکت
             if 'previous_tps' not in trend_columns:
