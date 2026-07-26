@@ -193,8 +193,8 @@ if GOOGLE_API_KEY:
 #
 # A matching analysis is discarded and inject_ai_analysis() then omits the whole
 # section — which is the intended outcome: no analysis beats a hollow one.
-_EMPTY_ANALYSIS_PATTERNS = [
-    # significance / display verbs with an abstraction as subject
+# Tier 1 — hollow regardless of what else the sentence contains.
+_HOLLOW_ALWAYS = [
     r'önem(i|li)?\s+(taşı|arz\s+ed)',
     r'gözler\s+önüne\s+ser',
     r'ortaya\s+koy(uyor|maktadır)',
@@ -202,22 +202,45 @@ _EMPTY_ANALYSIS_PATTERNS = [
     # a concrete fact; "yetkinliğini pekiştirecektir" is a hollow forecast.
     r'pekiştir(ecek|ir|mektedir)',
     r'yansı(t(ıyor|maktadır)|ması\s+olarak)',
-    r'işaret\s+ediyor',
     # "X has now become clear / complete" — states only that the event ended.
     r'(netleş|tamamlan|sona\s+er)(miş|mış)\s+oldu',
-    r'dikkat\s+çek(iyor|mektedir)\s*\.?\s*$',
-    # vague curiosity / expectation closers
     r'merak\s+konusu',
-    r'bekleniyor\s*\.?\s*$',
     r'değerlendirilebilir',
+    r'analiz\s+sunul',          # reports that reporting happened
+]
+
+# Tier 2 — hollow ONLY when nothing specific is attached. These verbs are fine in
+# real journalism: "Duruşmanın 14 Ekim'de görülmesi bekleniyor" is a genuine next
+# step; "Trafik akışının iyileşmesi bekleniyor" is filler. Blanket-banning the
+# verb destroyed the first kind, so the anchor decides, not the verb.
+_HOLLOW_IF_UNANCHORED = [
+    r'bekleniyor\s*\.?\s*$',
     r'olacaktır\s*\.?\s*$',
+    r'işaret\s+ediyor',
     r'fırsat\s+sun(uyor|ar)',
-    # reporting that reporting happened
-    r'analiz\s+sunul',
+    r'dikkat\s+çek(iyor|mektedir)\s*\.?\s*$',
     r'olduğu\s+belirtiliyor\s*\.?\s*$',
     r'takibi\s+sürüyor\s*\.?\s*$',
 ]
-_EMPTY_ANALYSIS_RX = [re.compile(p, re.IGNORECASE) for p in _EMPTY_ANALYSIS_PATTERNS]
+
+_HOLLOW_ALWAYS_RX = [re.compile(p, re.IGNORECASE) for p in _HOLLOW_ALWAYS]
+_HOLLOW_IF_UNANCHORED_RX = [re.compile(p, re.IGNORECASE) for p in _HOLLOW_IF_UNANCHORED]
+
+_TR_MONTHS = ('ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran',
+              'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık')
+# A capitalised word that is not sentence-initial. In Turkish these are proper
+# nouns — institutions, people, places — which is what makes a forecast checkable.
+_PROPER_NOUN_RX = re.compile(r'(?<![.!?]\s)(?<!^)\b[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2,}')
+
+
+def _has_concrete_anchor(text: str) -> bool:
+    """A number, a date, or a named institution / person / place."""
+    if any(ch.isdigit() for ch in text):
+        return True
+    low = text.lower()
+    if any(m in low for m in _TR_MONTHS):
+        return True
+    return bool(_PROPER_NOUN_RX.search(text))
 
 
 def is_empty_analysis(text: str) -> bool:
@@ -227,7 +250,11 @@ def is_empty_analysis(text: str) -> bool:
     t = text.strip()
     if len(t) < 25:          # too short to carry a real fact
         return True
-    return any(rx.search(t) for rx in _EMPTY_ANALYSIS_RX)
+    if any(rx.search(t) for rx in _HOLLOW_ALWAYS_RX):
+        return True
+    if any(rx.search(t) for rx in _HOLLOW_IF_UNANCHORED_RX):
+        return not _has_concrete_anchor(t)
+    return False
 
 
 _AI_HEADING_TR = "### 🤖 Yapay Zeka Analizi"
@@ -803,9 +830,15 @@ def process_pending_trends():
                     # but only when it actually says something. A hollow analysis
                     # is dropped in both languages together, so TR and FA never
                     # disagree about whether the section exists.
+                    # The decision rests on the text, not on analysis_type. The
+                    # model's self-label is unreliable in both directions: it
+                    # pads when it should abstain, and it also returned "none"
+                    # while writing a perfectly concrete open-question analysis
+                    # (trend 280703). The type field still earns its place in the
+                    # prompt — it gives the model a sanctioned way to abstain —
+                    # but only the content filter decides here.
                     _analysis = ai_result.get("ai_analysis")
-                    _analysis_type = (ai_result.get("analysis_type") or "").strip().lower()
-                    if _analysis_type == "none" or is_empty_analysis(_analysis):
+                    if is_empty_analysis(_analysis):
                         if _analysis and _analysis.strip():
                             print(f"   ✂️  Dropped hollow analysis for {trend.id}: {_analysis.strip()[:70]}")
                         _analysis = None
