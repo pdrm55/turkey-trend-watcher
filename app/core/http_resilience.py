@@ -54,6 +54,19 @@ def request_with_retry(
     raise RuntimeError(f"HTTP request failed after retries: {method} {url}")
 
 
+FEED_HEADERS = {
+    # Six Turkish outlets (sozcu, ensonhaber, evrensel, gazeteduvar, technopat,
+    # indyturk) answer 403 to a bare python-requests agent and 200 to a browser
+    # one. feedparser sent its own agent, so this only became visible once the
+    # fetch moved here.
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/rss+xml, application/xml, text/xml, */*",
+}
+
+
 def parse_feed(url: str, *, timeout: int = 15, metric_name: str = "feed.fetch"):
     """Fetch a feed body under a timeout, then hand the bytes to feedparser.
 
@@ -68,7 +81,20 @@ def parse_feed(url: str, *, timeout: int = 15, metric_name: str = "feed.fetch"):
     """
     import feedparser  # local: keeps this module importable without the collector deps
 
-    resp = request_with_retry("GET", url, timeout=timeout, metric_name=metric_name)
+    resp = request_with_retry(
+        "GET", url, timeout=timeout, metric_name=metric_name, headers=FEED_HEADERS
+    )
     resp.raise_for_status()
-    return feedparser.parse(resp.content)
+    parsed = feedparser.parse(resp.content)
+
+    # raise_for_status only catches feeds that fail loudly. Five sources answered
+    # 200 with an HTML page or an empty body — indistinguishable from "no news
+    # right now" to every caller, so they went unnoticed for as long as they had
+    # been dead. A zero-entry response is not necessarily broken, so this warns
+    # rather than raising; a source warning on every cycle is a dead source.
+    if not parsed.entries:
+        logger.warning("Feed returned no entries: %s (%d bytes)", url, len(resp.content))
+        emit_metric("feed.empty", 1, url=url)
+
+    return parsed
 
