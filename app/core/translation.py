@@ -23,6 +23,8 @@ import os
 import time
 from datetime import datetime
 
+from app.core.quota_guard import gemini_quota
+
 logger = logging.getLogger(__name__)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -123,11 +125,13 @@ def _build_prompt(texts: list[str]) -> str:
     """Build the translation prompt with formal news-agency tone and logic rules."""
     numbered = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
     return (
-        "Sen resmi bir haber ajansının Türkçe'den Farsça'ya çeviri editörüsün.\n"
-        "Aşağıdaki Türkçe haber metinlerini resmi Farsça haber diline çevir.\n\n"
+        "Sen bir haber ajansının Türkçe'den Farsça'ya çeviri editörüsün.\n"
+        "Aşağıdaki Türkçe haber metinlerini akıcı, doğal Farsça haber diline çevir.\n\n"
         "KURALLAR:\n"
         "1. Her satırı sırayla çevir — sadece çeviriyi yaz (numara ve nokta dahil).\n"
-        "2. Resmi haber ajansı üslubu kullan: açık, doğru ve tarafsız.\n"
+        "2. Farsça bir gazetecinin yazacağı gibi yaz: doğal, akıcı ve tarafsız. "
+        "Kelimesi kelimesine çeviri YAPMA — cümleyi Farsça'da doğal duyulacak "
+        "şekilde yeniden kur. Çeviri kokan kalıplardan kaçın.\n"
         "3. Virgülle ayrılmış sayısal listeleri doğal Farsça cümleye dönüştür.\n"
         "   Örnek: '1 polis, 5 kişi yaralı' → '۱ پلیس و ۵ نفر زخمی شدند'\n"
         "   Örnek: '2 ölü, 3 yaralı' → '۲ نفر کشته و ۳ نفر زخمی شدند'\n"
@@ -203,6 +207,16 @@ def _call_gemini(texts: list[str], trend_ids: list[int],
     if not client:
         return None
 
+    # Shared quota breaker. The FA sweep was the heaviest Gemini consumer on the
+    # account (81% of logged calls in a day) and kept firing into an exhausted
+    # quota, starving the summarizer of the requests it needed.
+    if gemini_quota.is_open():
+        logger.info(
+            f"[translation] Gemini quota cooling down "
+            f"({gemini_quota.seconds_remaining()}s left) — skipping {call_type}."
+        )
+        return None
+
     model = _get_model()
     prompt = _build_prompt(texts)
 
@@ -216,11 +230,13 @@ def _call_gemini(texts: list[str], trend_ids: list[int],
         in_tok  = (meta.prompt_token_count     or 0) if meta else 0
         out_tok = (meta.candidates_token_count or 0) if meta else 0
         _log_usage(log_id, model, in_tok, out_tok, duration, call_type, "Success")
+        gemini_quota.record_success()
 
         return _parse_response(response.text, texts)
 
     except Exception as e:
         duration = time.time() - t0
+        gemini_quota.record_failure(e)
         logger.error(f"[translation] Gemini call failed ({model}): {e}")
         _log_usage(log_id, model, 0, 0, duration, call_type,
                    f"Error: {type(e).__name__}")

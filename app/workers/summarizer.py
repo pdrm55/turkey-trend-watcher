@@ -4,6 +4,7 @@ import time
 import json
 import re
 import csv
+import logging
 from datetime import datetime, timezone
 from google import genai
 from google.genai import types
@@ -18,7 +19,13 @@ from app.core.indexing_utils import notify_google
 from app.core.text_utils import slugify_turkish 
 from app.core.alert_service import alert_service
 from app.core.classifier import decide_final_category, normalize_text, CAT_MAP
-from app.core.translation import clear_fa_cache, translate_for_summarizer
+from app.core.translation import (
+    clear_fa_cache, _redis_key_title, _redis_key_summary,
+)
+from app.core.quota_guard import gemini_quota
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - Summarizer - %(levelname)s - %(message)s")
+logger = logging.getLogger("Summarizer")
 
 # --- Redis client (used only for FA translation cache invalidation) ---
 try:
@@ -200,89 +207,125 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
         umbrella_instruction = f'### UMBRELLA UPDATE MODE ACTIVATED\nThis is a highly evolving story. The PREVIOUS headline was: "{old_title}". Your task is to create an "Umbrella Title" (تیتر چتری) and comprehensive summary. You MUST combine the core original event WITH the new developments/reactions. Format example: "[Core Event]: [New Developments]".'
 
     prompt = f"""
-    ### SYSTEM ROLE
-    You are a "Professional News Editor, Semantic Gatekeeper, and SEO Specialist". Your goal is to filter out content poisoning, extract the single true story, and optimize metadata for search engines.
-    
-    ### INTERNAL PROCESS (Follow these steps before generating output)
-    1. SCRUTINIZE: Analyze the provided RAW TEXT DATA below. Identify and mentally discard:
-       - Advertisements (betting, bonuses, sales).
-       - "Read more" links or navigational text.
-       - "Related News" snippets that discuss a completely different topic.
-    
-    2. IDENTIFY CORE EVENT: Find the "Main Event" that is consistent across the majority of source snippets.
-    
-    3. LOGICAL CAUSALITY (Layer 5: Self-Correction): 
-       - Verify cause-and-effect relationships (e.g., "Surgery was performed due to injury", NOT "Injury occurred due to surgery").
-       - Perform a brief internal fact-check to ensure the summary logically follows the consensus of the sources.
+### WHO YOU ARE
+You are a senior editor in a Turkish newsroom — the person who takes raw wire
+copy and turns it into the piece that actually runs. You write the way an
+experienced Turkish journalist writes: plain, confident, concrete. You are not
+summarizing text for a machine; you are telling a reader what happened.
 
-    4. SEO EXTRACTION:
-       - Extract relevant tags (keywords) for search indexing.
-       - Identify structured entities (People, Locations, Organizations).
-       - Generate a 2 to 3 word 'image_search_query' representing the main visual subject of the news, highly optimized for Bing/Google Image search (e.g., 'Ali Yerlikaya', 'Galatasaray transfer').
+### STEP 1 — READ THE SOURCES (do this before writing)
+- Discard ads (betting, bonuses, promotions), "devamını oku" links, navigation
+  text, and "ilgili haberler" snippets about a different story.
+- Find the one core event that most sources agree on.
+- Check causality: "sakatlık nedeniyle ameliyat oldu", never the reverse.
+- Compare numbers across sources (dates, tolls, prices, percentages). If they
+  disagree, do NOT silently pick one — say so in your own words, phrased
+  differently each time. Never reuse a stock sentence for this.
+- NEVER invent a fact, number, name, quote, or source that is not in the raw
+  text. If something is unknown, leave it out or say it is not yet clear.
 
-    5. CONFLICT RESOLUTION (Layer 6):
-       - Compare numerical data (dates, death tolls, prices, percentages) across all input sources.
-       - If sources provide contradicting facts or numbers, DO NOT pick one at random.
-       - Report the discrepancy in the summary using phrases like "Sources report varying figures between X and Y" or "While some sources claim X, others report Y".
-       - Ensure the summary reflects the consensus of Tier 1 sources but acknowledges minority reports if they are significant.
+{umbrella_instruction}
 
-    6. CATEGORY AUDIT:
-       - Analyze the core news event. Compare it strictly against [Siyaset, Ekonomi, Spor, Teknoloji, Sanat, Gündem].
-       - Provide the final category AND a new field "category_reasoning" explaining your choice.
-       - Special focus on TRAPS: If the news is about government budget, retirement, or state infrastructure (DSİ/TOKİ), it is NOT Spor. justify this in 'category_reasoning'.
+### STEP 2 — WRITE IT LIKE A JOURNALIST
+This is the part that matters most. The text must read as though a person wrote
+it on deadline, not as though a template was filled in.
 
-    {umbrella_instruction}
+HOW TO WRITE:
+- Open with a real lede: 2–3 sentences of flowing prose that tell the reader
+  what happened, to whom, where, and why it matters. NOT a bullet list.
+- Active voice. Concrete verbs. Short sentences. Say "polis 3 kişiyi gözaltına
+  aldı", not "3 kişinin gözaltına alınması gerçekleştirilmiştir".
+- Vary your sentence length and rhythm. Uniform sentences are the clearest
+  giveaway of machine text.
+- Let the story dictate the structure. A court ruling, a derby result and an
+  inflation print should not come out shaped identically.
+- Subheadings must be specific to THIS story ("Soruşturma nasıl başladı",
+  "Kulüpten ilk açıklama") — never generic filler like "Detaylar" or "Genel Bakış".
+- Keep paragraphs to 2–3 sentences for mobile reading.
 
-    ### EVOLUTIONARY CONTEXT:
-    The provided text may contain updates to an older story. If the new data contains a definitive outcome, final score, or major update that makes the previous context obsolete, overwrite the previous headline and summary with the most recent and important 'Core Event'.
+NEVER WRITE THESE (they instantly read as machine text):
+- "Bu haber, ... açısından önem taşımaktadır"
+- "Sonuç olarak", "Özetle", "Genel olarak bakıldığında"
+- "Gelişmeler yakından takip edilmektedir" (unless a source actually says it)
+- Any sentence that describes the article instead of the events in it.
+- The same opening construction you would use for every other story.
 
-    ### SMART FORMATTING RULES (MARKDOWN):
-    - You MUST return the 'summary' field in raw Markdown.
-    - Structure:
-        1. Start with `### ⚡ Özet` and provide 3 key takeaways as bullet points.
-        2. Use `###` for logical sub-headings (e.g., "Olayın Özeti", "Arka Plan").
-        3. Keep paragraphs strictly short (maximum 2-3 sentences per block) for mobile readability.
-        4. GEO DATA (Statistics): If the raw text contains specific numbers, percentages, or financial data, extract them into a section: `### 📊 Önemli İstatistikler`.
-        5. GEO DATA (Quotes): If the text contains expert opinions or official statements, create a section: `### 💬 Uzman Görüşleri`. Format them precisely as: `> **[Name, Title/Organization]:** "[Direct Quote]"`
-        6. Conclude with a final section: `### 🤖 Yapay Zeka Analizi`. Under this heading, you MUST write exactly 1-2 sentences explaining the deeper context, why this news matters, or its potential future impact.
-        7. GEO DATA (Citations): At the very end of the summary, add `### 🔗 Kaynaklar` and list the names of the news agencies, institutes, or sources mentioned in the raw text as a bulleted list (e.g., `- Reuters`, `- TÜİK`, `- AA`).
-    - Styling:
-        - Use `**bold**` for key entity names (people, organizations) and critical numbers/dates.
-        - Use `> blockquotes` for official statements, direct quotes, or crucial announcements.
+### STEP 3 — STRUCTURE (markdown, in the `summary` field)
+Keep these exact section markers — the site and the Telegram bot parse them:
 
-    ### TELEGRAM CAPTION RULES:
-    - Generate a standalone summary specifically for the Telegram channel in the `telegram_caption` field.
-    - Value Proposition: The reader MUST fully understand the core event and its importance WITHOUT needing to click the link. Provide a complete but condensed story.
-    - Length: 2 to 3 short paragraphs (approx 100-150 words).
-    - Format: Use emojis naturally. Use **bold** for names and key figures.
-    - Restriction: DO NOT use Markdown headers like ###. Use a journalistic, engaging, and highly readable tone.
+1. `### ⚡ Özet` — then the PROSE LEDE described above. Prose, not bullets.
+2. One or more `###` subheadings specific to this story, with the body copy.
+3. `### 📊 Önemli İstatistikler` — ONLY if the sources contain real figures
+   worth pulling out. Skip this section entirely when they do not. Never pad it.
+4. `### 💬 Uzman Görüşleri` — ONLY if the sources contain a genuine statement or
+   quote. Format: `> **[İsim, Ünvan/Kurum]:** "[alıntı]"`. Never invent a quote.
+   Skip the section when there is nothing real to put in it.
+5. `### 🤖 Yapay Zeka Analizi` — 1–2 sentences of genuine context: the stake,
+   the background, or what plausibly follows. Not a restatement of the lede.
+6. `### 🔗 Kaynaklar` — bulleted list of the agencies/institutions actually named
+   in the raw text (`- AA`, `- TÜİK`, `- Reuters`).
 
-    ### CONSTRAINTS
-    - Language: Turkish (TR) only.
-    - Style: Strictly professional, neutral, and journalistic. No clickbait.
-    - Category Accuracy: Determine the category ONLY based on the "Core Event".
-    - Headline: Catchy, SEO-optimized, and factually accurate.
-    - Category List: [Siyaset, Ekonomi, Gündem, Spor, Teknoloji, Sanat].
+Sections 3 and 4 are conditional. Including them when the material is thin is
+worse than omitting them — that padding is exactly what makes text feel generated.
 
-    ### OUTPUT FORMAT (JSON ONLY)
-    {{
-        "headline": "...",
-        "summary": "Raw Markdown text here...",
-        "telegram_caption": "...",
-        "category": "...",
-        "category_reasoning": "...",
-        "fact_check": "Brief validation of logic...",
-        "image_search_query": "...",
-        "tags": ["tag1", "tag2"],
-        "entities": {{"people": [], "locations": [], "organizations": []}},
-        "has_conflicting_data": false,
-        "conflict_details": "Description of conflict if any...",
-        "is_relevant_to_turkey": true
-    }}
+STYLING: `**bold**` for people, organizations and critical figures. `>` blockquotes
+for real statements only.
 
-    ### RAW TEXT DATA
-    {text_cluster}
-    """
+### STEP 4 — TELEGRAM CAPTION (`telegram_caption` field)
+A standalone piece for the channel. The reader must understand the whole story
+without clicking. 2–3 short paragraphs, ~100–150 words, emojis used naturally,
+**bold** for names and figures, NO `###` headers. Same journalist voice — this is
+the version most people actually read, so it should be the most human of all.
+
+### STEP 5 — PERSIAN EDITION (`fa_headline`, `fa_summary`)
+Also produce the Persian version in this same response (this saves an entire
+extra API call, so it is required, not optional):
+- `fa_headline`: the headline in natural Persian news style.
+- `fa_summary`: the full summary in Persian. Keep EVERY markdown marker and emoji
+  exactly as-is, translating only the visible text —
+  `### ⚡ Özet` → `### ⚡ خلاصه`, `### 📊 Önemli İstatistikler` → `### 📊 آمار مهم`,
+  `### 💬 Uzman Görüşleri` → `### 💬 دیدگاه کارشناسان`,
+  `### 🤖 Yapay Zeka Analizi` → `### 🤖 تحلیل هوش مصنوعی`,
+  `### 🔗 Kaynaklar` → `### 🔗 منابع`.
+- Write real Persian journalism, not a word-for-word transfer. Turkish proper
+  nouns take their natural Persian spelling. Convert comma-separated counts into
+  proper sentences: "2 ölü, 3 yaralı" → "۲ نفر کشته و ۳ نفر زخمی شدند".
+
+### CATEGORY
+Choose from [Siyaset, Ekonomi, Gündem, Spor, Teknoloji, Sanat] based only on the
+core event, and justify it in `category_reasoning`. Watch the traps: state
+budget, pensions, or public infrastructure (DSİ/TOKİ) are never Spor.
+
+### ALSO EXTRACT
+- `image_search_query`: 2–3 words naming the main visual subject, tuned for image
+  search (e.g. 'Ali Yerlikaya', 'Galatasaray transfer').
+- `tags`, and `entities` (people / locations / organizations).
+
+### CONSTRAINTS
+- `headline`, `summary`, `telegram_caption`: Turkish only. `fa_*`: Persian only.
+- Accurate and factual. No clickbait. The headline states what happened.
+
+### OUTPUT FORMAT (JSON ONLY)
+{{
+    "headline": "...",
+    "summary": "Raw Markdown text here...",
+    "telegram_caption": "...",
+    "fa_headline": "...",
+    "fa_summary": "Raw Markdown text in Persian...",
+    "category": "...",
+    "category_reasoning": "...",
+    "fact_check": "Brief validation of logic...",
+    "image_search_query": "...",
+    "tags": ["tag1", "tag2"],
+    "entities": {{"people": [], "locations": [], "organizations": []}},
+    "has_conflicting_data": false,
+    "conflict_details": "Description of conflict if any...",
+    "is_relevant_to_turkey": true
+}}
+
+### RAW TEXT DATA
+{text_cluster}
+"""
 
     # --- Smart Failover & Recovery Logic ---
     # 1. Check if we should try to reset from failover mode
@@ -295,6 +338,12 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
 
     model_to_use = CURRENT_MODEL_NAME
 
+    # 1b. Quota breaker: if the project quota is exhausted, do not spend another
+    # rejected request on it. Both this worker and the FA sweep share this state.
+    if gemini_quota.is_open():
+        print(f"   ⏸️  Gemini quota cooling down ({gemini_quota.seconds_remaining()}s left) — skipping call.")
+        return None, 0, 0, 0, "Quota-Cooldown"
+
     try:
         # 2. Main API call attempt
         req_start = time.time()
@@ -303,7 +352,11 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type='application/json',
-                temperature=0.15,
+                # 0.55 (was 0.15): near-deterministic sampling produced uniform,
+                # templated sentences — the main reason summaries read as machine
+                # text. Higher temperature buys natural variation in rhythm and
+                # phrasing; the prompt's "never invent a fact" rules hold accuracy.
+                temperature=0.55,
                 max_output_tokens=8192,
             )
         )
@@ -343,7 +396,8 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
         else:
             ai_data = raw_result
 
-        # 3. If successful while in failover, increment the recovery counter
+        # 3. Success — clear any quota cooldown and the failover counter.
+        gemini_quota.record_success()
         if FAILOVER_ACTIVE:
             SUCCESSFUL_CYCLES_SINCE_FAILOVER += 1
 
@@ -352,20 +406,24 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
     except Exception as e:
         error_str = str(e)
         if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str.upper():
-            print(f"   ⚠️ Rate limit (429) hit with model {model_to_use}. Triggering failover...")
+            print(f"   ⚠️ Rate limit (429) hit with model {model_to_use}.")
 
-            # If we are already on the fallback model, it's a hard failure for this cycle.
+            # If we are already on the fallback model, the whole project quota is
+            # gone — open the shared breaker so neither this worker nor the FA
+            # sweep keeps firing rejected requests at it.
             if model_to_use == FALLBACK_MODEL_NAME:
-                print(f"   ❌ Fallback model {FALLBACK_MODEL_NAME} also rate-limited. Aborting cycle.")
+                gemini_quota.record_failure(e)
+                print(f"   ❌ Both models rate-limited. Gemini paused for {gemini_quota.seconds_remaining()}s.")
                 return None, 0, 0, 0, model_to_use
 
-            # Switch to fallback model
+            # Primary is limited but the fallback may have its own quota bucket —
+            # one retry on the fallback, then stop. (No breaker yet: this is a
+            # per-model limit, not necessarily project-wide exhaustion.)
             FAILOVER_ACTIVE = True
             SUCCESSFUL_CYCLES_SINCE_FAILOVER = 0
             CURRENT_MODEL_NAME = FALLBACK_MODEL_NAME
             print(f"   ↪️ Switched to fallback model: {CURRENT_MODEL_NAME}")
 
-            # Recursive retry with the new model
             time.sleep(2)
             return generate_summary_with_gemini(text_cluster, is_umbrella=is_umbrella, old_title=old_title)
         else:
@@ -375,6 +433,32 @@ def generate_summary_with_gemini(text_cluster, is_umbrella=False, old_title=None
 # ==========================================
 # FIXED LOGIC: Smart Action Filtering
 # ==========================================
+
+# Per-trend retry backoff, in memory. Keyed by trend id → earliest retry
+# timestamp. Deliberately not persisted: a worker restart clearing it is
+# harmless, and it avoids a schema migration on a live database.
+_RETRY_AFTER: dict[int, float] = {}
+_RETRY_STRIKES: dict[int, int] = {}
+# How many trends to consider before picking the 5 to work on. Must be well
+# above 5 so that backed-off trends do not block the ones behind them.
+BACKOFF_FETCH_WINDOW = 60
+# Penalty ladder for a trend that fails to produce a usable summary.
+_TREND_BACKOFF_STEPS = [300, 900, 3600, 21600]  # 5m → 15m → 1h → 6h
+
+
+def _penalise_trend(trend_id: int, reason: str):
+    """Push a failing trend down the queue so it stops blocking the others."""
+    strikes = _RETRY_STRIKES.get(trend_id, 0)
+    delay = _TREND_BACKOFF_STEPS[min(strikes, len(_TREND_BACKOFF_STEPS) - 1)]
+    _RETRY_STRIKES[trend_id] = strikes + 1
+    _RETRY_AFTER[trend_id] = time.time() + delay
+    print(f"   ⏭️  Trend {trend_id} backed off for {delay}s ({reason}, strike {strikes + 1}).")
+
+
+def _clear_penalty(trend_id: int):
+    _RETRY_AFTER.pop(trend_id, None)
+    _RETRY_STRIKES.pop(trend_id, None)
+
 
 def process_pending_trends():
     """
@@ -407,15 +491,28 @@ def process_pending_trends():
             Trend.is_published == False
         )
 
-        # 3. Query with OR logic
-        pending_trends = db.query(Trend).filter(
+        # 3. Query with OR logic.
+        # Fetch a wide window, not just the top 5: a trend that keeps failing
+        # (bad source text, AI validation rejection) used to sit at the head of
+        # the queue forever and starve everything behind it — 68 trends were
+        # backed up behind the same 5. We now skip trends that are in penalty
+        # and take the highest-TPS eligible ones instead.
+        candidates = db.query(Trend).filter(
             Trend.is_active == True,
             or_(condition_needs_summary, condition_needs_update, condition_needs_publish)
-        ).order_by(desc(Trend.final_tps)).limit(5).all()
+        ).order_by(desc(Trend.final_tps)).limit(BACKOFF_FETCH_WINDOW).all()
 
-        if not pending_trends: return False
+        now_ts = time.time()
+        pending_trends = [t for t in candidates if _RETRY_AFTER.get(t.id, 0) <= now_ts][:5]
 
-        print(f"✍️  Processing {len(pending_trends)} Actionable Trends...")
+        if not pending_trends:
+            if candidates:
+                print(f"⏳ All {len(candidates)} queued trends are in retry backoff. Waiting.")
+            return False
+
+        skipped = len(candidates) - len([t for t in candidates if _RETRY_AFTER.get(t.id, 0) <= now_ts])
+        suffix = f" ({skipped} in backoff, {len(candidates)} queued)" if skipped else f" ({len(candidates)} queued)"
+        print(f"✍️  Processing {len(pending_trends)} Actionable Trends{suffix}...")
 
         for trend in pending_trends:
             # --- Phase 1: Content Generation (If summary missing OR needs update) ---
@@ -471,13 +568,23 @@ def process_pending_trends():
                 time.sleep(1.0)
 
                 ai_result, in_tok, out_tok, duration, model_used = generate_summary_with_gemini(cluster_text, is_umbrella=is_umbrella, old_title=trend.title)
-                
+
                 # Protect against API errors (failover is now handled inside the function)
                 if ai_result is None:
-                    print(f"   ❌ API call failed even after retries for Trend {trend.id}. Pausing worker for 15s.")
-                    time.sleep(15)
+                    # Failures were previously invisible: nothing was written to
+                    # ai_monitor_data.csv, so the dashboard showed a healthy
+                    # system while 5000+ calls a day were being rejected.
+                    log_to_csv(trend.id, model_used, 0, 0, duration,
+                               trend.category or "Unknown", "Error: APIFailure")
+                    if gemini_quota.is_open():
+                        # Quota is gone — stop the cycle entirely instead of
+                        # walking the rest of the batch into the same wall.
+                        print(f"   ⏸️  Quota exhausted. Halting cycle for {gemini_quota.seconds_remaining()}s.")
+                        return False
+                    print(f"   ❌ API call failed for Trend {trend.id}.")
+                    _penalise_trend(trend.id, "api failure")
                     continue
-                    
+
                 # Add a natural anti-spam delay between successful API calls
                 time.sleep(3)
                 
@@ -503,29 +610,42 @@ def process_pending_trends():
 
                     # STRICT ENFORCEMENT: Reject the AI output completely if telegram_caption is missing
                     if not extracted_summary or extracted_summary.lower() == "none" or not extracted_tg_caption or extracted_tg_caption.lower() == "none":
-                        print(f"   ⚠️ AI validation failed: missing summary or telegram_caption. Retrying next cycle.")
+                        print(f"   ⚠️ AI validation failed: missing summary or telegram_caption.")
+                        _penalise_trend(trend.id, "validation failed")
                         continue
 
                     trend.summary = extracted_summary
                     trend.category = final_category
 
-                    # ── FA Translation: translate immediately in same cycle ──
-                    # One Gemini call for both title + summary; sets ORM attrs
-                    # so the upcoming db.commit() persists them together.
+                    # ── FA translation now arrives in the SAME response ──
+                    # It used to be a second Gemini call per trend, which doubled
+                    # request count against a quota whose binding limit is
+                    # requests-per-day, not tokens. The 30-minute sweep in
+                    # gravity_worker still backfills anything missing here.
                     try:
-                        fa_title, fa_summary = translate_for_summarizer(
-                            trend.id, trend.title, extracted_summary, _redis_fa
-                        )
+                        fa_title = (ai_result.get("fa_headline") or "").strip()
+                        fa_summary = (ai_result.get("fa_summary") or "").strip()
                         trend.fa_title   = fa_title   or None
                         trend.fa_summary = fa_summary or None
                         if fa_title or fa_summary:
-                            print(f"   🇮🇷 FA translated: {trend.id}")
+                            if _redis_fa:
+                                if fa_title:
+                                    _redis_fa.setex(_redis_key_title(trend.id), 86400, fa_title)
+                                if fa_summary:
+                                    _redis_fa.setex(_redis_key_summary(trend.id), 86400, fa_summary)
+                            print(f"   🇮🇷 FA included in same call: {trend.id}")
                         else:
-                            print(f"   ⚠️ FA translation failed for {trend.id} — sweep will retry")
+                            # No fresh Persian text. The Turkish content just
+                            # changed, so any cached FA translation now describes
+                            # the OLD story — evict it or the site serves stale
+                            # Persian for up to 24h until the sweep catches up.
+                            clear_fa_cache(trend.id, _redis_fa)
+                            print(f"   ⚠️ FA missing from response for {trend.id} — sweep will retry")
                     except Exception as _fa_err:
-                        logger.warning(f"FA translation error for {trend.id}: {_fa_err}")
+                        logger.warning(f"FA handling error for {trend.id}: {_fa_err}")
                         trend.fa_title   = None
                         trend.fa_summary = None
+                        clear_fa_cache(trend.id, _redis_fa)
                     trend.tags = ai_result.get("tags")
                     
                     entities_dict = ai_result.get("entities", {})
@@ -550,11 +670,12 @@ def process_pending_trends():
                     trend.last_summary_msg_count = trend.message_count
 
                     print(f"   ✅ Summarized/Updated: [{trend.category}] {trend.title} (TPS: {trend.final_tps:.1f})")
-                    if not trend.slug: print(f"   🚀 SEO Slug: /trend/{trend.slug}")
-                    
+                    if trend.slug: print(f"   🚀 SEO Slug: /trend/{trend.slug}")
+
                     # Save and Log Stats
                     log_to_csv(trend.id, model_used, in_tok, out_tok, duration, trend.category, "Success")
                     db.commit() # Save content immediately
+                    _clear_penalty(trend.id)
                 else:
                     # Mark irrelevant or failed content as inactive
                     trend.is_active = False 
@@ -613,6 +734,14 @@ def main():
     print(f"🤖 TrendiaTR AI Summary Worker Active. Primary Model: {PRIMARY_MODEL_NAME}")
     while True:
         try:
+            # When the quota is exhausted, sleep out the cooldown instead of
+            # spinning the query loop every second against a wall.
+            if gemini_quota.is_open():
+                wait = min(gemini_quota.seconds_remaining() + 5, 300)
+                print(f"⏸️  Gemini quota exhausted — sleeping {wait}s before re-checking.")
+                time.sleep(wait)
+                continue
+
             has_work = process_pending_trends()
             # Dynamic sleep based on workload
             time.sleep(1 if has_work else 15)
