@@ -4,7 +4,6 @@ import time
 import random
 import logging
 import urllib.parse
-import feedparser
 import re
 from datetime import datetime, timezone
 from datetime import timedelta
@@ -19,7 +18,7 @@ from app.core.text_utils import JUNK_KEYWORDS, slugify_turkish
 from app.core.ai_engine import ai_engine
 from app.core.scoring_queue import scoring_queue, ScoringQueue
 from app.core.classifier import fast_classify
-from app.core.http_resilience import request_with_retry
+from app.core.http_resilience import request_with_retry, parse_feed
 from app.core.observability import traced_span, emit_metric
 from app.core.multi_source_validator import multi_source_validator
 
@@ -65,7 +64,7 @@ class SocialWorker:
         try:
             encoded_query = urllib.parse.quote_plus(keyword)
             rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=tr&gl=TR&ceid=TR:tr"
-            feed = feedparser.parse(rss_url)
+            feed = parse_feed(rss_url, timeout=10, metric_name="social.google_news.http_ms")
             if feed.entries:
                 # Regex to remove trailing " - Source" or " | Source" from Google News titles
                 clean_title = lambda t: re.sub(r'\s+[-|]\s+[^-|]+$', '', t).strip()

@@ -53,3 +53,22 @@ def request_with_retry(
         raise last_exc
     raise RuntimeError(f"HTTP request failed after retries: {method} {url}")
 
+
+def parse_feed(url: str, *, timeout: int = 15, metric_name: str = "feed.fetch"):
+    """Fetch a feed body under a timeout, then hand the bytes to feedparser.
+
+    `feedparser.parse(url)` does its own fetch through urllib, which honours only
+    the global socket timeout — never set in this project, so it is None. A single
+    unresponsive feed server could stall a worker's whole cycle across every other
+    feed, with no upper bound. Fetching first also gets the retry and backoff
+    behaviour the rest of the project's HTTP already has.
+
+    Raises whatever request_with_retry raises; both callers already treat a failed
+    feed as "skip this source and continue".
+    """
+    import feedparser  # local: keeps this module importable without the collector deps
+
+    resp = request_with_retry("GET", url, timeout=timeout, metric_name=metric_name)
+    resp.raise_for_status()
+    return feedparser.parse(resp.content)
+

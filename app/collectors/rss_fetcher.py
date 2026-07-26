@@ -3,7 +3,6 @@ import os
 import re
 import time
 import random
-import feedparser
 from datetime import datetime, timezone, timedelta
 from dateutil import parser as date_parser
 
@@ -18,6 +17,7 @@ from app.core.scoring import get_source_tier
 from app.core.text_utils import slugify_turkish
 from app.core.classifier import fast_classify
 from app.core.scoring_queue import scoring_queue, ScoringQueue
+from app.core.http_resilience import parse_feed
 
 # Path for RSS sources configuration
 RSS_FILE = os.path.join(os.path.dirname(__file__), 'rss_sources.txt')
@@ -132,7 +132,7 @@ def _run_rss_cycle(db, sources_override: dict = None):
 
     for source_name, url in rss_feeds.items():
         try:
-            feed = feedparser.parse(url)
+            feed = parse_feed(url, timeout=15, metric_name="rss.feed.http_ms")
             for entry in feed.entries:
                 title = entry.get('title', '')
                 summary = entry.get('summary', '') or entry.get('description', '')
