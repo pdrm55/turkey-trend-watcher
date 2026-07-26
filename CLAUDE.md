@@ -32,9 +32,13 @@ sudo docker compose restart ttw_summarizer
 sudo docker compose logs api_server --tail=50 -f
 sudo docker compose logs ttw_gravity --tail=30
 
-# Tests run INSIDE a container — the host has neither the app dependencies nor
-# pytest, so `python3 -m pytest` on the host fails at the first app import.
+# Tests that import app modules run INSIDE a container. The host has pytest but
+# none of the app dependencies, so a host run dies on `import sqlalchemy`.
 sudo docker exec ttw_api python3 -m pytest tests/test_b2b_api.py -v
+sudo docker exec ttw_gravity python3 -m pytest tests/test_scoring_queue_atomicity.py -v
+
+# tests/test_gravity_pagination.py imports nothing from app/ and runs on the host:
+python3 -m pytest tests/test_gravity_pagination.py -v
 
 # Run a single test class
 sudo docker exec ttw_api python3 -m pytest tests/test_b2b_api.py::TestAuthentication -v

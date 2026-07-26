@@ -188,8 +188,8 @@ All Gemini token usage (summarization **and** translation) is logged to `ai_moni
 
 ## Testing
 
-Tests run **inside a container**. The host has neither the application
-dependencies nor pytest, so running them there fails at the first app import.
+Anything importing `app/` runs **inside a container** — the host has pytest but
+none of the application dependencies, so a host run dies on `import sqlalchemy`.
 
 ```bash
 # B2B API integration tests (requires a live database)
@@ -198,7 +198,13 @@ sudo docker exec ttw_api python3 -m pytest tests/test_b2b_api.py -v
 # Run a single test class
 sudo docker exec ttw_api python3 -m pytest tests/test_b2b_api.py::TestAuthentication -v
 
-# Worker robustness tests — these need no pytest and run as plain scripts
+# Scoring-queue atomicity (needs a live Redis; uses a scratch keyspace)
+sudo docker exec ttw_gravity python3 -m pytest tests/test_scoring_queue_atomicity.py -v
+
+# Pure-logic tests — no app imports, so these run on the host
+python3 -m pytest tests/test_gravity_pagination.py -v
+
+# Worker robustness tests — these also run as plain scripts without pytest
 sudo docker exec ttw_image_worker python3 tests/test_image_worker_timeout.py
 sudo docker exec ttw_summarizer python3 tests/test_summary_analysis_filter.py
 ```

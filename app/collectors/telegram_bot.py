@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 # Add project root to sys path for internal module access
@@ -21,6 +22,99 @@ from app.core.scoring_queue import scoring_queue, ScoringQueue
 # Path for the monitored channels list
 CHANNELS_FILE = os.path.join(os.path.dirname(__file__), 'channels.txt')
 monitored_usernames = set()
+
+# Ingest runs off the event loop. process_news() is fully synchronous — two
+# SentenceTransformer.encode() calls, a Chroma HTTP query, a blocking
+# requests.post to Ollama with timeout=25, and _acquire_redis_lock() which
+# busy-waits with time.sleep() for up to 20s — and it used to run directly
+# inside the Telethon handler. Every incoming message stalled the whole event
+# loop for seconds, starving the ping/keepalive that the reconnect loop below
+# then had to recover from.
+#
+# max_workers=1 keeps processing strictly sequential, exactly as before, so no
+# assumption about thread-safety in the embedding model or the Ollama locks
+# changes. The only difference is that messages now queue in the executor
+# instead of blocking the loop.
+_INGEST_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tg-ingest")
+
+
+def _process_message_blocking(raw_text, ch_id, unique_id, msg_time, video_path_db):
+    """Synchronous ingest for one Telegram message. Runs in _INGEST_EXECUTOR."""
+    db = SessionLocal()
+    try:
+        # --- Step 1: AI Clustering ---
+        cluster_id, is_duplicate = ai_engine.process_news(raw_text, ch_id, unique_id)
+        if not cluster_id:
+            return
+
+        # --- Step 2: Trend Management & SEO Slugging ---
+        trend = db.query(Trend).filter(Trend.cluster_id == cluster_id).first()
+
+        if trend:
+            trend.message_count += 1
+            trend.last_updated = msg_time
+            trend.needs_scoring = True  # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه در ورکر پس‌زمینه
+            if video_path_db and not trend.video_path:
+                trend.video_path = video_path_db
+            action = "📈 Signal Added"
+        else:
+            # New trend detected: Create initial headline and SEO slug immediately
+            initial_title = raw_text[:70].strip() + "..."
+
+            # Layer 0: Instant Classification
+            initial_category = fast_classify(raw_text)
+
+            trend = Trend(
+                cluster_id=cluster_id,
+                message_count=1,
+                title=initial_title,
+                slug=generate_initial_slug(db, raw_text),  # SEO-First logic
+                category=initial_category,
+                first_seen=msg_time,
+                last_updated=msg_time,
+                needs_scoring=True,  # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه اولیه
+                video_path=video_path_db
+            )
+            db.add(trend)
+            db.flush()  # Secure the trend.id
+            action = f"✨ Trend Created [{initial_category}]"
+
+        # --- Step 3: Raw News Persistence ---
+        source_tier = get_source_tier(ch_id)
+        news_item = RawNews(
+            source_type="telegram",
+            source_name=ch_id,
+            source_tier=source_tier,
+            external_id=unique_id,
+            content=raw_text,
+            published_at=msg_time,
+            trend_id=trend.id,
+            video_path=video_path_db
+        )
+        db.add(news_item)
+        db.flush()
+
+        # --- Step 4: Record Arrival for Velocity Calculation ---
+        arrival = TrendArrivals(
+            trend_id=trend.id,
+            raw_news_id=news_item.id,
+            timestamp=msg_time
+        )
+        db.add(arrival)
+        db.commit()
+
+        queue_priority = ScoringQueue.BREAKING if source_tier <= 2 else ScoringQueue.NORMAL
+        if not scoring_queue.enqueue(trend.id, queue_priority):
+            print(f"⚠️ Queue enqueue skipped for trend {trend.id} (Telegram).")
+
+        # فاز ۶.۲: حذف کامل فراخوانی مستقیم scoring برای افزایش سرعت دریافت
+        print(f"{action}: [{ch_id}] (Tier {source_tier}) | Queued for Scoring.")
+
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Telegram DB Error: {e}")
+    finally:
+        db.close()
 
 async def update_channels_from_file(client):
     """
@@ -139,108 +233,42 @@ async def main():
             if ch_id not in monitored_usernames:
                 return
 
-            db = SessionLocal()
-            try:
-                raw_text = event.message.message
-                # Junk filter for very short messages
-                if len(raw_text.strip()) < 20:
-                    return
+            raw_text = event.message.message
+            # Junk filter for very short messages
+            if len(raw_text.strip()) < 20:
+                return
 
-                # Construct unique link for source tracking
-                unique_id = f"https://t.me/{ch_id}/{event.message.id}"
-                
-                video_path_db = None
-                if getattr(event.message, 'video', None):
-                    try:
-                        now_utc = datetime.now(timezone.utc)
-                        year, month, day = now_utc.strftime("%Y"), now_utc.strftime("%m"), now_utc.strftime("%d")
-                        # Ensure path is correct for the docker container
-                        vid_folder = os.path.join("/app/app/static/media/videos", year, month, day)
-                        os.makedirs(vid_folder, exist_ok=True)
-                        
-                        vid_filename = f"vid_{uuid.uuid4().hex}.mp4"
-                        final_vid_full_path = os.path.join(vid_folder, vid_filename)
-                        
-                        print(f"📥 Downloading video from {ch_id}...")
-                        await client.download_media(event.message.video, file=final_vid_full_path)
-                        video_path_db = f"media/videos/{year}/{month}/{day}/{vid_filename}"
-                    except Exception as e:
-                        print(f"⚠️ Failed to download video: {e}")
+            # Construct unique link for source tracking
+            unique_id = f"https://t.me/{ch_id}/{event.message.id}"
 
-                # --- Step 1: AI Clustering ---
-                cluster_id, is_duplicate = ai_engine.process_news(raw_text, ch_id, unique_id)
-                if not cluster_id: return
+            video_path_db = None
+            if getattr(event.message, 'video', None):
+                try:
+                    now_utc = datetime.now(timezone.utc)
+                    year, month, day = now_utc.strftime("%Y"), now_utc.strftime("%m"), now_utc.strftime("%d")
+                    # Ensure path is correct for the docker container
+                    vid_folder = os.path.join("/app/app/static/media/videos", year, month, day)
+                    os.makedirs(vid_folder, exist_ok=True)
 
-                msg_time = datetime.now(timezone.utc).replace(tzinfo=None)
+                    vid_filename = f"vid_{uuid.uuid4().hex}.mp4"
+                    final_vid_full_path = os.path.join(vid_folder, vid_filename)
 
-                # --- Step 2: Trend Management & SEO Slugging ---
-                trend = db.query(Trend).filter(Trend.cluster_id == cluster_id).first()
-                
-                if trend:
-                    trend.message_count += 1
-                    trend.last_updated = msg_time
-                    trend.needs_scoring = True # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه در ورکر پس‌زمینه
-                    if video_path_db and not trend.video_path:
-                        trend.video_path = video_path_db
-                    action = "📈 Signal Added"
-                else:
-                    # New trend detected: Create initial headline and SEO slug immediately
-                    initial_title = raw_text[:70].strip() + "..."
-                    
-                    # Layer 0: Instant Classification
-                    initial_category = fast_classify(raw_text)
-                    
-                    trend = Trend(
-                        cluster_id=cluster_id,
-                        message_count=1,
-                        title=initial_title,
-                        slug=generate_initial_slug(db, raw_text), # SEO-First logic
-                        category=initial_category,
-                        first_seen=msg_time,
-                        last_updated=msg_time,
-                        needs_scoring=True, # ASYNC TRIGGER: پرچم‌گذاری برای محاسبه اولیه
-                        video_path=video_path_db
-                    )
-                    db.add(trend)
-                    db.flush() # Secure the trend.id
-                    action = f"✨ Trend Created [{initial_category}]"
-                
-                # --- Step 3: Raw News Persistence ---
-                source_tier = get_source_tier(ch_id)
-                news_item = RawNews(
-                    source_type="telegram",
-                    source_name=ch_id,
-                    source_tier=source_tier,
-                    external_id=unique_id,
-                    content=raw_text,
-                    published_at=msg_time,
-                    trend_id=trend.id,
-                    video_path=video_path_db
-                )
-                db.add(news_item)
-                db.flush()
+                    print(f"📥 Downloading video from {ch_id}...")
+                    await client.download_media(event.message.video, file=final_vid_full_path)
+                    video_path_db = f"media/videos/{year}/{month}/{day}/{vid_filename}"
+                except Exception as e:
+                    print(f"⚠️ Failed to download video: {e}")
 
-                # --- Step 4: Record Arrival for Velocity Calculation ---
-                arrival = TrendArrivals(
-                    trend_id=trend.id,
-                    raw_news_id=news_item.id,
-                    timestamp=msg_time
-                )
-                db.add(arrival)
-                db.commit()
+            msg_time = datetime.now(timezone.utc).replace(tzinfo=None)
 
-                queue_priority = ScoringQueue.BREAKING if source_tier <= 2 else ScoringQueue.NORMAL
-                if not scoring_queue.enqueue(trend.id, queue_priority):
-                    print(f"⚠️ Queue enqueue skipped for trend {trend.id} (Telegram).")
-
-                # فاز ۶.۲: حذف کامل فراخوانی مستقیم scoring برای افزایش سرعت دریافت
-                print(f"{action}: [{ch_id}] (Tier {source_tier}) | Queued for Scoring.")
-
-            except Exception as e:
-                db.rollback()
-                print(f"❌ Telegram DB Error: {e}")
-            finally:
-                db.close()
+            # Clustering + DB writes run in a worker thread so the event loop stays
+            # free to service Telethon's keepalive while Ollama and the embedding
+            # model take their time.
+            await asyncio.get_running_loop().run_in_executor(
+                _INGEST_EXECUTOR,
+                _process_message_blocking,
+                raw_text, ch_id, unique_id, msg_time, video_path_db,
+            )
 
         except Exception as e:
             print(f"❌ Event Loop Error: {e}")

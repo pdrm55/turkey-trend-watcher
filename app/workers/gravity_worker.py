@@ -211,23 +211,28 @@ def apply_gravity_decay():
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         decay_count = 0
         deactivated_count = 0
-        offset = 0
+        last_id = 0
         total_seen = 0
 
         while True:
-            # Fix 6: chunked pagination — never load all active trends at once
+            # Fix 6: chunked pagination — never load all active trends at once.
+            # Keyset, not LIMIT/OFFSET: the loop below sets is_active = False and
+            # commits before advancing, and the query filters on is_active, so every
+            # archived trend shifted the remaining rows down by one. A cycle that
+            # archived 30 of a 100-row page then skipped the next 30 active trends
+            # entirely — they silently never decayed. Seeking on id has no such
+            # interaction with the predicate.
             batch = (
                 db.query(Trend)
-                .filter(Trend.is_active == True)
+                .filter(Trend.is_active == True, Trend.id > last_id)
                 .order_by(Trend.id)
                 .limit(GRAVITY_BATCH_SIZE)
-                .offset(offset)
                 .all()
             )
             if not batch:
                 break
 
-            if offset == 0:
+            if last_id == 0:
                 logger.info(f"📉 [Gravity] Starting decay cycle (batch_size={GRAVITY_BATCH_SIZE})...")
 
             for trend in batch:
@@ -270,11 +275,14 @@ def apply_gravity_decay():
                     decay_count += 1
 
             total_seen += len(batch)
+            # Advance before committing: after the commit the archived rows no
+            # longer satisfy the filter, and batch[-1].id is the only cursor that
+            # survives that.
+            last_id = batch[-1].id
             db.commit()
 
             if len(batch) < GRAVITY_BATCH_SIZE:
                 break
-            offset += GRAVITY_BATCH_SIZE
 
         logger.info(
             f"✅ [Gravity] Cycle done. Processed: {total_seen} | "
