@@ -441,6 +441,18 @@ end
         is_duplicate = False
         checked_clusters = set()
 
+        # Instrumentation only — no behaviour change. Measured in production:
+        # clustering issues ~3.4 LLM calls per article (rss 3.9) and accounts for
+        # 77% of all Ollama traffic, which sits at ~95% duty. The loop below asks
+        # the LLM once per candidate in the uncertain band and only breaks on a
+        # "yes", so an article that matches nothing is the most expensive one.
+        # Capping the number of asks is the obvious fix, but the cap is only safe
+        # if real merges land on the first ask. These counters answer that.
+        llm_asks = 0
+        merged_on_ask = None
+        merge_distance = None
+        merge_kind = "new"
+
         if results['distances'] and results['distances'][0]:
             for i, distance in enumerate(results['distances'][0]):
                 # Cosine distance: 0.0 = exact match. Skip anything clearly unrelated.
@@ -481,13 +493,29 @@ end
                 if distance < auto_merge_thresh:
                     cluster_id = candidate_cluster_id
                     is_duplicate = True
+                    merge_kind = "auto"
+                    merge_distance = distance
                     break
 
                 # Case 2: Uncertain Zone -> Ask Local LLM
-                if distance < uncertain_thresh and self.ask_local_llm(target_text, cleaned_text):
-                    cluster_id = candidate_cluster_id
-                    is_duplicate = True
-                    break
+                if distance < uncertain_thresh:
+                    llm_asks += 1
+                    if self.ask_local_llm(target_text, cleaned_text):
+                        cluster_id = candidate_cluster_id
+                        is_duplicate = True
+                        merge_kind = "llm"
+                        merged_on_ask = llm_asks
+                        merge_distance = distance
+                        break
+
+        # One machine-parseable line per article. Grep CLUSTER_STATS to get the
+        # distribution of merges by ask ordinal, which is what decides the cap.
+        logger.info(
+            "CLUSTER_STATS source=%s kind=%s asks=%d merged_on=%s dist=%s",
+            source, merge_kind, llm_asks,
+            merged_on_ask if merged_on_ask is not None else "-",
+            f"{merge_distance:.4f}" if merge_distance is not None else "-",
+        )
 
         is_new_reference = False
         if not cluster_id:
