@@ -455,6 +455,17 @@ end
         merge_distance = None
         merge_kind = "new"
 
+        # `nearest` is the closest neighbour Chroma returned, recorded whether or
+        # not it led to a merge. The first round of CLUSTER_STATS could not answer
+        # the open question — how many "new" trends were actually near-duplicates
+        # sitting in the 0.15-0.25 band — because kind=new rows logged dist=-, and
+        # the loop skips anything past 0.35 before recording it. This closes that
+        # gap: the distribution of `near` over kind=new rows is what decides
+        # whether auto_merge_thresh should move.
+        nearest = None
+        if results['distances'] and results['distances'][0]:
+            nearest = min(results['distances'][0])
+
         if results['distances'] and results['distances'][0]:
             for i, distance in enumerate(results['distances'][0]):
                 # Cosine distance: 0.0 = exact match. Skip anything clearly unrelated.
@@ -516,10 +527,12 @@ end
         # One machine-parseable line per article. Grep CLUSTER_STATS to get the
         # distribution of merges by ask ordinal, which is what decides the cap.
         logger.info(
-            "CLUSTER_STATS source=%s kind=%s asks=%d merged_on=%s dist=%s",
+            "CLUSTER_STATS source=%s kind=%s asks=%d merged_on=%s dist=%s near=%s cands=%d",
             source, merge_kind, llm_asks,
             merged_on_ask if merged_on_ask is not None else "-",
             f"{merge_distance:.4f}" if merge_distance is not None else "-",
+            f"{nearest:.4f}" if nearest is not None else "-",
+            len(checked_clusters),
         )
 
         is_new_reference = False
