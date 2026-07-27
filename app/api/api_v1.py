@@ -3,7 +3,10 @@ from flask import Blueprint, jsonify, request, g
 from sqlalchemy import desc, text
 from app.database.models import SessionLocal, Trend, APIClient
 from app.core.api_auth import require_api_key
-from app.core.api_serializer import serialize_trend_summary, serialize_trend_full, serialize_media, _make_absolute
+from app.core.api_serializer import (
+    serialize_trend_summary, serialize_trend_full, serialize_media, _make_absolute,
+    fetch_articles, clamp_article_limit, ARTICLES_DEFAULT_LIMIT, ARTICLES_MAX_LIMIT,
+)
 
 bp = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 
@@ -93,8 +96,25 @@ def list_trends():
 @bp.route('/trends/<int:trend_id>', methods=['GET'])
 @require_api_key
 def get_trend(trend_id):
-    """Full trend detail including all articles, media, and cluster data."""
+    """Full trend detail including cluster articles, media, and metadata.
+
+    Query params:
+        limit   int  Articles per page (default 50, max 200)
+        offset  int  Article pagination offset (default 0)
+
+    `cluster.article_count` is still the size of the whole cluster; use
+    `cluster.has_more` with `offset` to walk large clusters.
+    """
     client = g.api_client
+
+    article_limit = clamp_article_limit(
+        request.args.get('limit', ARTICLES_DEFAULT_LIMIT)
+    )
+    try:
+        article_offset = max(int(request.args.get('offset', 0)), 0)
+    except (ValueError, TypeError):
+        return jsonify({"error": "invalid_param", "message": "offset must be an integer"}), 400
+
     db = SessionLocal()
     try:
         trend = db.query(Trend).filter(
@@ -109,7 +129,9 @@ def get_trend(trend_id):
                 "message": "Trend not found or below your plan's TPS threshold."
             }), 404
 
-        return jsonify({"data": serialize_trend_full(trend)})
+        return jsonify({
+            "data": serialize_trend_full(trend, article_limit, article_offset)
+        })
     finally:
         db.close()
 
@@ -120,8 +142,22 @@ def get_trend(trend_id):
 @bp.route('/trends/<int:trend_id>/media', methods=['GET'])
 @require_api_key
 def get_trend_media(trend_id):
-    """All media (images + videos) from a trend's article cluster."""
+    """Media (images + videos) from a trend's article cluster.
+
+    Query params:
+        limit   int  Articles scanned per page (default 50, max 200)
+        offset  int  Article pagination offset (default 0)
+    """
     client = g.api_client
+
+    article_limit = clamp_article_limit(
+        request.args.get('limit', ARTICLES_DEFAULT_LIMIT)
+    )
+    try:
+        article_offset = max(int(request.args.get('offset', 0)), 0)
+    except (ValueError, TypeError):
+        return jsonify({"error": "invalid_param", "message": "offset must be an integer"}), 400
+
     db = SessionLocal()
     try:
         trend = db.query(Trend).filter(
@@ -148,7 +184,8 @@ def get_trend_media(trend_id):
                 "url": _make_absolute(trend.video_path)
             })
 
-        for article in trend.news_items:
+        articles, total_articles = fetch_articles(trend, article_limit, article_offset)
+        for article in articles:
             for m in serialize_media(article):
                 m["source"] = "article"
                 m["article_id"] = article.id
@@ -158,8 +195,16 @@ def get_trend_media(trend_id):
         return jsonify({
             "trend_id": trend_id,
             "trend_title": trend.title,
+            # Media found on this page of articles, as before.
             "media_count": len(media_items),
-            "data": media_items
+            "data": media_items,
+            "meta": {
+                "article_count": total_articles,
+                "limit": article_limit,
+                "offset": article_offset,
+                "articles_scanned": len(articles),
+                "has_more": article_offset + len(articles) < total_articles,
+            }
         })
     finally:
         db.close()

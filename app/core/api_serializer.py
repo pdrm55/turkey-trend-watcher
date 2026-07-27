@@ -1,7 +1,57 @@
 import os
+from sqlalchemy import func
+from sqlalchemy.orm import object_session
 from app.database.models import Trend, RawNews
 
 BASE_SITE_URL = os.getenv("BASE_SITE_URL", "https://trendiatr.com")
+
+# `trend.news_items` is a plain lazy relationship: touching it loads every row
+# in the cluster. The largest cluster on production holds 1567 articles, each
+# with a full `content` blob, so a single /trends/<id> call could pull tens of
+# megabytes out of Postgres and serialise all of it. Pages are capped instead.
+ARTICLES_DEFAULT_LIMIT = 50
+ARTICLES_MAX_LIMIT = 200
+
+
+def clamp_article_limit(value, default=ARTICLES_DEFAULT_LIMIT):
+    """Coerce a client-supplied limit into 1..ARTICLES_MAX_LIMIT."""
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(limit, ARTICLES_MAX_LIMIT))
+
+
+def fetch_articles(trend: Trend, limit: int, offset: int = 0):
+    """Return (newest-first page of articles, total article count).
+
+    The count comes from the database, not from the loaded page, so
+    `article_count` keeps meaning "how many articles are in this cluster"
+    exactly as it did before pagination.
+    """
+    limit = max(1, min(int(limit), ARTICLES_MAX_LIMIT))
+    offset = max(0, int(offset))
+
+    db = object_session(trend)
+    if db is None:
+        # Detached instance (tests, cached objects): no session to query with.
+        items = list(trend.news_items)
+        return items[offset:offset + limit], len(items)
+
+    total = (
+        db.query(func.count(RawNews.id))
+        .filter(RawNews.trend_id == trend.id)
+        .scalar()
+    ) or 0
+    rows = (
+        db.query(RawNews)
+        .filter(RawNews.trend_id == trend.id)
+        .order_by(RawNews.published_at.desc().nullslast(), RawNews.id.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    return rows, total
 
 
 def _make_absolute(path: str | None) -> str | None:
@@ -72,7 +122,12 @@ def serialize_trend_summary(trend: Trend) -> dict:
     }
 
 
-def serialize_trend_full(trend: Trend) -> dict:
+def serialize_trend_full(
+    trend: Trend,
+    article_limit: int = ARTICLES_DEFAULT_LIMIT,
+    article_offset: int = 0,
+) -> dict:
+    articles, total = fetch_articles(trend, article_limit, article_offset)
     base = serialize_trend_summary(trend)
     base.update({
         "summary": trend.summary,
@@ -80,8 +135,13 @@ def serialize_trend_full(trend: Trend) -> dict:
         "entities": trend.entities or [],
         "video_url": _make_absolute(trend.video_path),
         "cluster": {
-            "article_count": len(trend.news_items),
-            "articles": [serialize_article(n) for n in trend.news_items]
+            # Unchanged meaning: the size of the whole cluster, not of this page.
+            "article_count": total,
+            "articles": [serialize_article(n) for n in articles],
+            "limit": article_limit,
+            "offset": article_offset,
+            "returned": len(articles),
+            "has_more": article_offset + len(articles) < total,
         }
     })
     return base
