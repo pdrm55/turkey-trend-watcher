@@ -16,7 +16,15 @@ logger = logging.getLogger("MergeWorker")
 
 # --- Configuration ---
 MERGE_INTERVAL_SECONDS = 3600      # Run full cycle every 1 hour
-SEARCH_DISTANCE_MIN = 0.16         # Below this, ai_engine already merges at ingest time
+# 0.12 is ai_engine's *lowest* auto-merge threshold, not its usual one: it merges
+# under 0.15 normally but drops to 0.12 when the reference document is older than
+# 24h (and for X-Trend). This used to be 0.16, one comment-sized assumption above
+# the real floor, which left 0.12-0.16 as a dead band that neither side inspected.
+# CLUSTER_STATS measured 10% of new trends landing there, and the one genuinely
+# duplicated pair found by hand — the Ahbap investigation, trends 281471 and
+# 281402 — sat at 0.1556. Gemini still verifies every pair, so widening the
+# search cannot merge anything on distance alone.
+SEARCH_DISTANCE_MIN = 0.12         # ai_engine's floor; below this it merges at ingest
 SEARCH_DISTANCE_MAX = 0.40         # Above this, clusters are semantically different
 MAX_GEMINI_CALLS_PER_CYCLE = 60    # Rate-limit guard for Gemini API
 MAX_TIME_DIFF_HOURS = 72           # Don't merge events more than 3 days apart
@@ -25,7 +33,7 @@ GEMINI_VERIFY_MODEL = "gemini-2.5-flash-lite"
 # --- Smart Pre-filter ---
 # Pairs with distance > this threshold also require title keyword overlap to reach Gemini
 # Set equal to SEARCH_DISTANCE_MIN so keyword filter applies to ALL candidate pairs
-SMART_FILTER_DISTANCE_THRESHOLD = 0.16
+SMART_FILTER_DISTANCE_THRESHOLD = 0.12
 # Tighter time window for distant pairs (distance > threshold)
 SMART_FILTER_MAX_TIME_HOURS = 24.0
 
