@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import json
+import hashlib
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -9,6 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 from app.database.models import SessionLocal, Trend, RawNews, TrendArrivals, TrendScoreHistory
 from app.core.ai_engine import ai_engine
+from app.core.redis_connector import RedisConnector
 from app.config import Config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -44,6 +46,89 @@ _TURKISH_STOPWORDS = {
     'önce', 'gibi', 'üzere', 'ama', 'fakat', 'ancak', 'veya', 'hem',
     'daha', 'çok', 'en', 'her', 'hiç', 'bazı', 'tüm', 'bütün',
 }
+
+# --- Caches ---
+# The cycle re-ran from scratch every hour with no memory of the previous one.
+# A trend stays active for days, so the same pair of clusters was sent to Gemini
+# hour after hour and got the same "different event" answer every time. Both
+# caches below exist to stop paying for work already done.
+_cache_conn = RedisConnector(
+    f"redis://{os.getenv('REDIS_HOST', 'ttw_redis')}:6379/0", name="merge cache"
+)
+
+# A "different event" verdict is keyed by the cluster pair AND a coarse bucket of
+# both message counts, so it survives ordinary hourly re-scans but is re-asked
+# once either cluster has actually grown — an umbrella story that only becomes
+# recognisable after more articles arrive still gets a second look.
+VERDICT_TTL_SECONDS = 7 * 24 * 3600
+VERDICT_COUNT_BUCKET = 5
+
+# The reference document of a cluster rarely changes, but every cycle re-encoded
+# all of them on CPU with multilingual-e5-large. Keyed by document digest, so a
+# changed reference document misses the cache and is re-encoded correctly.
+EMBED_TTL_SECONDS = 24 * 3600
+
+
+def _verdict_key(cluster_a: str, cluster_b: str, count_a: int, count_b: int) -> str:
+    """Order-independent key: (A,B) and (B,A) must land on the same entry."""
+    pair = sorted([(cluster_a, count_a), (cluster_b, count_b)])
+    return "merge:verdict:{}:{}:{}:{}".format(
+        pair[0][0], pair[1][0],
+        (pair[0][1] or 0) // VERDICT_COUNT_BUCKET,
+        (pair[1][1] or 0) // VERDICT_COUNT_BUCKET,
+    )
+
+
+def _cached_not_same(key: str) -> bool:
+    """True only if a previous cycle already ruled this pair out."""
+    client = _cache_conn.get()
+    if not client:
+        return False
+    try:
+        return client.get(key) == "0"
+    except Exception as e:
+        _cache_conn.drop(e)
+        return False
+
+
+def _remember_not_same(key: str) -> None:
+    client = _cache_conn.get()
+    if not client:
+        return
+    try:
+        client.setex(key, VERDICT_TTL_SECONDS, "0")
+    except Exception as e:
+        _cache_conn.drop(e)
+
+
+def _embed_ref_doc(ref_doc: str):
+    """Query-side embedding of a reference document, cached across cycles.
+
+    Deliberately still the `is_query=True` vector: the 0.12/0.40 thresholds were
+    calibrated against query-vs-passage distances. The passage vector is already
+    stored in ChromaDB and reusing it would be cheaper still, but it would also
+    shift every distance in this file without touching a single threshold.
+    """
+    key = "merge:embed:" + hashlib.md5(ref_doc.encode("utf-8")).hexdigest()
+    client = _cache_conn.get()
+    if client:
+        try:
+            hit = client.get(key)
+            if hit:
+                return json.loads(hit), True
+        except Exception as e:
+            _cache_conn.drop(e)
+
+    vector = ai_engine.get_embedding(ref_doc, is_query=True)
+
+    client = _cache_conn.get()
+    if client:
+        try:
+            client.setex(key, EMBED_TTL_SECONDS, json.dumps(vector))
+        except Exception as e:
+            _cache_conn.drop(e)
+    return vector, False
+
 
 # --- Gemini Client (lightweight, for verification only) ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -81,10 +166,12 @@ def _categories_compatible(cat_a: str, cat_b: str) -> bool:
     return True
 
 
-def verify_same_event(text_a: str, text_b: str) -> bool:
-    """
-    Determines if two news snippets describe the same real-world event.
-    Uses Gemini as primary verifier; falls back to local Qwen if unavailable.
+def verify_same_event(text_a: str, text_b: str):
+    """Do two snippets describe the same real-world event?
+
+    Returns True, False, or None. None means the question could not be asked
+    (API error, no client) and must never be cached as a verdict — otherwise one
+    Gemini outage would suppress a pair for the next seven days.
     """
     client = _get_gemini_client()
 
@@ -123,7 +210,9 @@ Return JSON only: {{"same_event": true}} or {{"same_event": false}}"""
             return bool(result.get("same_event", False))
         except Exception as e:
             logger.warning(f"Gemini verification failed — skipping merge (no Ollama fallback): {e}")
-            return False  # Skip merge; don't hammer Ollama as fallback
+            return None  # Unknown, not "different": do not cache this
+
+    return None
 
 
 def _get_ref_doc(trend: Trend, db) -> str | None:
@@ -243,6 +332,7 @@ def run_merge_cycle() -> int:
         checked_pairs: set[tuple] = set()
         # (distance, trend, candidate_trend, ref_doc_of_trend)
         candidate_pairs: list = []
+        embed_hits = embed_misses = 0
 
         for trend in active_trends:
             if not trend.is_active:
@@ -253,7 +343,9 @@ def run_merge_cycle() -> int:
                 continue
 
             try:
-                query_vector = ai_engine.get_embedding(ref_doc, is_query=True)
+                query_vector, cached = _embed_ref_doc(ref_doc)
+                embed_hits += 1 if cached else 0
+                embed_misses += 0 if cached else 1
                 results = ai_engine.collection.query(
                     query_embeddings=[query_vector],
                     n_results=20,
@@ -305,8 +397,11 @@ def run_merge_cycle() -> int:
 
         skipped_category = 0
         skipped_keyword = 0
+        skipped_cached = 0
+        unverified = 0
+        budget_stopped_at = None
 
-        for distance, trend, candidate_trend, ref_doc in candidate_pairs:
+        for index, (distance, trend, candidate_trend, ref_doc) in enumerate(candidate_pairs):
             # Skip if either side was merged away earlier in this cycle
             if not trend.is_active or not candidate_trend.is_active:
                 continue
@@ -317,14 +412,29 @@ def run_merge_cycle() -> int:
                 continue
 
             # Pre-filter 2: for distant pairs, require at least one shared keyword
-            if distance > SMART_FILTER_DISTANCE_THRESHOLD:
-                if _title_keyword_overlap(trend.title, candidate_trend.title) == 0:
-                    skipped_keyword += 1
-                    continue
+            overlap = _title_keyword_overlap(trend.title, candidate_trend.title)
+            if distance > SMART_FILTER_DISTANCE_THRESHOLD and overlap == 0:
+                skipped_keyword += 1
+                continue
+
+            # Pre-filter 3: a previous cycle already ruled this exact pair out
+            verdict_key = _verdict_key(
+                trend.cluster_id, candidate_trend.cluster_id,
+                trend.message_count, candidate_trend.message_count,
+            )
+            if _cached_not_same(verdict_key):
+                skipped_cached += 1
+                continue
 
             # Rate-limit guard
             if gemini_calls >= MAX_GEMINI_CALLS_PER_CYCLE:
-                logger.info("⚠️ [MergeWorker] Gemini call limit reached, stopping this cycle.")
+                budget_stopped_at = len(candidate_pairs) - index
+                logger.warning(
+                    "⚠️ [MergeWorker] Gemini budget of %d exhausted — %d candidate "
+                    "pairs left unexamined this cycle (sorted by distance, so the "
+                    "skipped ones are the least similar).",
+                    MAX_GEMINI_CALLS_PER_CYCLE, budget_stopped_at,
+                )
                 break
 
             candidate_doc = _get_ref_doc(candidate_trend, db)
@@ -334,7 +444,19 @@ def run_merge_cycle() -> int:
             gemini_calls += 1
             time.sleep(0.5)
 
-            if not verify_same_event(ref_doc[:600], candidate_doc[:600]):
+            same = verify_same_event(ref_doc[:600], candidate_doc[:600])
+            if same is None:
+                # Could not ask. Leave no verdict behind so the next cycle retries.
+                unverified += 1
+                continue
+            if not same:
+                _remember_not_same(verdict_key)
+                # Kept at debug: the numbers that matter are in the cycle summary.
+                logger.debug(
+                    "MERGE_REJECT dist=%.4f overlap=%d %s / %s",
+                    distance, overlap, (trend.title or "")[:50],
+                    (candidate_trend.title or "")[:50],
+                )
                 continue
 
             if trend.message_count >= candidate_trend.message_count:
@@ -344,12 +466,21 @@ def run_merge_cycle() -> int:
 
             if _do_merge(source, target, db):
                 merged_count += 1
+                logger.info("   ↳ merged at distance %.4f (title overlap %d)", distance, overlap)
 
+        embed_total = embed_hits + embed_misses
         logger.info(
             f"📊 [MergeWorker] Pre-filter saved: {skipped_category} category + "
-            f"{skipped_keyword} keyword mismatches. "
+            f"{skipped_keyword} keyword + {skipped_cached} already-judged. "
             f"Gemini calls: {gemini_calls}/{MAX_GEMINI_CALLS_PER_CYCLE}"
+            + (f", {unverified} unverified (API errors)" if unverified else "")
+            + (f", {budget_stopped_at} pairs unexamined" if budget_stopped_at else "")
         )
+        if embed_total:
+            logger.info(
+                "🧮 [MergeWorker] Embeddings: %d/%d served from cache (%.0f%%), %d encoded",
+                embed_hits, embed_total, 100.0 * embed_hits / embed_total, embed_misses,
+            )
         return merged_count
 
     except Exception as e:
